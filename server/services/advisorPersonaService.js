@@ -1,17 +1,25 @@
 /**
  * Builds the system prompt for the academic advisor persona and helpers for
- * coercing the LLM's reply into the structured JSON shape the UI needs.
+ * coercing the LLM's reply into the structured shape the UI needs.
  *
- * Returned schema:
+ * Output format the model emits — chosen to be streaming-friendly so the UI
+ * can begin typing the answer the moment the [ANSWER] block opens, in
+ * parallel with TTS for the [SPEECH] block:
+ *
+ *   [SPEECH]
+ *   <one-paragraph spoken summary, plain text, <= ADVISOR_SPEECH_MAX_CHARS>
+ *
+ *   [ANSWER]
+ *   <richer markdown answer for the typewriter panel>
+ *
+ *   [META]
+ *   {"topic_slug":"...","citations":[...],"suggested_actions":[...],
+ *    "follow_up_questions":[...],"needs_escalation":false,"confidence":0.9}
+ *
+ * Parsed schema (matches what the route returns):
  *   {
- *     "speech_text":        short spoken summary (max ~600 chars, no markdown)
- *     "display_markdown":   richer written reply (markdown OK)
- *     "topic_slug":         one of the seeded topic slugs, or null
- *     "citations":          [{ title, source, snippet? }]
- *     "suggested_actions":  [{ label, action }]            (UI buttons)
- *     "follow_up_questions":[ "short text", ... ]          (chips)
- *     "needs_escalation":   true|false
- *     "confidence":         0..1
+ *     speech_text, display_markdown, topic_slug, citations,
+ *     suggested_actions, follow_up_questions, needs_escalation, confidence
  *   }
  */
 
@@ -24,6 +32,12 @@ const TOPIC_SLUGS = [
     'welfare', 'library', 'conduct', 'career'
 ];
 
+const SECTION_RE = {
+    speech: /\[SPEECH\][ \t]*\r?\n?/i,
+    answer: /\[ANSWER\][ \t]*\r?\n?/i,
+    meta:   /\[META\][ \t]*\r?\n?/i
+};
+
 /** Build the system prompt used for every advisor turn. */
 function buildSystemPrompt({ studentContext = null, ragContext = '' } = {}) {
     const studentBlock = studentContext
@@ -33,11 +47,11 @@ function buildSystemPrompt({ studentContext = null, ragContext = '' } = {}) {
 - Programme: ${studentContext.programme_name || studentContext.programme_code || 'unknown'}
 - Level: ${studentContext.level || 'unknown'}
 - Session: ${studentContext.current_session || 'unknown'}
-You may address the student by first name and tailor the advice to their level/programme.`
+You may address the student by first name and tailor advice to their level/programme.`
         : `The student is not logged in; do not invent personal details. If a question requires personal data (GPA, registration status, fees), ask them to sign in.`;
 
     const knowledgeBlock = ragContext && ragContext.trim().length > 0
-        ? `RELEVANT BMU INFORMATION (use this as the source of truth; cite the document titles):
+        ? `RELEVANT BMU INFORMATION (use this as the source of truth; cite document titles in [META].citations):
 ${ragContext.trim()}`
         : `No specific BMU documents matched this question. Use only widely accepted, general academic-advising knowledge. If the question is BMU-specific and you don't know, say so plainly and offer to escalate to a human advisor.`;
 
@@ -49,28 +63,29 @@ ${studentBlock}
 
 ${knowledgeBlock}
 
-TOPIC TAGS — pick ONE slug from this list for "topic_slug", or null if none fit:
-${TOPIC_SLUGS.join(', ')}
+OUTPUT FORMAT — your reply MUST be exactly three sections, in this order, separated by blank lines. Output the section markers literally on their own line. Do NOT wrap any section in markdown code fences.
 
-OUTPUT FORMAT — reply with a SINGLE JSON object and nothing else. The schema is:
-{
-  "speech_text":         string,   // short spoken summary, plain text, <= ${SPEECH_MAX} chars
-  "display_markdown":    string,   // richer written reply in markdown
-  "topic_slug":          string|null,
-  "citations":           [ { "title": string, "source": string, "snippet": string } ],
-  "suggested_actions":   [ { "label": string, "action": string } ],
-  "follow_up_questions": [ string, ... ],         // 2-4 short prompts
-  "needs_escalation":    boolean,
-  "confidence":          number                    // 0..1
-}
+[SPEECH]
+A short, conversational spoken summary in plain text (no markdown, no lists). One short paragraph. Maximum ${SPEECH_MAX} characters. The avatar will read this aloud.
 
-RULES:
-- "speech_text" must be conversational and concise (one short paragraph). The avatar will read this aloud while the typewriter shows "display_markdown".
-- "display_markdown" may use headings, bullet lists, and bold; keep it under ~500 words.
-- "citations" must only reference documents that appeared in the RELEVANT BMU INFORMATION section above. Empty array is fine.
-- "suggested_actions" map to UI buttons. Supported "action" values: "open_topic:<slug>", "start_study_plan", "escalate_to_human", "open_url:<https-url>".
-- Set "needs_escalation": true when the question is outside scope (medical/legal/personal counselling), or when you lack reliable information.
-- Do NOT wrap the JSON in markdown code fences. Output raw JSON only.`;
+[ANSWER]
+A richer written answer in markdown — headings, bullet lists and bold are welcome. Keep it under ~500 words. The student sees this typed out as you write it.
+
+[META]
+A SINGLE JSON object on one or more lines, with these keys:
+  "topic_slug":          one of [${TOPIC_SLUGS.map(s => `"${s}"`).join(', ')}] or null
+  "citations":           array of { "title": string, "source": string, "snippet"?: string }
+                         only reference docs from RELEVANT BMU INFORMATION above; empty array OK
+  "suggested_actions":   array of { "label": string, "action": string }
+                         action ∈ "open_topic:<slug>" | "start_study_plan" | "escalate_to_human" | "open_url:<https-url>"
+  "follow_up_questions": array of 2-4 short prompt strings the student might tap next
+  "needs_escalation":    true when the question is outside scope (medical/legal/personal counselling) or you lack reliable info
+  "confidence":          number in [0,1]
+
+Rules:
+- ALWAYS emit all three sections in this exact order.
+- Never put markdown inside [SPEECH] and never put plain spoken commentary inside [META].
+- The closing of [META] is the end of your reply.`;
 }
 
 /** Build the user message containing the actual question + light history. */
@@ -81,58 +96,134 @@ function buildUserPrompt(question, history = []) {
 }
 
 /**
- * Coerce the LLM reply into our schema. Tolerates markdown-fenced JSON and
- * mild malformations by falling back to a plain-text answer.
+ * Parse the model's full reply (delimited format above) into the structured
+ * shape the API returns. Tolerant of: missing sections, extra prose before
+ * [SPEECH], code-fenced JSON in [META], and trailing commas in [META].
  */
 function parseAdvisorReply(rawContent, originalQuestion) {
-    const text = (rawContent || '').trim();
+    const text = (rawContent || '').replace(/\r\n/g, '\n').trim();
 
-    // Strip markdown code fences if the model added them despite instructions.
-    const stripped = text
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/```\s*$/, '')
-        .trim();
+    // Locate the three section markers.
+    const speechIdx = text.search(SECTION_RE.speech);
+    const answerIdx = text.search(SECTION_RE.answer);
+    const metaIdx   = text.search(SECTION_RE.meta);
 
-    let parsed = null;
-    try { parsed = JSON.parse(stripped); } catch (_) { /* fall through */ }
+    const after = (idx, re) => {
+        if (idx < 0) return -1;
+        return idx + text.slice(idx).match(re)[0].length;
+    };
 
-    // If JSON parse failed, attempt to grab the largest {...} block.
-    if (!parsed) {
-        const match = stripped.match(/\{[\s\S]*\}/);
-        if (match) {
-            try { parsed = JSON.parse(match[0]); } catch (_) { /* ignored */ }
-        }
+    const speechStart = after(speechIdx, SECTION_RE.speech);
+    const answerStart = after(answerIdx, SECTION_RE.answer);
+    const metaStart   = after(metaIdx,   SECTION_RE.meta);
+
+    let speechText = '';
+    let displayMd = '';
+    let metaRaw = '';
+
+    if (speechIdx >= 0) {
+        const end = answerIdx >= 0 ? answerIdx : (metaIdx >= 0 ? metaIdx : text.length);
+        speechText = text.slice(speechStart, end).trim();
+    }
+    if (answerIdx >= 0) {
+        const end = metaIdx >= 0 ? metaIdx : text.length;
+        displayMd = text.slice(answerStart, end).trim();
+    }
+    if (metaIdx >= 0) {
+        metaRaw = text.slice(metaStart).trim()
+            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/```\s*$/, '')
+            .trim();
     }
 
-    if (!parsed || typeof parsed !== 'object') {
-        // Last-resort fallback: present the raw text as both spoken and written.
+    // Fallback: model didn't follow the format at all → use the whole text.
+    if (!speechText && !displayMd) {
         return {
             speech_text: truncate(text || `I could not generate a structured reply. Could you rephrase the question?`, SPEECH_MAX),
             display_markdown: text || 'I could not generate a reply just now. Please try again.',
-            topic_slug: null,
-            citations: [],
-            suggested_actions: [],
-            follow_up_questions: [],
-            needs_escalation: !text,
-            confidence: 0.2,
+            topic_slug: null, citations: [], suggested_actions: [], follow_up_questions: [],
+            needs_escalation: !text, confidence: 0.2,
             _parse_error: true
         };
     }
 
-    // Normalise fields and clamp speech length.
+    let meta = {};
+    if (metaRaw) {
+        try { meta = JSON.parse(metaRaw); }
+        catch (_) {
+            // Try to extract the largest {...} block.
+            const m = metaRaw.match(/\{[\s\S]*\}/);
+            if (m) { try { meta = JSON.parse(m[0]); } catch (_) { /* ignore */ } }
+        }
+    }
+
     return {
-        speech_text:         truncate(strOrEmpty(parsed.speech_text || parsed.display_markdown || originalQuestion), SPEECH_MAX),
-        display_markdown:    strOrEmpty(parsed.display_markdown || parsed.speech_text),
-        topic_slug:          TOPIC_SLUGS.includes(parsed.topic_slug) ? parsed.topic_slug : null,
-        citations:           Array.isArray(parsed.citations) ? parsed.citations.slice(0, 8) : [],
-        suggested_actions:   Array.isArray(parsed.suggested_actions) ? parsed.suggested_actions.slice(0, 6) : [],
-        follow_up_questions: Array.isArray(parsed.follow_up_questions) ? parsed.follow_up_questions.slice(0, 4) : [],
-        needs_escalation:    Boolean(parsed.needs_escalation),
-        confidence:          clamp01(parsed.confidence)
+        speech_text:         truncate(speechText || displayMd, SPEECH_MAX),
+        display_markdown:    displayMd || speechText,
+        topic_slug:          TOPIC_SLUGS.includes(meta.topic_slug) ? meta.topic_slug : null,
+        citations:           Array.isArray(meta.citations) ? meta.citations.slice(0, 8) : [],
+        suggested_actions:   Array.isArray(meta.suggested_actions) ? meta.suggested_actions.slice(0, 6) : [],
+        follow_up_questions: Array.isArray(meta.follow_up_questions) ? meta.follow_up_questions.slice(0, 4) : [],
+        needs_escalation:    Boolean(meta.needs_escalation),
+        confidence:          clamp01(meta.confidence)
     };
 }
 
-function strOrEmpty(v) { return typeof v === 'string' ? v.trim() : ''; }
+/**
+ * Streaming-section detector. Maintains state across chunks; returns the
+ * latest (mode, newAnswerText, completedSpeech) tuple given the cumulative
+ * accumulated buffer.
+ *
+ * The streaming route uses this to:
+ *   - emit `speech_ready` as soon as [ANSWER] appears (speech is now final)
+ *   - emit `token` events with the new ANSWER text since the last call
+ *   - know when the buffer has rolled into the [META] section (no more tokens)
+ *
+ * @param {string} accumulated  full buffered content from the LLM stream so far
+ * @param {number} lastAnswerEmitted  number of [ANSWER] characters already sent
+ * @returns {{
+ *     mode: 'preamble'|'speech'|'answer'|'meta',
+ *     speech: string|null,         // populated when speech section is final
+ *     newAnswer: string,           // characters to emit as a `token` event now
+ *     totalAnswer: number          // total [ANSWER] characters available so far
+ * }}
+ */
+function streamScan(accumulated, lastAnswerEmitted = 0) {
+    const text = accumulated || '';
+    const sIdx = text.search(SECTION_RE.speech);
+    const aIdx = text.search(SECTION_RE.answer);
+    const mIdx = text.search(SECTION_RE.meta);
+
+    if (sIdx < 0) {
+        return { mode: 'preamble', speech: null, newAnswer: '', totalAnswer: 0 };
+    }
+
+    if (aIdx < 0) {
+        // Still accumulating speech. Don't emit anything yet — speech is finalised
+        // when [ANSWER] appears.
+        return { mode: 'speech', speech: null, newAnswer: '', totalAnswer: 0 };
+    }
+
+    // [ANSWER] has appeared → speech is now complete.
+    const speechStart = sIdx + text.slice(sIdx).match(SECTION_RE.speech)[0].length;
+    const speech = text.slice(speechStart, aIdx).trim();
+
+    const answerStart = aIdx + text.slice(aIdx).match(SECTION_RE.answer)[0].length;
+    const answerEnd   = mIdx >= 0 ? mIdx : text.length;
+    const answerSoFar = text.slice(answerStart, answerEnd);
+
+    const newAnswer = answerSoFar.length > lastAnswerEmitted
+        ? answerSoFar.slice(lastAnswerEmitted)
+        : '';
+
+    return {
+        mode: mIdx >= 0 ? 'meta' : 'answer',
+        speech,
+        newAnswer,
+        totalAnswer: answerSoFar.length
+    };
+}
+
 function truncate(s, n) { return s && s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s; }
 function clamp01(n) { const v = Number(n); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5; }
 
@@ -142,5 +233,6 @@ module.exports = {
     TOPIC_SLUGS,
     buildSystemPrompt,
     buildUserPrompt,
-    parseAdvisorReply
+    parseAdvisorReply,
+    streamScan
 };

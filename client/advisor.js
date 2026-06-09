@@ -152,11 +152,11 @@
         scrollToBottom();
     }
 
-    function addAdvisorBubble({ speech_text, display_markdown, citations, suggested_actions }) {
+    function addAdvisorBubble() {
         const el = document.createElement('article');
         el.className = 'bubble bubble--advisor';
         el.innerHTML = `
-            <header><i class="fa-solid fa-graduation-cap"></i> Dr. Tari</header>
+            <header><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(window.ADVISOR_NAME || 'Dr. Tari')}</header>
             <div class="bubble-body"><span class="typewriter"></span><span class="caret"></span></div>
             <div class="action-buttons"></div>
             <div class="bubble-footer hidden">
@@ -165,32 +165,40 @@
             </div>`;
         transcript.appendChild(el);
         scrollToBottom();
+        return {
+            el,
+            body:    el.querySelector('.typewriter'),
+            caret:   el.querySelector('.caret'),
+            actions: el.querySelector('.action-buttons'),
+            footer:  el.querySelector('.bubble-footer'),
+            cite:    el.querySelector('.cite'),
+            playBtn: el.querySelector('.play-btn')
+        };
+    }
 
-        const body = el.querySelector('.typewriter');
-        const caret = el.querySelector('.caret');
-        const actions = el.querySelector('.action-buttons');
-        const footer = el.querySelector('.bubble-footer');
-        const cite = el.querySelector('.cite');
-
-        // Suggested action buttons
+    function fillBubbleMeta(bubble, { citations, suggested_actions, speech_text, audio_url }) {
         if (Array.isArray(suggested_actions) && suggested_actions.length) {
+            bubble.actions.innerHTML = '';
             for (const a of suggested_actions) {
                 const b = document.createElement('button');
                 b.type = 'button';
                 b.textContent = a.label;
                 b.addEventListener('click', () => handleAction(a.action));
-                actions.appendChild(b);
+                bubble.actions.appendChild(b);
             }
         } else {
-            actions.remove();
+            bubble.actions.remove();
         }
-
         if (Array.isArray(citations) && citations.length) {
-            cite.innerHTML = `<strong>Sources:</strong> ${citations.map(c => escapeHtml(c.title || c.source || '')).join(' • ')}`;
-            footer.classList.remove('hidden');
+            bubble.cite.innerHTML = `<strong>Sources:</strong> ${citations.map(c => escapeHtml(c.title || c.source || '')).join(' • ')}`;
+            bubble.footer.classList.remove('hidden');
         }
-
-        return { el, body, caret, footer };
+        if (bubble.playBtn) {
+            bubble.playBtn.addEventListener('click', () => {
+                if (audio_url) playWithLipSync(audio_url);
+                else if (speech_text) speakWithBrowser(speech_text);
+            });
+        }
     }
 
     function renderFollowups(list) {
@@ -229,21 +237,6 @@
     }
 
     // ---------- Typewriter + lip-sync ----------
-    function typeWriter(el, text, durationMs) {
-        return new Promise(resolve => {
-            const chars = [...text];
-            const tickMs = Math.max(8, Math.min(40, durationMs / Math.max(1, chars.length)));
-            let i = 0;
-            const tick = () => {
-                if (i >= chars.length) { resolve(); return; }
-                el.textContent += chars[i++];
-                scrollToBottom();
-                setTimeout(tick, tickMs);
-            };
-            tick();
-        });
-    }
-
     /**
      * Play audioUrl while updating mouth from amplitude.
      * Returns the actual duration in ms when finished, or 0 if aborted.
@@ -266,7 +259,6 @@
                 let raf;
                 const tick = () => {
                     analyser.getByteFrequencyData(data);
-                    // Focus on speech band (low-mid)
                     let sum = 0; const len = Math.min(64, data.length);
                     for (let i = 4; i < len; i++) sum += data[i];
                     const level = Math.min(1, sum / (len * 110));
@@ -329,7 +321,7 @@
         });
     }
 
-    // ---------- Ask flow ----------
+    // ---------- Ask flow (streaming) ----------
     async function askNow() {
         const q = questionInput.value.trim();
         if (!q) return;
@@ -339,63 +331,112 @@
         addStudentBubble(q);
         setAvatarState('thinking', 'Thinking');
 
+        const bubble = addAdvisorBubble();
+        let speechText = '';
+        let audioUrl = null;
+        let audioStarted = false;
+        let final = null;
+
         try {
-            const data = await api('/api/advisor/ask', {
+            const res = await fetch('/api/advisor/ask/stream', {
                 method: 'POST',
-                body: {
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({
                     question: q,
                     sessionToken: state.sessionToken,
                     voiceEnabled: true,
                     inputMode: 'text'
-                }
+                })
             });
-
-            if (data.sessionToken && data.sessionToken !== state.sessionToken) {
-                state.sessionToken = data.sessionToken;
-                localStorage.setItem('bmu_advisor_session', data.sessionToken);
+            if (!res.ok || !res.body) {
+                throw new Error(`HTTP ${res.status}`);
             }
 
-            const { reply, audio } = data;
-            const bubble = addAdvisorBubble({
-                speech_text:        reply.speech_text,
-                display_markdown:   reply.display_markdown,
-                citations:          reply.citations,
-                suggested_actions:  reply.suggested_actions
-            });
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
 
-            // Speak + type in parallel; typing pace is matched to spoken duration.
-            const speak = (audio?.audio_url)
-                ? playWithLipSync(audio.audio_url)
-                : speakWithBrowser(reply.speech_text);
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
 
-            // Start with an estimated duration; corrected when audio metadata arrives.
-            const typedText = (reply.display_markdown || reply.speech_text || '').toString();
-            const estimatedMs = Math.max(2000, typedText.length * 25);
-            const typingPromise = typeWriter(bubble.body, typedText, estimatedMs);
-            const playedMs = await speak;
-            await typingPromise;
+                // Parse SSE events separated by blank lines.
+                let blockEnd;
+                while ((blockEnd = buffer.indexOf('\n\n')) >= 0) {
+                    const block = buffer.slice(0, blockEnd);
+                    buffer = buffer.slice(blockEnd + 2);
+                    if (!block.trim() || block.startsWith(':')) continue; // heartbeat / comment
+
+                    let event = 'message';
+                    let dataStr = '';
+                    for (const line of block.split('\n')) {
+                        if (line.startsWith('event:')) event = line.slice(6).trim();
+                        else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+                    }
+                    let data;
+                    try { data = JSON.parse(dataStr); } catch (_) { continue; }
+
+                    if (event === 'session') {
+                        if (data.sessionToken && data.sessionToken !== state.sessionToken) {
+                            state.sessionToken = data.sessionToken;
+                            localStorage.setItem('bmu_advisor_session', data.sessionToken);
+                        }
+                    } else if (event === 'speech_ready') {
+                        speechText = data.speech_text || '';
+                        // Avatar status hint: voice is being prepared.
+                        setAvatarState('thinking', 'Generating voice');
+                    } else if (event === 'token') {
+                        bubble.body.textContent += (data.text || '');
+                        scrollToBottom();
+                    } else if (event === 'audio') {
+                        if (data.audio_url) {
+                            audioUrl = data.audio_url;
+                            // Start playback immediately — runs in parallel with continued typing.
+                            if (!audioStarted) {
+                                audioStarted = true;
+                                playWithLipSync(audioUrl);
+                            }
+                        } else if (data.use_browser_fallback && speechText && !audioStarted) {
+                            audioStarted = true;
+                            speakWithBrowser(speechText);
+                        }
+                    } else if (event === 'done') {
+                        final = data;
+                    } else if (event === 'error') {
+                        throw new Error(data.error || 'stream error');
+                    }
+                }
+            }
+
             bubble.caret.remove();
 
-            // Wire "Listen again"
-            const playBtn = bubble.el.querySelector('.play-btn');
-            if (playBtn) {
-                playBtn.addEventListener('click', () => {
-                    if (audio?.audio_url) playWithLipSync(audio.audio_url);
-                    else speakWithBrowser(reply.speech_text);
+            if (final) {
+                // If we ended up with nothing typed (e.g. model didn't follow format),
+                // paste the full display_markdown from the final payload.
+                if (!bubble.body.textContent && final.reply?.display_markdown) {
+                    bubble.body.textContent = final.reply.display_markdown;
+                }
+                fillBubbleMeta(bubble, {
+                    citations:         final.reply?.citations || [],
+                    suggested_actions: final.reply?.suggested_actions || [],
+                    speech_text:       final.reply?.speech_text || speechText,
+                    audio_url:         final.audio?.audio_url || audioUrl
                 });
-            }
-
-            renderFollowups(reply.follow_up_questions);
-
-            if (reply.needs_escalation) {
-                addEscalationHint();
+                renderFollowups(final.reply?.follow_up_questions);
+                if (final.reply?.needs_escalation) addEscalationHint();
             }
         } catch (err) {
-            console.error('[advisor] ask error:', err);
+            console.error('[advisor] stream error:', err);
+            bubble.caret.remove();
+            if (!bubble.body.textContent) {
+                bubble.body.textContent = "I couldn't reach the advisor service. Please try again in a moment.";
+            }
             toast(err.message || 'Could not reach the advisor.', 'error');
             setAvatarState('idle', 'Ready');
         } finally {
             sendBtn.disabled = false;
+            if (!audioStarted) setAvatarState('idle', 'Ready');
         }
     }
 

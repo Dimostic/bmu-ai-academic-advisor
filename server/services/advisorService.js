@@ -18,6 +18,7 @@ const tts = require('./ttsService');
 
 const HISTORY_TURNS = parseInt(process.env.ADVISOR_HISTORY_TURNS || '8', 10);
 const RAG_ENABLED   = process.env.ENABLE_RAG !== 'false';
+const RAG_TIMEOUT_MS = parseInt(process.env.ADVISOR_RAG_TIMEOUT_MS || '4000', 10);
 
 let retrievalService = null;
 try { retrievalService = require('./retrievalService'); }
@@ -43,13 +44,15 @@ async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
  */
 async function _fetchRagContext(question) {
     if (!RAG_ENABLED || !retrievalService || !question || question.length < 3) return '';
-    try {
-        const result = await retrievalService.retrieve(question, { limit: 5 });
-        return result?.context || '';
-    } catch (err) {
-        console.warn('[advisorService] RAG retrieval failed:', err.message);
-        return '';
-    }
+    return await Promise.race([
+        retrievalService.retrieve(question, { limit: 5 })
+            .then(r => r?.context || '')
+            .catch(err => {
+                console.warn('[advisorService] RAG retrieval failed:', err.message);
+                return '';
+            }),
+        new Promise(resolve => setTimeout(() => resolve(''), RAG_TIMEOUT_MS))
+    ]);
 }
 
 /**
@@ -113,7 +116,9 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
 
     let llmResult;
     try {
-        llmResult = await llm.chat(messages, { jsonMode: true });
+        // Persona returns a delimited [SPEECH] / [ANSWER] / [META] format, not raw
+        // JSON, so we don't request response_format=json_object here.
+        llmResult = await llm.chat(messages);
     } catch (err) {
         console.error('[advisorService] LLM error:', err.message);
         const fallback = {

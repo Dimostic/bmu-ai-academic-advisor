@@ -19,6 +19,7 @@ const router = express.Router();
 const { optionalAuth } = require('../middleware/auth');
 const Advisor = require('../models/Advisor');
 const advisorService = require('../services/advisorService');
+const advisorStreamService = require('../services/advisorStreamService');
 const sttService = require('../services/sttService');
 const ttsService = require('../services/ttsService');
 const emailService = (() => {
@@ -61,6 +62,28 @@ router.get('/health', (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/advisor/sse-test  — minimal SSE for diagnosing flush issues
+// ---------------------------------------------------------------------------
+router.get('/sse-test', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+    res.write(`event: hello\ndata: ${JSON.stringify({ at: Date.now() })}\n\n`);
+    let n = 0;
+    const id = setInterval(() => {
+        n++;
+        res.write(`event: tick\ndata: ${JSON.stringify({ n, at: Date.now() })}\n\n`);
+        if (n >= 5) {
+            clearInterval(id);
+            res.write(`event: done\ndata: {}\n\n`);
+            res.end();
+        }
+    }, 1000);
+    req.on('close', () => clearInterval(id));
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/advisor/ask
 // Body: { question, sessionToken?, voiceEnabled?, inputMode? }
 // ---------------------------------------------------------------------------
@@ -87,6 +110,72 @@ router.post('/ask', optionalAuth, async (req, res) => {
     } catch (err) {
         console.error('[advisorRoutes] ask:', err);
         res.status(500).json({ success: false, error: err.message || 'Advisor request failed' });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/advisor/ask/stream  (Server-Sent Events)
+// Body: { question, sessionToken?, voiceEnabled?, inputMode? }
+//
+// Streams events:
+//   session       — initial session token
+//   speech_ready  — speech_text finalised; TTS started in parallel
+//   token         — chunk of [ANSWER] markdown for the typewriter
+//   audio         — TTS audio_url ready (or browser fallback signal)
+//   done          — final structured payload
+//   error         — fatal error (stream then ends)
+// ---------------------------------------------------------------------------
+router.post('/ask/stream', optionalAuth, async (req, res) => {
+    const { question, sessionToken, voiceEnabled = true, inputMode = 'text' } = req.body || {};
+    if (!question || typeof question !== 'string' || !question.trim()) {
+        return res.status(400).json({ success: false, error: 'question is required' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+    let closed = false;
+    // NOTE: do NOT listen to req.on('close') here — Node fires that on the
+    // request stream as soon as body-parser finishes consuming the request
+    // body (well before the response actually closes). Listen on `res` so we
+    // only set `closed` when the client actually disconnects.
+    res.on('close', () => { closed = true; });
+
+    const send = (event, data) => {
+        if (closed) return;
+        try {
+            res.write(`event: ${event}\n`);
+            res.write(`data: ${JSON.stringify(data)}\n\n`);
+        } catch (_) { /* socket likely closed */ }
+    };
+
+    // Periodic heartbeat so reverse proxies don't time out long streams.
+    const heartbeat = setInterval(() => {
+        if (closed) return;
+        try { res.write(': ping\n\n'); } catch (_) { /* ignore */ }
+    }, 15_000);
+
+    try {
+        let student = null;
+        if (req.user?.id) student = await Advisor.findStudentByUserId(req.user.id);
+
+        await advisorStreamService.askStream({
+            question,
+            inputMode: inputMode === 'voice' ? 'voice' : 'text',
+            sessionToken,
+            student,
+            voiceEnabled: voiceEnabled !== false,
+            send
+        });
+    } catch (err) {
+        console.error('[advisorRoutes] ask/stream:', err);
+        send('error', { error: err.message || 'Advisor stream failed' });
+    } finally {
+        clearInterval(heartbeat);
+        if (!closed) res.end();
     }
 });
 

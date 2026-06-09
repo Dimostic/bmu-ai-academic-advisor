@@ -6,33 +6,102 @@
  *   2. Browser `speechSynthesis` — final fallback. The server cannot synthesise
  *      this; we simply tell the client to do it locally.
  *
+ * Performance: results are cached in the `tts_audio_cache` table by a
+ * (text_hash, voice_id, audio_speed) tuple. TTSMaker's hosted audio URLs are
+ * valid for ~24h, so repeat questions reuse the existing URL until it expires.
+ *
  * Lip-sync is computed client-side from the audio waveform using the Web Audio
  * API, so no provider-specific viseme metadata is required.
- *
- * Note: TTSMaker requires a Pro or Studio subscription on their account; the
- * Lite tier does not expose the API, and the public demo key only accepts a
- * fixed test sentence. If your key is rejected, the service degrades to the
- * browser fallback automatically.
  */
 const axios = require('axios');
+const crypto = require('crypto');
+const { query } = require('../../config/db');
 
 const TTSMAKER_BASE = 'https://api.ttsmaker.com/v2';
 const PROVIDER      = (process.env.TTS_PROVIDER || 'ttsmaker').toLowerCase();
 const ENABLED       = process.env.ENABLE_VOICE_RESPONSES !== 'false';
+const CACHE_SAFETY_MS = 5 * 60 * 1000; // treat URLs that expire in <5 min as miss
 
 function isTtsmakerConfigured() {
     return Boolean(process.env.TTSMAKER_TTS_API_KEY) &&
            process.env.TTSMAKER_TTS_ENABLED !== '0';
 }
 
+function getVoiceId() {
+    return parseInt(process.env.TTSMAKER_TTS_VOICE_ID || '2522', 10);
+}
+
+function getSpeed() {
+    const v = parseFloat(process.env.TTSMAKER_TTS_AUDIO_SPEED || '1.15');
+    if (!Number.isFinite(v)) return 1.0;
+    return Math.max(0.5, Math.min(2.0, v));
+}
+
+function _hash(text, voiceId, speed) {
+    const norm = String(text).trim().toLowerCase().replace(/\s+/g, ' ');
+    return crypto
+        .createHash('sha256')
+        .update(`${norm}|${voiceId}|${speed.toFixed(2)}`)
+        .digest('hex');
+}
+
+async function _readCache(text, voiceId, speed) {
+    try {
+        const hash = _hash(text, voiceId, speed);
+        const safeNow = new Date(Date.now() + CACHE_SAFETY_MS);
+        const rows = await query(
+            `SELECT audio_url, backup_url, provider, expires_at
+             FROM tts_audio_cache
+             WHERE text_hash=? AND voice_id=? AND audio_speed=? AND expires_at > ?
+             LIMIT 1`,
+            [hash, voiceId, speed, safeNow]
+        );
+        if (!rows[0]) return null;
+        // Best-effort hit count update (don't await)
+        query(
+            `UPDATE tts_audio_cache SET hit_count = hit_count + 1, last_hit_at = NOW()
+             WHERE text_hash=? AND voice_id=? AND audio_speed=?`,
+            [hash, voiceId, speed]
+        ).catch(() => { /* ignore */ });
+        return rows[0];
+    } catch (err) {
+        console.warn('[ttsService] cache read failed:', err.message);
+        return null;
+    }
+}
+
+async function _writeCache({ text, voiceId, speed, audioUrl, backupUrl, provider, expiresAtTs }) {
+    try {
+        const hash = _hash(text, voiceId, speed);
+        const preview = String(text).slice(0, 240);
+        // TTSMaker returns a unix timestamp; fall back to 24h if missing.
+        const expiresAt = expiresAtTs
+            ? new Date(expiresAtTs * 1000)
+            : new Date(Date.now() + 24 * 3600 * 1000);
+        await query(
+            `INSERT INTO tts_audio_cache
+             (text_hash, voice_id, audio_speed, text_preview, audio_url, backup_url, provider, expires_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                audio_url=VALUES(audio_url),
+                backup_url=VALUES(backup_url),
+                expires_at=VALUES(expires_at),
+                provider=VALUES(provider)`,
+            [hash, voiceId, speed, preview, audioUrl, backupUrl || null, provider, expiresAt]
+        );
+    } catch (err) {
+        console.warn('[ttsService] cache write failed:', err.message);
+    }
+}
+
 /**
  * Synthesise speech for `text`.
  * @param {string} text
  * @param {object} [opts]
- * @returns {Promise<{provider:string, audioUrl?:string, useBrowserFallback?:boolean, error?:string, durationSeconds?:number, quota?:object}>}
+ * @returns {Promise<{provider:string, audioUrl?:string, audioBackupUrl?:string, useBrowserFallback?:boolean, error?:string, fromCache?:boolean, quota?:object}>}
  */
 async function synthesise(text, opts = {}) {
-    void opts; // reserved for future per-call overrides
+    void opts;
     if (!ENABLED || !text || !text.trim()) {
         return { provider: 'none', useBrowserFallback: true };
     }
@@ -41,18 +110,32 @@ async function synthesise(text, opts = {}) {
         return { provider: 'browser', useBrowserFallback: true };
     }
 
+    const voiceId = getVoiceId();
+    const speed = getSpeed();
+
+    // 1. Cache lookup
+    const cached = await _readCache(text, voiceId, speed);
+    if (cached?.audio_url) {
+        return {
+            provider: cached.provider || 'ttsmaker',
+            audioUrl: cached.audio_url,
+            audioBackupUrl: cached.backup_url || null,
+            fromCache: true
+        };
+    }
+
+    // 2. TTSMaker call
     try {
-        const voiceId = parseInt(process.env.TTSMAKER_TTS_VOICE_ID || '147', 10);
         const body = {
             api_key:                  process.env.TTSMAKER_TTS_API_KEY,
             text:                     text.trim().slice(0, 19_500),
             voice_id:                 voiceId,
             audio_format:             'mp3',
-            audio_speed:              1.0,
+            audio_speed:              speed,
             audio_volume:             1.0,
             audio_pitch:              1.0,
             audio_high_quality:       0,
-            text_paragraph_pause_time: 300,
+            text_paragraph_pause_time: 200,
             emotion_style_key:        '',
             emotion_intensity:        1
         };
@@ -66,14 +149,21 @@ async function synthesise(text, opts = {}) {
             }
         );
 
-        // v2 responds with error_code === 0 on success, audio_download_url for the file.
         if (data?.error_code === 0 && data?.audio_download_url) {
+            await _writeCache({
+                text, voiceId, speed,
+                audioUrl: data.audio_download_url,
+                backupUrl: data.audio_download_backup_url || null,
+                provider: 'ttsmaker',
+                expiresAtTs: data.audio_file_expiration_timestamp || null
+            });
             return {
                 provider: 'ttsmaker',
                 audioUrl: data.audio_download_url,
                 audioBackupUrl: data.audio_download_backup_url || null,
                 expiresAt: data.audio_file_expiration_timestamp || null,
-                quota: data.account_status || null
+                quota: data.account_status || null,
+                fromCache: false
             };
         }
 
