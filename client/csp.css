@@ -1,0 +1,72 @@
+/* CSP-safe utility classes (no inline styles) */
+
+/* Generic */
+.csp-muted {
+  opacity: 0.7;
+}
+
+.csp-click-disabled {
+  cursor: default;
+}
+
+.csp-flex-between {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.csp-fw-600 {
+  font-weight: 600;
+}
+
+.csp-op-50 {
+  opacity: 0.5;
+}
+
+/* Chat UI */
+.chat-textarea {
+  height: auto;
+  max-height: 150px;
+  overflow-y: hidden;
+  resize: none;
+}
+
+.message-references {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.message-references-title {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin-bottom: 6px;
+}
+
+.message-references-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.message-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Cards (used for placeholder states) */
+.auth-card-wide {
+  max-width: none;
+}
+
+.mt-0 {
+  margin-top: 0;
+}
+
+.hr-soft {
+  margin: 16px 0;
+  opacity: 0.2;
+}

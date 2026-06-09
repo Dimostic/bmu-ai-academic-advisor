@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="BMU AI Assistant - Intelligent Policy Assistant for Bayelsa Medical University">
+    <meta name="theme-color" content="#1a5f7a">
+    <!-- CSP: meta aligned with server/app.js Helmet CSP.
+         Note: some directives (e.g., frame-ancestors) are ignored in meta CSP; header CSP still takes precedence.
+         script-src-attr 'unsafe-inline' allows onclick handlers in dynamically generated HTML. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; form-action 'self'; upgrade-insecure-requests;">
+    
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="BMU AI Assistant">
+    <link rel="apple-touch-icon" href="bmulogo.png">
+
+    <title>BMU AI Assistant - Bayelsa Medical University</title>
+    <link rel="icon" type="image/png" href="bmulogo.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="csp.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation -->
+        <nav class="navbar" id="navbar">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <img src="bmulogo.png" alt="BMU Logo" class="nav-logo" id="navLogo">
+                    <span class="nav-title">BMU AI Assistant</span>
+                </div>
+                <div class="nav-links" id="navLinks">
+                    <a href="#" class="nav-link active" data-page="home">Home</a>
+                    <a href="#" class="nav-link" data-page="faq" id="faqNavLink">FAQ</a>
+                    <a href="#" class="nav-link hidden" data-page="chat" id="chatNavLink">Chat</a>
+                    <div class="nav-group" id="navResourcesGroup">
+                        <button class="nav-group-btn" type="button" aria-haspopup="menu" id="navResourcesBtn">
+                            Resources
+                            <span class="badge badge-error nav-badge hidden" id="resourcesBadge" aria-live="polite"></span>
+                            <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                        </button>
+                        <div class="nav-group-menu" role="menu">
+                            <a href="#" class="nav-link hidden" data-page="documents" id="docsNavLink">Documents</a>
+                            <a href="#" class="nav-link hidden" data-page="viewer" id="viewerNavLink">Document Viewer</a>
+                            <a href="#" class="nav-link hidden" data-page="vc-reports" id="vcReportsNavLink">VC Reports</a>
+                            <a href="#" class="nav-link hidden" data-page="vc-documents" id="vcDocumentsNavLink">VC Documents</a>
+                        </div>
+                    </div>
+                    <a href="#" class="nav-link hidden" data-page="admin" id="adminNavLink">Admin</a>
+                </div>
+                <div class="nav-auth">
+                    <div id="guestButtons">
+                        <button class="btn btn-outline" id="loginBtn">Login</button>
+                        <button class="btn btn-primary" id="registerBtn">Register</button>
+                    </div>
+                    <div id="userMenu" class="hidden">
+                        <div class="user-dropdown">
+                            <button class="user-btn" id="userMenuBtn">
+                                <i class="fas fa-user-circle"></i>
+                                <span id="userDisplayName">User</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                            <div class="dropdown-menu" id="userDropdown">
+                                <a href="#" id="profileLink"><i class="fas fa-user"></i> Profile</a>
+                                <a href="#" id="changePasswordLink"><i class="fas fa-key"></i> Change Password</a>
+                                <hr>
+                                <a href="#" id="logoutLink"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button class="nav-toggle" id="navToggleBtn">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main id="mainContent">
+            <!-- Home Page -->
+            <section id="homePage" class="page active">
+                <div class="hero">
+                    <div class="hero-content">
+                        <img src="bmulogo.png" alt="BMU Logo" class="hero-logo" id="heroLogo">
+                        <h1>Welcome to BMU AI Assistant</h1>
+                        <p class="hero-subtitle">Your Intelligent Policy & Regulations Assistant</p>
+                        <p class="hero-description">
+                            Get instant answers to questions about Bayelsa Medical University's policies, 
+                            regulations, academic standards, and administrative procedures. 
+                            Powered by advanced AI technology.
+                        </p>
+                        <div class="hero-buttons">
+                            <button class="btn btn-primary btn-lg" id="getStartedBtn">
+                                <i class="fas fa-user-plus"></i> Get Started
+                            </button>
+                            <button class="btn btn-outline btn-lg" id="loginHeroBtn">
+                                <i class="fas fa-sign-in-alt"></i> Login
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="features">
+                    <h2>Features</h2>
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fas fa-robot"></i></div>
+                            <h3>AI-Powered Responses</h3>
+                            <p>Get accurate answers to your questions about university policies and regulations instantly.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fas fa-microphone"></i></div>
+                            <h3>Voice Support</h3>
+                            <p>Speak your questions and receive audio responses in Nigerian English accent.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fab fa-whatsapp"></i></div>
+                            <h3>WhatsApp Integration</h3>
+                            <p>Access the AI assistant directly through WhatsApp for convenience.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fas fa-file-alt"></i></div>
+                            <h3>Document Library</h3>
+                            <p>Browse through official university documents and policy references.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fas fa-shield-alt"></i></div>
+                            <h3>Secure & Private</h3>
+                            <p>Your conversations are secure and confidential with enterprise-grade security.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon"><i class="fas fa-clock"></i></div>
+                            <h3>24/7 Availability</h3>
+                            <p>Get assistance anytime, anywhere - the AI assistant never sleeps.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="about-section">
+                    <div class="about-content">
+                        <h2>About Bayelsa Medical University</h2>
+                        <p>
+                            Bayelsa Medical University is a premier institution dedicated to training healthcare 
+                            professionals for excellence. Established to address the healthcare needs of Bayelsa State 
+                            and Nigeria at large, the university is committed to producing competent medical professionals 
+                            equipped with the knowledge, skills, and ethics to serve humanity.
+                        </p>
+                        <p>
+                            <strong>Our Motto:</strong> Training Healthcare Professionals for Excellence
+                        </p>
+                    </div>
+                </div>
+
+                <footer class="footer">
+                    <div class="footer-content">
+                        <div class="footer-section">
+                            <h4>BMU AI Assistant</h4>
+                            <p>Intelligent Policy Assistant for Bayelsa Medical University</p>
+                        </div>
+                        <div class="footer-section">
+                            <h4>Quick Links</h4>
+                            <a href="#">About Us</a>
+                            <a href="#">Contact</a>
+                            <a href="#">Privacy Policy</a>
+                        </div>
+                        <div class="footer-section">
+                            <h4>Contact</h4>
+                            <p><i class="fas fa-envelope"></i> info@bmu.edu.ng</p>
+                            <p><i class="fas fa-globe"></i> www.bmu.edu.ng</p>
+                        </div>
+                    </div>
+                    <div class="footer-bottom">
+                        <p>&copy; 2026 Bayelsa Medical University. All rights reserved. | Developed by Dimie Ogoina</p>
+                    </div>
+                </footer>
+            </section>
+
+            <!-- Login Page -->
+            <section id="loginPage" class="page">
+                <div class="auth-container">
+                    <div class="auth-card">
+                        <div class="auth-header">
+                            <img src="bmulogo.png" alt="BMU Logo" class="auth-logo" id="loginLogo">
+                            <h2>Welcome Back</h2>
+                            <p>Sign in to access BMU AI Assistant</p>
+                        </div>
+                        <form id="loginForm">
+                            <div class="form-group">
+                                <label for="loginEmail">Email Address</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-envelope"></i>
+                                    <input type="email" id="loginEmail" placeholder="your.email@bmu.edu.ng" required autocomplete="email">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="loginPassword">Password</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password">
+                                    <button type="button" class="password-toggle" id="loginPasswordToggle">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-options">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="rememberMe">
+                                    <span>Remember me</span>
+                                </label>
+                                <a href="#" id="forgotPasswordLink" class="forgot-link">Forgot password?</a>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-full">
+                                <i class="fas fa-sign-in-alt"></i> Login
+                            </button>
+                        </form>
+                        <div class="auth-footer">
+                            <p>Don't have an account? <a href="#" id="registerLink">Register here</a></p>
+                        </div>
+                        <div class="auth-contact">
+                            <p><i class="fas fa-envelope"></i> For enquiries, email: <a href="mailto:bmuapps@bmu.edu.ng">bmuapps@bmu.edu.ng</a></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Register Page -->
+            <section id="registerPage" class="page">
+                <div class="auth-container">
+                    <div class="auth-card">
+                        <div class="auth-header">
+                            <img src="bmulogo.png" alt="BMU Logo" class="auth-logo" id="registerLogo">
+                            <h2>Create Account</h2>
+                            <p>Register to use BMU AI Assistant</p>
+                        </div>
+                        <form id="registerForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="regFirstName">First Name</label>
+                                    <input type="text" id="regFirstName" placeholder="First name" required autocomplete="given-name">
+                                </div>
+                                <div class="form-group">
+                                    <label for="regLastName">Last Name</label>
+                                    <input type="text" id="regLastName" placeholder="Last name" required autocomplete="family-name">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="regEmail">University Email</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-envelope"></i>
+                                    <input type="email" id="regEmail" placeholder="your.email@bmu.edu.ng" required autocomplete="email">
+                                </div>
+                                <small class="form-hint">Use your @bmu.edu.ng email address</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="regDepartment">Department</label>
+                                <input type="text" id="regDepartment" placeholder="e.g., Medicine, Nursing" autocomplete="organization">
+                            </div>
+                            <div class="form-group">
+                                <label for="regPhone">Phone Number</label>
+                                <input type="tel" id="regPhone" placeholder="+234..." autocomplete="tel">
+                            </div>
+                            <div class="form-group">
+                                <label for="regPassword">Password</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="password" id="regPassword" placeholder="Create a strong password" required autocomplete="new-password">
+                                    <button type="button" class="password-toggle" id="regPasswordToggle">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                                <small class="form-hint">Min 8 chars, with uppercase, lowercase, number & special char</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="regConfirmPassword">Confirm Password</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="password" id="regConfirmPassword" placeholder="Confirm your password" required autocomplete="new-password">
+                                </div>
+                            </div>
+                            <div class="form-options">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="agreeTerms" required>
+                                    <span>I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></span>
+                                </label>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-full">
+                                <i class="fas fa-user-plus"></i> Create Account
+                            </button>
+                        </form>
+                        <div class="auth-footer">
+                            <p>Already have an account? <a href="#" id="loginLink">Login here</a></p>
+                        </div>
+                        <div class="auth-contact">
+                            <p><i class="fas fa-envelope"></i> For enquiries, email: <a href="mailto:bmuapps@bmu.edu.ng">bmuapps@bmu.edu.ng</a></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Forgot Password Page -->
+            <section id="forgot-passwordPage" class="page">
+                <div class="auth-container">
+                    <div class="auth-card">
+                        <div class="auth-header">
+                            <h2>Reset Password</h2>
+                            <p>Enter your email to receive a reset link</p>
+                        </div>
+                        <form id="forgotPasswordForm">
+                            <div class="form-group">
+                                <label for="resetEmail">Email Address</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-envelope"></i>
+                                    <input type="email" id="resetEmail" placeholder="your.email@bmu.edu.ng" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-full">
+                                <i class="fas fa-paper-plane"></i> Send Reset Link
+                            </button>
+                        </form>
+                        <div class="auth-footer">
+                            <p><a href="#" id="backToLoginLink"><i class="fas fa-arrow-left"></i> Back to Login</a></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reset Password Page (from emailed link) -->
+            <section id="resetPage" class="page">
+                <div class="auth-container">
+                    <div class="auth-card">
+                        <div class="auth-header">
+                            <img src="bmulogo.png" alt="BMU Logo" class="auth-logo" id="resetLogo">
+                            <h2>Set New Password</h2>
+                            <p>Enter a new password for your account</p>
+                        </div>
+                        <form id="resetPasswordForm">
+                            <input type="hidden" id="resetToken">
+                            <!-- Hidden username field for accessibility -->
+                            <input type="text" name="username" autocomplete="username" class="visually-hidden" aria-hidden="true" tabindex="-1">
+                            <div class="form-group">
+                                <label for="resetNewPassword">New Password</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="password" id="resetNewPassword" placeholder="Enter new password" required autocomplete="new-password">
+                                    <button type="button" class="password-toggle" id="resetNewPasswordToggle">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="resetConfirmPassword">Confirm New Password</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="password" id="resetConfirmPassword" placeholder="Confirm new password" required autocomplete="new-password">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-full">
+                                <i class="fas fa-key"></i> Reset Password
+                            </button>
+                        </form>
+                        <div class="auth-footer">
+                            <p><a href="#" id="backToLoginLink2"><i class="fas fa-arrow-left"></i> Back to Login</a></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Change Password Page -->
+            <section id="change-passwordPage" class="page">
+                <div class="auth-container">
+                    <div class="auth-card">
+                        <div class="auth-header">
+                            <h2>Change Password</h2>
+                            <p>Update your account password</p>
+                        </div>
+                        <form id="changePasswordForm">
+                            <!-- Hidden username field for accessibility -->
+                            <input type="text" name="username" autocomplete="username" class="visually-hidden" aria-hidden="true" tabindex="-1">
+                            <div class="form-group">
+                                <label for="currentPassword">Current Password</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="password" id="currentPassword" required autocomplete="current-password">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="newPassword">New Password</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="password" id="newPassword" required autocomplete="new-password">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="confirmNewPassword">Confirm New Password</label>
+                                <div class="input-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="password" id="confirmNewPassword" required autocomplete="new-password">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-full">
+                                <i class="fas fa-key"></i> Update Password
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Profile Page -->
+            <section id="profilePage" class="page">
+                <div class="container">
+                    <div class="profile-card">
+                        <div class="profile-header">
+                            <div class="profile-avatar">
+                                <i class="fas fa-user-circle"></i>
+                            </div>
+                            <h2 id="profileName">User Name</h2>
+                            <p id="profileRole" class="profile-role">Staff</p>
+                        </div>
+                        <form id="profileForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>First Name</label>
+                                    <input type="text" id="profileFirstName" autocomplete="given-name">
+                                </div>
+                                <div class="form-group">
+                                    <label>Last Name</label>
+                                    <input type="text" id="profileLastName" autocomplete="family-name">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="profileEmail" disabled autocomplete="email">
+                            </div>
+                            <div class="form-group">
+                                <label>Department</label>
+                                <input type="text" id="profileDepartment" autocomplete="organization">
+                            </div>
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input type="tel" id="profilePhone" autocomplete="tel">
+                            </div>
+                            <div class="form-group">
+                                <label>WhatsApp Number</label>
+                                <input type="tel" id="profileWhatsapp" placeholder="+234..." autocomplete="tel">
+                            </div>
+                            <div class="profile-actions">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Save Changes
+                                </button>
+                                <button type="button" class="btn btn-outline" id="profileChangePasswordBtn">
+                                    <i class="fas fa-key"></i> Change Password
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Chat Page -->
+            <section id="chatPage" class="page">
+                <div class="chat-container">
+                    <div class="chat-sidebar">
+                        <div class="chat-sidebar-header">
+                            <h3>Chat Sessions</h3>
+                            <button class="btn btn-sm btn-primary" id="newChatBtn">
+                                <i class="fas fa-plus"></i> New Chat
+                            </button>
+                        </div>
+                        <div id="chatSessionsList" class="chat-sessions-list">
+                            <!-- Sessions will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="chat-main">
+                        <div class="chat-header">
+                            <div class="chat-header-info">
+                                <h3><i class="fas fa-robot"></i> BMU AI Assistant</h3>
+                                <span class="status-indicator online"></span>
+                                <span>Online</span>
+                            </div>
+                            <div class="chat-header-actions">
+                                <div id="usageIndicator" class="usage-indicator" title="Monthly usage">
+                                    <i class="fas fa-chart-pie"></i>
+                                    <span class="usage-text">Loading...</span>
+                                </div>
+                                <div class="tts-voice-select-wrap" title="Response voice">
+                                    <i class="fas fa-volume-up"></i>
+                                    <select id="ttsVoiceSelect" class="tts-voice-select" aria-label="Response voice">
+                                        <option value="en-NG-EzinneNeural">Nigerian English (Female)</option>
+                                        <option value="en-NG-AbeoNeural">Nigerian English (Male)</option>
+                                        <option value="en-GB-LibbyNeural">British English (Female)</option>
+                                        <option value="en-GB-RyanNeural">British English (Male)</option>
+                                        <option value="en-US-JennyNeural">US English (Female)</option>
+                                        <option value="en-US-GuyNeural">US English (Male)</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-icon" id="clearAllChatsBtn" title="Clear All Messages">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline voice-mode-btn" id="voiceModeBtn" title="Voice Mode" aria-pressed="false">
+                                    <i class="fas fa-microphone"></i>
+                                    <span>Voice Mode</span>
+                                </button>
+                                <button class="btn btn-icon" id="endChatBtn" title="End Chat">
+                                    <i class="fas fa-times-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="chatMessages" class="chat-messages">
+                            <div class="chat-welcome">
+                                <div class="welcome-icon"><i class="fas fa-robot"></i></div>
+                                <h3>Welcome to BMU AI Assistant</h3>
+                                <p>Ask me anything about Bayelsa Medical University's policies, regulations, and procedures.</p>
+                                <div class="suggested-questions" id="suggestedQuestions">
+                                    <p>Try asking:</p>
+                                    <button class="suggested-question-btn">What are the admission requirements?</button>
+                                    <button class="suggested-question-btn">Explain the academic integrity policy</button>
+                                    <button class="suggested-question-btn">How do I apply for leave?</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chat-input-container">
+                            <!-- Document Selector -->
+                            <div class="document-selector-container" id="documentSelectorContainer">
+                                <label class="document-selector-label">
+                                    <i class="fas fa-filter"></i> Focus on:
+                                </label>
+                                <div class="document-selector-toggle" id="documentSelectorToggle" title="Select specific documents to get more focused answers">
+                                    <i class="fas fa-file-alt"></i>
+                                    <span id="documentSelectorLabel">All Documents</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                                <div class="document-selector-dropdown hidden" id="documentSelectorDropdown">
+                                    <div class="document-selector-search">
+                                        <i class="fas fa-search"></i>
+                                        <input type="text" id="documentSelectorSearch" placeholder="Search documents...">
+                                    </div>
+                                    <div class="document-selector-options">
+                                        <label class="document-option all-docs">
+                                            <input type="radio" name="docSelection" value="all" checked>
+                                            <span><i class="fas fa-globe"></i> All Documents</span>
+                                        </label>
+                                        <div class="document-option-divider">Or select specific documents:</div>
+                                        <div class="document-list" id="documentSelectorList">
+                                            <!-- Documents will be loaded here -->
+                                        </div>
+                                    </div>
+                                    <div class="document-selector-footer">
+                                        <span id="selectedDocCount">0 selected</span>
+                                        <button class="btn btn-sm btn-outline" id="clearDocSelection">Clear</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="voiceRecording" class="voice-recording hidden">
+                                <div class="recording-indicator">
+                                    <span class="pulse"></span>
+                                    <span>Recording...</span>
+                                </div>
+                                <button class="btn btn-danger" id="stopRecordingBtn">
+                                    <i class="fas fa-stop"></i> Stop
+                                </button>
+                            </div>
+                            <form id="chatForm">
+                                <div class="chat-input-wrapper">
+                                    <button type="button" class="btn btn-icon voice-btn" id="startRecordingBtn" title="Voice Input">
+                                        <i class="fas fa-microphone"></i>
+                                    </button>
+                                    <textarea 
+                                        id="chatInput" 
+                                        placeholder="Type your message here..." 
+                                        rows="1"
+                                    ></textarea>
+                                    <button type="submit" class="btn btn-primary send-btn" id="sendBtn">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- FAQ Page -->
+            <section id="faqPage" class="page">
+                <div class="container">
+                    <div class="page-header">
+                        <h1><i class="fas fa-question-circle"></i> Frequently Asked Questions</h1>
+                        <p>Find quick answers to common questions about BMU policies and procedures</p>
+                    </div>
+
+                    <!-- FAQ Search Bar -->
+                    <div class="faq-search-container">
+                        <div class="faq-search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="faqSearchInput" placeholder="Search for answers..." autocomplete="off">
+                            <button class="btn btn-primary" id="faqSearchBtn">Search</button>
+                        </div>
+                        <p class="faq-search-hint">
+                            <i class="fas fa-lightbulb"></i> 
+                            Can't find your answer? <a href="#" id="faqAskAiLink">Ask our AI assistant</a>
+                        </p>
+                    </div>
+
+                    <!-- Popular FAQs Section -->
+                    <div class="faq-section" id="popularFaqSection">
+                        <h2><i class="fas fa-fire"></i> Popular Questions</h2>
+                        <div class="faq-list" id="popularFaqList">
+                            <!-- Popular FAQs will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- FAQ Categories -->
+                    <div class="faq-categories-section">
+                        <h2><i class="fas fa-th-large"></i> Browse by Category</h2>
+                        <div class="faq-categories-grid" id="faqCategoriesGrid">
+                            <!-- Categories will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- FAQ Results (shown after search or category selection) -->
+                    <div class="faq-results-section hidden" id="faqResultsSection">
+                        <div class="faq-results-header">
+                            <h2 id="faqResultsTitle">Search Results</h2>
+                            <button class="btn btn-outline btn-sm" id="faqBackToCategories">
+                                <i class="fas fa-arrow-left"></i> Back to Categories
+                            </button>
+                        </div>
+                        <div class="faq-list" id="faqResultsList">
+                            <!-- FAQ results will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- FAQ Detail Modal -->
+                    <div class="faq-detail-overlay hidden" id="faqDetailOverlay">
+                        <div class="faq-detail-card">
+                            <div class="faq-detail-header">
+                                <span class="faq-category-badge" id="faqDetailCategory"></span>
+                                <button class="close-btn" id="faqDetailClose">&times;</button>
+                            </div>
+                            <div class="faq-detail-content">
+                                <h3 id="faqDetailQuestion"></h3>
+                                <div class="faq-detail-answer" id="faqDetailAnswer"></div>
+                                <div class="faq-detail-sources" id="faqDetailSources"></div>
+                            </div>
+                            <div class="faq-detail-footer">
+                                <span>Was this helpful?</span>
+                                <button class="btn btn-sm btn-outline" id="faqHelpfulYes">
+                                    <i class="fas fa-thumbs-up"></i> Yes
+                                </button>
+                                <button class="btn btn-sm btn-outline" id="faqHelpfulNo">
+                                    <i class="fas fa-thumbs-down"></i> No
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Documents Page -->
+            <section id="documentsPage" class="page">
+                <div class="container">
+                    <div class="page-header">
+                        <h1><i class="fas fa-file-alt"></i> Document Library</h1>
+                        <p>Browse university policies, regulations, and official documents</p>
+                    </div>
+                    
+                    <div class="documents-toolbar">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="documentSearch" placeholder="Search documents..." autocomplete="off">
+                        </div>
+                        <div class="filter-group">
+                            <select id="categoryFilter">
+                                <option value="">All Categories</option>
+                                <option value="policy">Policies</option>
+                                <option value="regulation">Regulations</option>
+                                <option value="academic">Academic</option>
+                                <option value="administrative">Administrative</option>
+                                <option value="legal">Legal</option>
+                                <option value="general">General</option>
+                            </select>
+                        </div>
+                        <div id="uploadDocBtn" class="hidden">
+                            <button class="btn btn-primary" id="showUploadModalBtn">
+                                <i class="fas fa-upload"></i> Upload Document
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="documentsList" class="documents-grid">
+                        <!-- Documents will be loaded here -->
+                    </div>
+
+                    <div id="documentsPagination" class="pagination">
+                        <!-- Pagination will be added here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Document Viewer Page -->
+            <section id="viewerPage" class="page">
+                <div class="viewer-layout">
+                    <!-- Top Search Bar -->
+                    <div class="viewer-topbar">
+                        <div class="topbar-left">
+                            <select id="viewerDocSelector" class="viewer-doc-selector" autocomplete="off">
+                                <option value="">-- Select a Document --</option>
+                            </select>
+                            <span class="doc-info-badge" id="viewerDocBadge"></span>
+                        </div>
+                        <div class="topbar-center">
+                            <div class="viewer-search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="viewerTextSearch" placeholder="Search document..." autocomplete="off">
+                                <button class="search-btn" id="viewerSearchBtn" title="Search">
+                                    <i class="fas fa-arrow-right"></i>
+                                </button>
+                                <button class="search-clear-btn" id="searchClearBtn" title="Clear">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <label class="case-toggle" title="Case sensitive search">
+                                <input type="checkbox" id="searchCaseSensitive">
+                                <span>Aa</span>
+                            </label>
+                        </div>
+                        <div class="topbar-right">
+                            <button class="btn btn-sm btn-outline" id="zoomOutBtn" title="Zoom Out">
+                                <i class="fas fa-search-minus"></i>
+                            </button>
+                            <span class="zoom-level" id="zoomLevel">100%</span>
+                            <button class="btn btn-sm btn-outline" id="zoomInBtn" title="Zoom In">
+                                <i class="fas fa-search-plus"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline" id="printDocBtn" title="Print">
+                                <i class="fas fa-print"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline" id="downloadDocBtn" title="Download">
+                                <i class="fas fa-download"></i>
+                            </button>
+                            <button class="btn btn-sm btn-primary" id="viewerAskAiBtn" title="Ask AI">
+                                <i class="fas fa-robot"></i> Ask AI
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Main Viewer Body - Scrollable area -->
+                    <div class="viewer-body" id="viewerPaperArea">
+                        <!-- Document Paper - Like a Word document with sidebar inside -->
+                        <div class="document-paper" id="viewerContentWrapper">
+                            <!-- Left Sidebar - Table of Contents (inside paper) -->
+                            <aside class="viewer-toc-sidebar" id="viewerSidebar">
+                                <div class="toc-header">
+                                    <h4><i class="fas fa-list-ul"></i> Contents</h4>
+                                    <button class="btn btn-xs btn-outline" id="sidebarCollapseBtn" title="Hide">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                </div>
+                                <!-- Search Results Section (hidden by default) -->
+                                <div class="search-results-section hidden" id="searchResultsSection">
+                                    <div class="search-results-header">
+                                        <span id="searchResultsCount">0 results</span>
+                                        <div class="search-nav-btns">
+                                            <button class="btn btn-xs btn-outline" id="prevSearchResult" title="Previous">
+                                                <i class="fas fa-chevron-up"></i>
+                                            </button>
+                                            <span id="searchResultPosition">0/0</span>
+                                            <button class="btn btn-xs btn-outline" id="nextSearchResult" title="Next">
+                                                <i class="fas fa-chevron-down"></i>
+                                            </button>
+                                        </div>
+                                        <button class="btn btn-xs btn-outline" id="closeSearchResults" title="Close">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                    <div class="search-results-list" id="searchResultsList">
+                                        <!-- Search results will appear here -->
+                                    </div>
+                                </div>
+                                <!-- Table of Contents -->
+                                <div class="toc-list" id="viewerTocList">
+                                    <div class="toc-placeholder">
+                                        <i class="fas fa-book-open"></i>
+                                        <p>Select a document to see its chapters</p>
+                                    </div>
+                                </div>
+                            </aside>
+
+                            <!-- Sidebar Toggle Button (when collapsed) -->
+                            <button class="sidebar-toggle-btn" id="sidebarExpandBtn" title="Show Contents">
+                                <i class="fas fa-list-ul"></i>
+                            </button>
+
+                            <!-- Document Content Area -->
+                            <div class="document-content" id="viewerContent">
+                                <!-- Document Placeholder -->
+                                <div class="viewer-placeholder">
+                                    <i class="fas fa-file-alt"></i>
+                                    <h2>Document Viewer</h2>
+                                    <p>Select a document from the dropdown above to view its contents.</p>
+                                    <p class="hint">Documents will be displayed as flowing text, similar to a Word document.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Page Progress -->
+                        <div class="reading-progress-bar">
+                            <div class="progress-fill" id="readingProgressBar"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Admin Page -->
+            <section id="adminPage" class="page">
+                <div class="admin-container">
+                    <div class="admin-sidebar">
+                        <h3><i class="fas fa-cog"></i> Admin Panel</h3>
+                        <nav class="admin-nav">
+                            <a href="#" class="admin-nav-link active" data-section="dashboard" id="dashboardLink">
+                                <i class="fas fa-tachometer-alt"></i> Dashboard
+                            </a>
+                            <a href="#" class="admin-nav-link" data-section="users" id="usersLink">
+                                <i class="fas fa-users"></i> Users
+                            </a>
+                            <a href="#" class="admin-nav-link" data-section="documents" id="documentsLink">
+                                <i class="fas fa-file-alt"></i> Documents
+                            </a>
+                            <a href="#" class="admin-nav-link" data-section="training" id="trainingLink">
+                                <i class="fas fa-brain"></i> Training
+                            </a>
+                            <a href="#" class="admin-nav-link" data-section="faqs" id="faqsLink">
+                                <i class="fas fa-question-circle"></i> FAQs
+                            </a>
+                            <a href="#" class="admin-nav-link" data-section="analytics" id="analyticsLink">
+                                <i class="fas fa-chart-bar"></i> Analytics
+                            </a>
+                            <a href="#" class="admin-nav-link" data-section="exports" id="exportsLink">
+                                <i class="fas fa-download"></i> Exports
+                            </a>
+                            <a href="#" class="admin-nav-link" data-section="audit" id="auditLink">
+                                <i class="fas fa-history"></i> Audit Trail
+                            </a>
+                            <a href="#" class="admin-nav-link superadmin-only" data-section="settings" id="settingsLink">
+                                <i class="fas fa-sliders-h"></i> Settings
+                            </a>
+                        </nav>
+                    </div>
+                    <div class="admin-content" id="adminContent">
+                        <!-- Admin sections will be loaded here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- VC Reports Page -->
+            <section id="vc-reportsPage" class="page">
+                <div class="vc-reports-container">
+                    <!-- VC Reports Sidebar -->
+                    <div class="vc-reports-sidebar">
+                        <div class="vc-sidebar-header">
+                            <h3><i class="fas fa-file-contract"></i> VC Reports</h3>
+                            <button class="btn btn-sm btn-primary" id="uploadReportBtn">
+                                <i class="fas fa-upload"></i> Submit Report
+                            </button>
+                        </div>
+                        
+                        <!-- Stats Overview -->
+                        <div class="vc-stats-mini" id="vcStatsMini">
+                            <div class="stat-item">
+                                <span class="stat-value" id="vcUnreadCount">0</span>
+                                <span class="stat-label">Unread</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="vcStarredCount">0</span>
+                                <span class="stat-label">Starred</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="vcTotalCount">0</span>
+                                <span class="stat-label">Total</span>
+                            </div>
+                        </div>
+
+                        <!-- Filters -->
+                        <div class="vc-filters">
+                            <div class="filter-group">
+                                <label><i class="fas fa-filter"></i> Filters</label>
+                                <select id="vcCategoryFilter">
+                                    <option value="">All Categories</option>
+                                    <option value="academic_affairs">Academic Affairs</option>
+                                    <option value="administrative">Administrative</option>
+                                    <option value="financial">Financial</option>
+                                    <option value="security">Security</option>
+                                    <option value="student_affairs">Student Affairs</option>
+                                    <option value="staff_welfare">Staff Welfare</option>
+                                    <option value="senate">Senate</option>
+                                    <option value="infrastructure">Infrastructure</option>
+                                    <option value="research">Research</option>
+                                    <option value="community_service">Community Service</option>
+                                    <option value="compliance_audit">Compliance & Audit</option>
+                                    <option value="strategic_planning">Strategic Planning</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="vcStatusFilter">
+                                    <option value="">All Status</option>
+                                    <option value="unread">Unread</option>
+                                    <option value="read">Read</option>
+                                    <option value="starred">Starred</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="vcSentimentFilter">
+                                    <option value="">All Sentiment</option>
+                                    <option value="positive">Positive</option>
+                                    <option value="neutral">Neutral</option>
+                                    <option value="negative">Concerns</option>
+                                    <option value="mixed">Mixed</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Search -->
+                        <div class="vc-search">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="vcSearchInput" placeholder="Search reports...">
+                            </div>
+                        </div>
+
+                        <!-- Reports List -->
+                        <div class="vc-reports-list" id="vcReportsList">
+                            <div class="loading-placeholder">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Loading reports...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- VC Reports Main Content -->
+                    <div class="vc-reports-main">
+                        <!-- Report Viewer (shown when a report is selected) -->
+                        <div class="vc-report-viewer" id="vcReportViewer">
+                            <div class="vc-report-placeholder" id="vcReportPlaceholder">
+                                <i class="fas fa-file-alt"></i>
+                                <h2>Select a Report</h2>
+                                <p>Choose a report from the list to view its details and AI analysis.</p>
+                            </div>
+
+                            <!-- Report Header -->
+                            <div class="vc-report-header hidden" id="vcReportHeader">
+                                <div class="report-title-row">
+                                    <h2 id="vcReportTitle">Report Title</h2>
+                                    <div class="report-actions">
+                                        <button class="btn btn-icon" id="vcStarBtn" title="Star Report">
+                                            <i class="far fa-star"></i>
+                                        </button>
+                                        <button class="btn btn-icon" id="vcDownloadBtn" title="Download Original">
+                                            <i class="fas fa-download"></i>
+                                        </button>
+                                        <button class="btn btn-icon" id="vcArchiveBtn" title="Archive">
+                                            <i class="fas fa-archive"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="report-meta">
+                                    <span class="meta-item"><i class="fas fa-folder"></i> <span id="vcReportCategory">Category</span></span>
+                                    <span class="meta-item"><i class="fas fa-user"></i> <span id="vcReportSubmitter">Submitter</span></span>
+                                    <span class="meta-item"><i class="fas fa-calendar"></i> <span id="vcReportDate">Date</span></span>
+                                    <span class="meta-item sentiment" id="vcReportSentimentBadge">
+                                        <i class="fas fa-circle"></i> <span id="vcReportSentiment">Neutral</span>
+                                    </span>
+                                    <span class="meta-item">
+                                        <span id="vcReportProcessingStatus" class="status-badge hidden"></span>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Report Content Tabs -->
+                            <div class="vc-report-tabs hidden" id="vcReportTabs">
+                                <button class="tab-btn active" data-tab="summary">
+                                    <i class="fas fa-lightbulb"></i> AI Summary
+                                </button>
+                                <button class="tab-btn" data-tab="content">
+                                    <i class="fas fa-file-alt"></i> Full Content
+                                </button>
+                                <button class="tab-btn" data-tab="chat">
+                                    <i class="fas fa-comments"></i> Chat
+                                </button>
+                                <button class="tab-btn" data-tab="notes">
+                                    <i class="fas fa-sticky-note"></i> Notes
+                                </button>
+                            </div>
+
+                            <!-- Tab Content -->
+                            <div class="vc-tab-content hidden" id="vcTabContent">
+                                <!-- Summary Tab -->
+                                <div class="tab-pane active" id="vcSummaryTab">
+                                    <div class="ai-summary-section">
+                                        <h3><i class="fas fa-robot"></i> Executive Summary</h3>
+                                        <p id="vcAiSummary" class="summary-text">Loading...</p>
+                                    </div>
+                                    
+                                    <div class="ai-analysis-grid">
+                                        <div class="analysis-card highlights">
+                                            <h4><i class="fas fa-check-circle"></i> Highlights</h4>
+                                            <ul id="vcHighlightsList"></ul>
+                                        </div>
+                                        <div class="analysis-card key-points">
+                                            <h4><i class="fas fa-key"></i> Key Points</h4>
+                                            <ul id="vcKeyPointsList"></ul>
+                                        </div>
+                                        <div class="analysis-card concerns">
+                                            <h4><i class="fas fa-exclamation-triangle"></i> Concerns</h4>
+                                            <ul id="vcConcernsList"></ul>
+                                        </div>
+                                        <div class="analysis-card recommendations">
+                                            <h4><i class="fas fa-lightbulb"></i> Recommendations</h4>
+                                            <ul id="vcRecommendationsList"></ul>
+                                        </div>
+                                    </div>
+
+                                    <div class="reanalyze-section">
+                                        <button class="btn btn-outline" id="vcReanalyzeBtn">
+                                            <i class="fas fa-sync-alt"></i> Re-analyze with AI
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Content Tab -->
+                                <div class="tab-pane" id="vcContentTab">
+                                    <div class="vc-content-viewer" id="vcContentViewer">
+                                        <div class="viewer-topbar vc-viewer-topbar">
+                                            <div class="topbar-left">
+                                                <span class="doc-info-badge" id="vcContentDocBadge"></span>
+                                            </div>
+                                            <div class="topbar-center">
+                                                <div class="viewer-search-box">
+                                                    <i class="fas fa-search"></i>
+                                                    <input type="text" id="vcContentSearchInput" placeholder="Search report..." autocomplete="off">
+                                                    <button class="search-btn" id="vcContentSearchBtn" title="Search">
+                                                        <i class="fas fa-arrow-right"></i>
+                                                    </button>
+                                                    <button class="search-clear-btn" id="vcContentSearchClearBtn" title="Clear">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="topbar-right">
+                                                <button class="btn btn-sm btn-outline" id="vcContentPrintBtn" title="Print">
+                                                    <i class="fas fa-print"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline" id="vcContentDownloadBtn" title="Download">
+                                                    <i class="fas fa-download"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="viewer-body" id="vcContentPaperArea">
+                                            <div class="document-paper" id="vcContentWrapper">
+                                                <aside class="viewer-toc-sidebar" id="vcContentSidebar">
+                                                    <div class="toc-header">
+                                                        <h4><i class="fas fa-list-ul"></i> Contents</h4>
+                                                        <button class="btn btn-xs btn-outline" id="vcSidebarCollapseBtn" title="Hide">
+                                                            <i class="fas fa-chevron-left"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="search-results-section hidden" id="vcSearchResultsSection">
+                                                        <div class="search-results-header">
+                                                            <span id="vcSearchResultsCount">0 results</span>
+                                                            <div class="search-nav-btns">
+                                                                <button class="btn btn-xs btn-outline" id="vcPrevSearchResult" title="Previous">
+                                                                    <i class="fas fa-chevron-up"></i>
+                                                                </button>
+                                                                <span id="vcSearchResultPosition">0/0</span>
+                                                                <button class="btn btn-xs btn-outline" id="vcNextSearchResult" title="Next">
+                                                                    <i class="fas fa-chevron-down"></i>
+                                                                </button>
+                                                            </div>
+                                                            <button class="btn btn-xs btn-outline" id="vcCloseSearchResults" title="Close">
+                                                                <i class="fas fa-times"></i>
+                                                            </button>
+                                                        </div>
+                                                        <div class="search-results-list" id="vcSearchResultsList"></div>
+                                                    </div>
+                                                    <div class="toc-list" id="vcContentTocList">
+                                                        <div class="toc-placeholder">
+                                                            <i class="fas fa-book-open"></i>
+                                                            <p>Select a report to see its sections</p>
+                                                        </div>
+                                                    </div>
+                                                </aside>
+
+                                                <button class="sidebar-toggle-btn" id="vcSidebarExpandBtn" title="Show Contents">
+                                                    <i class="fas fa-list-ul"></i>
+                                                </button>
+
+                                                <div class="document-content" id="vcContentDocument">
+                                                    <div class="viewer-placeholder">
+                                                        <i class="fas fa-file-alt"></i>
+                                                        <h3>Full Report Content</h3>
+                                                        <p>Choose a report to view the full document text.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Chat Tab -->
+                                <div class="tab-pane" id="vcChatTab">
+                                    <div class="vc-chat-container">
+                                        <div class="vc-chat-messages" id="vcChatMessages">
+                                            <div class="chat-welcome">
+                                                <div class="welcome-icon"><i class="fas fa-robot"></i></div>
+                                                <h3>Chat about this Report</h3>
+                                                <p>Ask questions about this report's content, get clarifications, or request deeper analysis.</p>
+                                                <div class="suggested-questions">
+                                                    <button class="suggested-btn">Summarize the key findings</button>
+                                                    <button class="suggested-btn">What actions are recommended?</button>
+                                                    <button class="suggested-btn">Are there any budget concerns?</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="vc-chat-input">
+                                            <div class="vc-chat-controls">
+                                                <div class="tts-voice-select-wrap" title="Response voice">
+                                                    <i class="fas fa-volume-up"></i>
+                                                    <select id="vcReportTtsVoiceSelect" class="tts-voice-select" aria-label="Response voice">
+                                                        <option value="en-NG-EzinneNeural">Nigerian English (Female)</option>
+                                                        <option value="en-NG-AbeoNeural">Nigerian English (Male)</option>
+                                                        <option value="en-GB-LibbyNeural">British English (Female)</option>
+                                                        <option value="en-GB-RyanNeural">British English (Male)</option>
+                                                        <option value="en-US-JennyNeural">US English (Female)</option>
+                                                        <option value="en-US-GuyNeural">US English (Male)</option>
+                                                    </select>
+                                                </div>
+                                                <button class="btn btn-sm btn-outline voice-mode-btn" id="vcReportVoiceModeBtn" title="Voice Mode" aria-pressed="false">
+                                                    <i class="fas fa-microphone"></i>
+                                                    <span>Voice Mode</span>
+                                                </button>
+                                            </div>
+                                            <div id="vcReportVoiceRecording" class="voice-recording hidden">
+                                                <div class="recording-indicator">
+                                                    <span class="pulse"></span>
+                                                    <span>Recording...</span>
+                                                </div>
+                                                <button class="btn btn-danger" id="vcReportStopRecordingBtn">
+                                                    <i class="fas fa-stop"></i> Stop
+                                                </button>
+                                            </div>
+                                            <form id="vcChatForm">
+                                                <div class="chat-input-wrapper vc-chat-input-wrapper">
+                                                    <button type="button" class="btn btn-icon voice-btn" id="vcReportStartRecordingBtn" title="Voice Input">
+                                                        <i class="fas fa-microphone"></i>
+                                                    </button>
+                                                    <input type="text" id="vcChatInput" placeholder="Ask a question about this report...">
+                                                    <button type="submit" class="btn btn-primary send-btn">
+                                                        <i class="fas fa-paper-plane"></i>
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Notes Tab -->
+                                <div class="tab-pane" id="vcNotesTab">
+                                    <div class="vc-notes-container">
+                                        <div class="notes-header">
+                                            <h3><i class="fas fa-sticky-note"></i> Personal Notes</h3>
+                                            <button class="btn btn-sm btn-primary" id="addNoteBtn">
+                                                <i class="fas fa-plus"></i> Add Note
+                                            </button>
+                                        </div>
+                                        <div class="notes-list" id="vcNotesList">
+                                            <div class="no-notes">
+                                                <i class="fas fa-sticky-note"></i>
+                                                <p>No notes yet. Click "Add Note" to create one.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VC Documents Page -->
+            <section id="vc-documentsPage" class="page">
+                <div class="vc-reports-container vc-documents-container">
+                    <!-- VC Documents Sidebar -->
+                    <div class="vc-reports-sidebar vc-documents-sidebar">
+                        <div class="vc-sidebar-header">
+                            <h3><i class="fas fa-file-lines"></i> VC Documents</h3>
+                            <button class="btn btn-sm btn-primary" id="uploadVCDocumentBtn">
+                                <i class="fas fa-upload"></i> Upload Document
+                            </button>
+                        </div>
+
+                        <!-- Stats Overview -->
+                        <div class="vc-stats-mini" id="vcDocStatsMini">
+                            <div class="stat-item">
+                                <span class="stat-value" id="vcDocUnreadCount">0</span>
+                                <span class="stat-label">Unread</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="vcDocStarredCount">0</span>
+                                <span class="stat-label">Starred</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="vcDocTotalCount">0</span>
+                                <span class="stat-label">Total</span>
+                            </div>
+                        </div>
+
+                        <!-- Filters -->
+                        <div class="vc-filters">
+                            <div class="filter-group">
+                                <label><i class="fas fa-filter"></i> Filters</label>
+                                <select id="vcDocCategoryFilter">
+                                    <option value="">All Types</option>
+                                    <option value="policy">Policy</option>
+                                    <option value="regulation">Regulation</option>
+                                    <option value="memo">Memo</option>
+                                    <option value="circular">Circular</option>
+                                    <option value="directive">Directive</option>
+                                    <option value="agreement">Agreement</option>
+                                    <option value="minutes">Minutes</option>
+                                    <option value="budget">Budget</option>
+                                    <option value="audit">Audit</option>
+                                    <option value="strategy">Strategy</option>
+                                    <option value="research">Research</option>
+                                    <option value="compliance">Compliance</option>
+                                    <option value="operations">Operations</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="vcDocStatusFilter">
+                                    <option value="">All Status</option>
+                                    <option value="unread">Unread</option>
+                                    <option value="read">Read</option>
+                                    <option value="starred">Starred</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="vcDocSentimentFilter">
+                                    <option value="">All Sentiment</option>
+                                    <option value="positive">Positive</option>
+                                    <option value="neutral">Neutral</option>
+                                    <option value="negative">Concerns</option>
+                                    <option value="mixed">Mixed</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="vcDocArchiveFilter">
+                                    <option value="active">Active Only</option>
+                                    <option value="archived">Archived</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Search -->
+                        <div class="vc-search">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="vcDocSearchInput" placeholder="Search documents...">
+                            </div>
+                        </div>
+
+                        <!-- Documents List -->
+                        <div class="vc-reports-list" id="vcDocumentsList">
+                            <div class="loading-placeholder">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Loading documents...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- VC Documents Main Content -->
+                    <div class="vc-reports-main">
+                        <!-- Document Viewer (shown when a document is selected) -->
+                        <div class="vc-report-viewer" id="vcDocViewer">
+                            <div class="vc-report-placeholder" id="vcDocPlaceholder">
+                                <i class="fas fa-file-alt"></i>
+                                <h2>Select a Document</h2>
+                                <p>Choose a document from the list to view its details and AI analysis.</p>
+                            </div>
+
+                            <!-- Document Header -->
+                            <div class="vc-report-header hidden" id="vcDocHeader">
+                                <div class="report-title-row">
+                                    <h2 id="vcDocTitle">Document Title</h2>
+                                    <div class="report-actions">
+                                        <button class="btn btn-icon" id="vcDocStarBtn" title="Star Document">
+                                            <i class="far fa-star"></i>
+                                        </button>
+                                        <button class="btn btn-icon" id="vcDocDownloadBtn" title="Download Original">
+                                            <i class="fas fa-download"></i>
+                                        </button>
+                                        <button class="btn btn-icon" id="vcDocArchiveBtn" title="Archive">
+                                            <i class="fas fa-archive"></i>
+                                        </button>
+                                        <button class="btn btn-icon btn-delete hidden" id="vcDocDeleteBtn" title="Delete Permanently">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="report-meta">
+                                    <span class="meta-item"><i class="fas fa-folder"></i> <span id="vcDocCategory">Category</span></span>
+                                    <span class="meta-item"><i class="fas fa-user"></i> <span id="vcDocSubmitter">Uploaded By</span></span>
+                                    <span class="meta-item"><i class="fas fa-calendar"></i> <span id="vcDocDate">Date</span></span>
+                                    <span class="meta-item sentiment" id="vcDocSentimentBadge">
+                                        <i class="fas fa-circle"></i> <span id="vcDocSentiment">Neutral</span>
+                                    </span>
+                                    <span class="meta-item">
+                                        <span id="vcDocProcessingStatus" class="status-badge hidden"></span>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Document Content Tabs -->
+                            <div class="vc-report-tabs hidden" id="vcDocTabs">
+                                <button class="tab-btn active" data-tab="summary">
+                                    <i class="fas fa-lightbulb"></i> AI Summary
+                                </button>
+                                <button class="tab-btn" data-tab="content">
+                                    <i class="fas fa-file-alt"></i> Full Content
+                                </button>
+                                <button class="tab-btn" data-tab="chat">
+                                    <i class="fas fa-comments"></i> Chat
+                                </button>
+                                <button class="tab-btn" data-tab="notes">
+                                    <i class="fas fa-sticky-note"></i> Notes
+                                </button>
+                            </div>
+
+                            <!-- Tab Content -->
+                            <div class="vc-tab-content hidden" id="vcDocTabContent">
+                                <!-- Summary Tab -->
+                                <div class="tab-pane active" id="vcDocSummaryTab">
+                                    <div class="ai-summary-section">
+                                        <h3><i class="fas fa-robot"></i> Executive Summary</h3>
+                                        <p id="vcDocAiSummary" class="summary-text">Loading...</p>
+                                    </div>
+
+                                    <div class="ai-analysis-grid">
+                                        <div class="analysis-card highlights">
+                                            <h4><i class="fas fa-check-circle"></i> Highlights</h4>
+                                            <ul id="vcDocHighlightsList"></ul>
+                                        </div>
+                                        <div class="analysis-card key-points">
+                                            <h4><i class="fas fa-key"></i> Key Points</h4>
+                                            <ul id="vcDocKeyPointsList"></ul>
+                                        </div>
+                                        <div class="analysis-card concerns">
+                                            <h4><i class="fas fa-exclamation-triangle"></i> Concerns</h4>
+                                            <ul id="vcDocConcernsList"></ul>
+                                        </div>
+                                        <div class="analysis-card recommendations">
+                                            <h4><i class="fas fa-lightbulb"></i> Recommendations</h4>
+                                            <ul id="vcDocRecommendationsList"></ul>
+                                        </div>
+                                    </div>
+
+                                    <div class="reanalyze-section">
+                                        <button class="btn btn-outline" id="vcDocReanalyzeBtn">
+                                            <i class="fas fa-sync-alt"></i> Re-analyze with AI
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Content Tab -->
+                                <div class="tab-pane" id="vcDocContentTab">
+                                    <div class="vc-content-viewer" id="vcDocContentViewer">
+                                        <div class="viewer-topbar vc-viewer-topbar">
+                                            <div class="topbar-left">
+                                                <span class="doc-info-badge" id="vcDocContentDocBadge"></span>
+                                            </div>
+                                            <div class="topbar-center">
+                                                <div class="viewer-search-box">
+                                                    <i class="fas fa-search"></i>
+                                                    <input type="text" id="vcDocContentSearchInput" placeholder="Search document..." autocomplete="off">
+                                                    <button class="search-btn" id="vcDocContentSearchBtn" title="Search">
+                                                        <i class="fas fa-arrow-right"></i>
+                                                    </button>
+                                                    <button class="search-clear-btn" id="vcDocContentSearchClearBtn" title="Clear">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="topbar-right">
+                                                <button class="btn btn-sm btn-outline" id="vcDocContentPrintBtn" title="Print">
+                                                    <i class="fas fa-print"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline" id="vcDocContentDownloadBtn" title="Download">
+                                                    <i class="fas fa-download"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="viewer-body" id="vcDocContentPaperArea">
+                                            <div class="document-paper" id="vcDocContentWrapper">
+                                                <aside class="viewer-toc-sidebar" id="vcDocContentSidebar">
+                                                    <div class="toc-header">
+                                                        <h4><i class="fas fa-list-ul"></i> Contents</h4>
+                                                        <button class="btn btn-xs btn-outline" id="vcDocSidebarCollapseBtn" title="Hide">
+                                                            <i class="fas fa-chevron-left"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="search-results-section hidden" id="vcDocSearchResultsSection">
+                                                        <div class="search-results-header">
+                                                            <span id="vcDocSearchResultsCount">0 results</span>
+                                                            <div class="search-nav-btns">
+                                                                <button class="btn btn-xs btn-outline" id="vcDocPrevSearchResult" title="Previous">
+                                                                    <i class="fas fa-chevron-up"></i>
+                                                                </button>
+                                                                <span id="vcDocSearchResultPosition">0/0</span>
+                                                                <button class="btn btn-xs btn-outline" id="vcDocNextSearchResult" title="Next">
+                                                                    <i class="fas fa-chevron-down"></i>
+                                                                </button>
+                                                            </div>
+                                                            <button class="btn btn-xs btn-outline" id="vcDocCloseSearchResults" title="Close">
+                                                                <i class="fas fa-times"></i>
+                                                            </button>
+                                                        </div>
+                                                        <div class="search-results-list" id="vcDocSearchResultsList"></div>
+                                                    </div>
+                                                    <div class="toc-list" id="vcDocContentTocList">
+                                                        <div class="toc-placeholder">
+                                                            <i class="fas fa-book-open"></i>
+                                                            <p>Select a document to see its sections</p>
+                                                        </div>
+                                                    </div>
+                                                </aside>
+
+                                                <button class="sidebar-toggle-btn" id="vcDocSidebarExpandBtn" title="Show Contents">
+                                                    <i class="fas fa-list-ul"></i>
+                                                </button>
+
+                                                <div class="document-content" id="vcDocContentDocument">
+                                                    <div class="viewer-placeholder">
+                                                        <i class="fas fa-file-alt"></i>
+                                                        <h3>Full Document Content</h3>
+                                                        <p>Choose a document to view the full text.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Chat Tab -->
+                                <div class="tab-pane" id="vcDocChatTab">
+                                    <div class="vc-chat-container">
+                                        <div class="vc-chat-messages" id="vcDocChatMessages">
+                                            <div class="chat-welcome">
+                                                <div class="welcome-icon"><i class="fas fa-robot"></i></div>
+                                                <h3>Chat about this Document</h3>
+                                                <p>Ask questions about this document's content, request comparisons, or explore implications.</p>
+                                                <div class="suggested-questions">
+                                                    <button class="suggested-btn">Summarize the key decisions</button>
+                                                    <button class="suggested-btn">What risks or concerns stand out?</button>
+                                                    <button class="suggested-btn">Identify compliance or policy gaps</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="vc-chat-input">
+                                            <div class="vc-chat-controls">
+                                                <div class="tts-voice-select-wrap" title="Response voice">
+                                                    <i class="fas fa-volume-up"></i>
+                                                    <select id="vcDocTtsVoiceSelect" class="tts-voice-select" aria-label="Response voice">
+                                                        <option value="en-NG-EzinneNeural">Nigerian English (Female)</option>
+                                                        <option value="en-NG-AbeoNeural">Nigerian English (Male)</option>
+                                                        <option value="en-GB-LibbyNeural">British English (Female)</option>
+                                                        <option value="en-GB-RyanNeural">British English (Male)</option>
+                                                        <option value="en-US-JennyNeural">US English (Female)</option>
+                                                        <option value="en-US-GuyNeural">US English (Male)</option>
+                                                    </select>
+                                                </div>
+                                                <button class="btn btn-sm btn-outline voice-mode-btn" id="vcDocVoiceModeBtn" title="Voice Mode" aria-pressed="false">
+                                                    <i class="fas fa-microphone"></i>
+                                                    <span>Voice Mode</span>
+                                                </button>
+                                            </div>
+                                            <div id="vcDocVoiceRecording" class="voice-recording hidden">
+                                                <div class="recording-indicator">
+                                                    <span class="pulse"></span>
+                                                    <span>Recording...</span>
+                                                </div>
+                                                <button class="btn btn-danger" id="vcDocStopRecordingBtn">
+                                                    <i class="fas fa-stop"></i> Stop
+                                                </button>
+                                            </div>
+                                            <form id="vcDocChatForm">
+                                                <div class="chat-input-wrapper vc-chat-input-wrapper">
+                                                    <button type="button" class="btn btn-icon voice-btn" id="vcDocStartRecordingBtn" title="Voice Input">
+                                                        <i class="fas fa-microphone"></i>
+                                                    </button>
+                                                    <input type="text" id="vcDocChatInput" placeholder="Ask a question about this document...">
+                                                    <button type="submit" class="btn btn-primary send-btn">
+                                                        <i class="fas fa-paper-plane"></i>
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Notes Tab -->
+                                <div class="tab-pane" id="vcDocNotesTab">
+                                    <div class="vc-notes-container">
+                                        <div class="notes-header">
+                                            <h3><i class="fas fa-sticky-note"></i> Personal Notes</h3>
+                                            <button class="btn btn-sm btn-primary" id="vcDocAddNoteBtn">
+                                                <i class="fas fa-plus"></i> Add Note
+                                            </button>
+                                        </div>
+                                        <div class="notes-list" id="vcDocNotesList">
+                                            <div class="no-notes">
+                                                <i class="fas fa-sticky-note"></i>
+                                                <p>No notes yet. Click "Add Note" to create one.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Upload Modal -->
+        <div id="uploadModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-upload"></i> Upload Document</h3>
+                    <button class="close-btn" id="closeUploadModalBtn">&times;</button>
+                </div>
+                <form id="uploadForm">
+                    <div class="form-group">
+                        <label for="docTitle">Document Title</label>
+                        <input type="text" id="docTitle" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="docDescription">Description</label>
+                        <textarea id="docDescription" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="docCategory">Category</label>
+                        <select id="docCategory" required>
+                            <option value="policy">Policy</option>
+                            <option value="regulation">Regulation</option>
+                            <option value="academic">Academic</option>
+                            <option value="administrative">Administrative</option>
+                            <option value="legal">Legal</option>
+                            <option value="general">General</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="docFile">File</label>
+                        <div class="file-upload">
+                            <input type="file" id="docFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" required>
+                            <label for="docFile" class="file-label">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <span>Choose file or drag here</span>
+                            </label>
+                            <span id="fileName" class="file-name"></span>
+                        </div>
+                        <small>Supported: PDF, DOC, DOCX, XLS, XLSX, TXT, CSV (Max 10MB)</small>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-outline" id="cancelUploadBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> Upload
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VC Report Upload Modal -->
+        <div id="vcUploadModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-file-upload"></i> Submit Report to VC</h3>
+                    <button class="close-btn" id="closeVcUploadModalBtn">&times;</button>
+                </div>
+                <form id="vcUploadForm">
+                    <div class="form-group">
+                        <label for="vcUploadTitle">Report Title *</label>
+                        <input type="text" id="vcUploadTitle" required autocomplete="off" placeholder="Enter report title">
+                    </div>
+                    <div class="form-group">
+                        <label for="vcUploadDescription">Description</label>
+                        <textarea id="vcUploadDescription" rows="3" placeholder="Brief description of the report"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="vcUploadCategory">Category *</label>
+                            <select id="vcUploadCategory" required>
+                                <option value="">Select Category</option>
+                                <option value="academic_affairs">Academic Affairs</option>
+                                <option value="administrative">Administrative</option>
+                                <option value="financial">Financial</option>
+                                <option value="security">Security</option>
+                                <option value="student_affairs">Student Affairs</option>
+                                <option value="staff_welfare">Staff Welfare</option>
+                                <option value="senate">Senate</option>
+                                <option value="infrastructure">Infrastructure</option>
+                                <option value="research">Research</option>
+                                <option value="community_service">Community Service</option>
+                                <option value="compliance_audit">Compliance & Audit</option>
+                                <option value="strategic_planning">Strategic Planning</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="vcUploadDate">Report Date</label>
+                            <input type="date" id="vcUploadDate">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="vcUploadDepartment">Department</label>
+                        <input type="text" id="vcUploadDepartment" placeholder="Submitting department">
+                    </div>
+                    <div class="form-group">
+                        <label for="vcUploadFile">Report File *</label>
+                        <div class="file-upload">
+                            <input type="file" id="vcUploadFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" required>
+                            <label for="vcUploadFile" class="file-label">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <span>Choose file or drag here</span>
+                            </label>
+                            <span id="vcUploadFileName" class="file-name"></span>
+                        </div>
+                        <small>Supported: PDF, DOC, DOCX, XLS, XLSX, TXT, CSV (Max 10MB)</small>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-outline" id="cancelVcUploadBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i> Submit Report
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VC Note Modal -->
+        <div id="vcNoteModal" class="modal">
+            <div class="modal-content modal-sm">
+                <div class="modal-header">
+                    <h3><i class="fas fa-sticky-note"></i> <span id="vcNoteModalTitle">Add Note</span></h3>
+                    <button class="close-btn" id="closeVcNoteModalBtn">&times;</button>
+                </div>
+                <form id="vcNoteForm">
+                    <input type="hidden" id="vcNoteId">
+                    <div class="form-group">
+                        <label for="vcNoteText">Note</label>
+                        <textarea id="vcNoteText" rows="5" placeholder="Enter your note..." required></textarea>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-outline" id="cancelVcNoteBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Note
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VC Document Upload Modal -->
+        <div id="vcDocUploadModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-file-upload"></i> Upload Document to VC</h3>
+                    <button class="close-btn" id="closeVcDocUploadModalBtn">&times;</button>
+                </div>
+                <form id="vcDocUploadForm">
+                    <div class="form-group">
+                        <label for="vcDocUploadTitle">Document Title *</label>
+                        <input type="text" id="vcDocUploadTitle" required autocomplete="off" placeholder="Enter document title">
+                    </div>
+                    <div class="form-group">
+                        <label for="vcDocUploadDescription">Description</label>
+                        <textarea id="vcDocUploadDescription" rows="3" placeholder="Brief description of the document"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="vcDocUploadCategory">Document Type *</label>
+                            <select id="vcDocUploadCategory" required>
+                                <option value="">Select Type</option>
+                                <option value="policy">Policy</option>
+                                <option value="regulation">Regulation</option>
+                                <option value="memo">Memo</option>
+                                <option value="circular">Circular</option>
+                                <option value="directive">Directive</option>
+                                <option value="agreement">Agreement</option>
+                                <option value="minutes">Minutes</option>
+                                <option value="budget">Budget</option>
+                                <option value="audit">Audit</option>
+                                <option value="strategy">Strategy</option>
+                                <option value="research">Research</option>
+                                <option value="compliance">Compliance</option>
+                                <option value="operations">Operations</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="vcDocUploadDate">Document Date</label>
+                            <input type="date" id="vcDocUploadDate">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="vcDocUploadDepartment">Department</label>
+                        <input type="text" id="vcDocUploadDepartment" placeholder="Originating department">
+                    </div>
+                    <div class="form-group">
+                        <label for="vcDocUploadFile">Document File *</label>
+                        <div class="file-upload">
+                            <input type="file" id="vcDocUploadFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" required>
+                            <label for="vcDocUploadFile" class="file-label">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <span>Choose file or drag here</span>
+                            </label>
+                            <span id="vcDocUploadFileName" class="file-name"></span>
+                        </div>
+                        <small>Supported: PDF, DOC, DOCX, XLS, XLSX, TXT, CSV (Max 10MB)</small>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-outline" id="cancelVcDocUploadBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> Upload Document
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VC Document Note Modal -->
+        <div id="vcDocNoteModal" class="modal">
+            <div class="modal-content modal-sm">
+                <div class="modal-header">
+                    <h3><i class="fas fa-sticky-note"></i> <span id="vcDocNoteModalTitle">Add Note</span></h3>
+                    <button class="close-btn" id="closeVcDocNoteModalBtn">&times;</button>
+                </div>
+                <form id="vcDocNoteForm">
+                    <input type="hidden" id="vcDocNoteId">
+                    <div class="form-group">
+                        <label for="vcDocNoteText">Note</label>
+                        <textarea id="vcDocNoteText" rows="5" placeholder="Enter your note..." required></textarea>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-outline" id="cancelVcDocNoteModalBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Note
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toastContainer" class="toast-container"></div>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay hidden">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
