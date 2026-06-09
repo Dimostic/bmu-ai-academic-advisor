@@ -1,9 +1,9 @@
--- BMU AI Assistant Database Setup Script
--- Bayelsa Medical University AI Policy Assistant
+-- BMU AI Academic Advisor - Database Setup Script
+-- Bayelsa Medical University
 
 -- Create database
-CREATE DATABASE IF NOT EXISTS bmu_ai_agent CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE bmu_ai_agent;
+CREATE DATABASE IF NOT EXISTS bmu_academic_advisor CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE bmu_academic_advisor;
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (

@@ -1,77 +1,89 @@
-// Database Setup Script for BMU AI Agent
+// Database Setup Script for BMU AI Academic Advisor
+// Creates the schema, then applies every migration_*.sql file in lexicographic order.
 const mysql = require('mysql');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
+// MAMP default port differs by OS: 8889 on macOS, 3306 on Windows.
+const isWindows = process.platform === 'win32';
+const defaultPort = isWindows ? '3306' : '8889';
+
 const connection = mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '8889', 10), // MAMP default
+    port: parseInt(process.env.DB_PORT || defaultPort, 10),
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || 'root',
     multipleStatements: true
 });
 
-async function setupDatabase() {
-    console.log('🚀 Starting BMU AI Agent Database Setup...\n');
+const query = (sql, params) => new Promise((resolve, reject) => {
+    connection.query(sql, params, (err, results) => err ? reject(err) : resolve(results));
+});
 
-    // Allow overriding database name (defaults to schema.sql value)
-    const dbName = process.env.DB_NAME || 'bmu_ai_agent';
+async function setupDatabase() {
+    console.log('🚀 Starting BMU AI Academic Advisor database setup...\n');
+
+    const dbName = process.env.DB_NAME || 'bmu_academic_advisor';
+    const scriptsDir = __dirname;
 
     try {
-        // Read and execute schema
-        const schemaPath = path.join(__dirname, 'schema.sql');
-        const schema = fs.readFileSync(schemaPath, 'utf8');
-
-        connection.connect((err) => {
-            if (err) {
-                console.error('❌ Failed to connect to MySQL:', err.message);
-                console.error(`   Host: ${connection.config.host}:${connection.config.port}`);
-                process.exit(1);
-            }
-            console.log(`✅ Connected to MySQL server (${connection.config.host}:${connection.config.port})`);
-        });
-
-        // Execute schema
         await new Promise((resolve, reject) => {
-            connection.query(schema, (err, results) => {
+            connection.connect((err) => {
                 if (err) {
-                    console.error('❌ Error executing schema:', err.message);
-                    reject(err);
-                } else {
-                    console.log('✅ Database schema created successfully');
-                    resolve(results);
+                    console.error('❌ Failed to connect to MySQL:', err.message);
+                    console.error(`   Host: ${connection.config.host}:${connection.config.port}`);
+                    return reject(err);
                 }
+                console.log(`✅ Connected to MySQL server (${connection.config.host}:${connection.config.port})`);
+                resolve();
             });
         });
 
-        // Create default superadmin with proper hashed password
+        // 1. Base schema
+        const schemaPath = path.join(scriptsDir, 'schema.sql');
+        const schema = fs.readFileSync(schemaPath, 'utf8');
+        await query(schema);
+        console.log('✅ Base schema applied (schema.sql)');
+
+        // 2. Migrations: every migration_*.sql in lex order
+        const migrationFiles = fs.readdirSync(scriptsDir)
+            .filter(f => /^migration_.+\.sql$/i.test(f))
+            .sort();
+
+        for (const file of migrationFiles) {
+            const sql = fs.readFileSync(path.join(scriptsDir, file), 'utf8').trim();
+            if (!sql) continue;
+            try {
+                await query(`USE \`${dbName}\``);
+                await query(sql);
+                console.log(`✅ Applied ${file}`);
+            } catch (e) {
+                // Migrations are intentionally idempotent. Tolerate duplicate-column / table errors.
+                if (e.code === 'ER_DUP_FIELDNAME' || e.code === 'ER_DUP_KEYNAME' || e.code === 'ER_TABLE_EXISTS_ERROR') {
+                    console.log(`⏭️  Skipped ${file} (already applied: ${e.code})`);
+                } else {
+                    console.error(`❌ Migration ${file} failed:`, e.message);
+                    throw e;
+                }
+            }
+        }
+
+        // 3. Seed / reset the default superadmin
         const defaultEmail = 'bmuapps@bmu.edu.ng';
         const defaultPassword = 'Admin@123';
         const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-        
-        const updateAdminQuery = `
-            UPDATE ${dbName}.users 
-            SET password = ? 
-            WHERE email = ?
-        `;
 
-        await new Promise((resolve, reject) => {
-            connection.query(updateAdminQuery, [hashedPassword, defaultEmail], (err, results) => {
-                if (err) {
-                    console.error('❌ Error updating admin password:', err.message);
-                    reject(err);
-                } else {
-                    console.log('✅ Default superadmin account created');
-                    console.log(`   Email: ${defaultEmail}`);
-                    console.log('   Password: Admin@123 (CHANGE THIS IN PRODUCTION!)');
-                    resolve(results);
-                }
-            });
-        });
+        await query(
+            `UPDATE \`${dbName}\`.users SET password = ? WHERE email = ?`,
+            [hashedPassword, defaultEmail]
+        );
+        console.log('✅ Default superadmin password reset');
+        console.log(`   Email: ${defaultEmail}`);
+        console.log('   Password: Admin@123 (CHANGE THIS IN PRODUCTION!)');
 
-        // Create necessary directories
+        // 4. Ensure runtime directories exist
         const directories = [
             path.join(__dirname, '../../uploads'),
             path.join(__dirname, '../../uploads/documents'),
@@ -94,7 +106,7 @@ async function setupDatabase() {
         console.log('   2. Change the default admin password');
         console.log('   3. Run: npm install');
         console.log('   4. Run: npm start');
-        
+
         connection.end();
         process.exit(0);
 
