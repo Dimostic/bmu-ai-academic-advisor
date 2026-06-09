@@ -13,7 +13,10 @@ Phase 1 scaffolding only. Backend + frontend will be wired up in subsequent phas
 
 - **Backend**: Node.js, Express, MySQL (`mysql` pool), JWT auth, Helmet, rate limiting.
 - **AI**: DeepSeek (chat), Ollama `nomic-embed-text` (embeddings), FAISS vector store.
-- **Voice**: Azure Cognitive Services Speech — STT + TTS with viseme stream for lip-sync.
+- **Voice (free-first, scales to thousands of students)**:
+  - **STT**: browser Web Speech API on-device, with **Groq Whisper** as a server-side fallback.
+  - **TTS**: **TTSMaker** (free tier); browser `speechSynthesis` as final fallback.
+  - **Lip-sync**: amplitude-driven (Web Audio API) — no Azure dependency, works with any TTS.
 - **Frontend**: Vanilla JS PWA, Lottie 2D talking avatar, typewriter answer panel.
 
 ## Topics the advisor covers
@@ -66,8 +69,10 @@ Fill in at minimum:
 - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (defaults match Windows MAMP).
 - `JWT_SECRET` (any long random string).
 - `DEEPSEEK_API_KEY` — https://platform.deepseek.com.
-- `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, `AZURE_TTS_VOICE` (e.g. `en-NG-EzinneNeural`).
+- `TTSMAKER_TTS_API_KEY` — https://ttsmaker.com (free tier).
+- `GROQ_API_KEY` — https://console.groq.com (free tier, ~14k req/day) — used only as STT fallback.
 - `OLLAMA_URL` (default `http://127.0.0.1:11434`).
+- Azure Speech keys are optional and only needed if you ever want phoneme-accurate visemes.
 
 ### 4. Set up local services
 
