@@ -1,7 +1,7 @@
 // Database Setup Script for BMU AI Academic Advisor
 // Creates the schema, then applies every migration_*.sql file in lexicographic order.
 const mysql = require('mysql');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
@@ -63,9 +63,15 @@ async function setupDatabase() {
                 // Migrations are intentionally idempotent. Tolerate duplicate-column / table errors.
                 if (e.code === 'ER_DUP_FIELDNAME' || e.code === 'ER_DUP_KEYNAME' || e.code === 'ER_TABLE_EXISTS_ERROR') {
                     console.log(`⏭️  Skipped ${file} (already applied: ${e.code})`);
-                } else {
+                } else if (file.startsWith('migration_advisor')) {
+                    // The advisor schema is required; fail loudly if it can't be applied.
                     console.error(`❌ Migration ${file} failed:`, e.message);
                     throw e;
+                } else {
+                    // Legacy migrations (VC, usage limits, deepseek-only, etc.) inherited from the
+                    // original BMU AI Assistant. Some have ordering dependencies that don't apply
+                    // to the academic-advisor schema; log and continue so the advisor app still works.
+                    console.warn(`⚠️  Skipping legacy migration ${file}: ${e.message}`);
                 }
             }
         }

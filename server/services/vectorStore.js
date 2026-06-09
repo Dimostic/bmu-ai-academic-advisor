@@ -1,6 +1,11 @@
 const fs = require('fs').promises;
 const path = require('path');
-const faiss = require('faiss-node');
+// faiss-node is an optional native dependency. If it fails to compile (e.g. on
+// Windows without VS Build Tools), we degrade gracefully and let the rest of
+// the app boot — RAG semantic search will simply be disabled.
+let faiss = null;
+try { faiss = require('faiss-node'); }
+catch (err) { console.warn('[vectorStore] faiss-node unavailable; semantic search disabled:', err.message); }
 const { query } = require('../../config/db');
 
 class VectorStore {
@@ -15,6 +20,9 @@ class VectorStore {
 
     async _ensureLoaded() {
         if (this._index && this._meta) return;
+        if (!faiss) {
+            throw new Error('faiss-node is not installed; semantic search is disabled');
+        }
 
         await fs.mkdir(this.indexDir, { recursive: true });
 

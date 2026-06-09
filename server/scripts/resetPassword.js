@@ -13,7 +13,7 @@
  *   node server/scripts/resetPassword.js admin@bmu.edu.ng MySecurePass!
  */
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const path = require('path');
 
 // Load environment variables

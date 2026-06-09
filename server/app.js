@@ -104,6 +104,16 @@ app.get('/bmulogo.png', (req, res) => {
     res.sendFile(path.join(__dirname, '../bmulogo.png'));
 });
 
+// New homepage: the BMU AI Academic Advisor.
+// These explicit routes MUST be registered before express.static, otherwise the
+// static middleware will serve the legacy client/index.html for "/" first.
+app.get(['/', '/advisor'], (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/advisor.html'));
+});
+app.get(['/legacy', '/legacy/'], (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/index.html'));
+});
+
 // Serve static files (client)
 app.use(express.static(path.join(__dirname, '../client'), {
     etag: true,
@@ -205,22 +215,18 @@ app.get('/api/settings/public', async (req, res) => {
 });
 
 // Serve frontend for all other non-API routes (SPA support)
-// New BMU AI Academic Advisor app is served at "/"; the legacy assistant UI
-// remains available under "/legacy" for backwards compatibility.
-app.get(['/', '/advisor'], (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/advisor.html'));
-});
-
-app.get(['/legacy', '/legacy/*'], (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/index.html'));
-});
-
+// Primary advisor routes are mounted earlier (before express.static). The
+// catch-all below covers deep links and SPA-style sub-paths.
 app.get('*', (req, res, next) => {
     // Avoid SPA fallback for API or upload paths.
     if (req.path === '/api' || req.path.startsWith('/api/')) return next();
     if (req.path === '/uploads' || req.path.startsWith('/uploads/')) return next();
     // If the request looks like an asset request, let it 404 instead of returning HTML.
     if (path.extname(req.path)) return next();
+    // /legacy/* sub-paths still go to the legacy SPA.
+    if (req.path.startsWith('/legacy/')) {
+        return res.sendFile(path.join(__dirname, '../client/index.html'));
+    }
     res.sendFile(path.join(__dirname, '../client/advisor.html'));
 });
 
