@@ -15,6 +15,7 @@ const ragRoutes = require('./routes/ragRoutes');
 const faqRoutes = require('./routes/faqRoutes');
 const vcReportRoutes = require('./routes/vcReportRoutes');
 const vcDocumentRoutes = require('./routes/vcDocumentRoutes');
+const advisorRoutes = require('./routes/advisorRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -159,6 +160,7 @@ app.use('/api/rag', ragRoutes);
 app.use('/api/faq', faqRoutes);
 app.use('/api/vc-reports', vcReportRoutes);
 app.use('/api/vc-documents', vcDocumentRoutes);
+app.use('/api/advisor', advisorRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
