@@ -2,16 +2,21 @@
  * Text-to-speech service for the academic advisor.
  *
  * Free-first strategy:
- *   1. TTSMaker (configured via TTSMAKER_TTS_API_KEY) — primary.
+ *   1. TTSMaker API v2 (https://api.ttsmaker.com/v2/create-tts-order) — primary.
  *   2. Browser `speechSynthesis` — final fallback. The server cannot synthesise
  *      this; we simply tell the client to do it locally.
  *
  * Lip-sync is computed client-side from the audio waveform using the Web Audio
  * API, so no provider-specific viseme metadata is required.
+ *
+ * Note: TTSMaker requires a Pro or Studio subscription on their account; the
+ * Lite tier does not expose the API, and the public demo key only accepts a
+ * fixed test sentence. If your key is rejected, the service degrades to the
+ * browser fallback automatically.
  */
 const axios = require('axios');
 
-const TTSMAKER_BASE = 'https://api.ttsmaker.com/v1';
+const TTSMAKER_BASE = 'https://api.ttsmaker.com/v2';
 const PROVIDER      = (process.env.TTS_PROVIDER || 'ttsmaker').toLowerCase();
 const ENABLED       = process.env.ENABLE_VOICE_RESPONSES !== 'false';
 
@@ -24,10 +29,10 @@ function isTtsmakerConfigured() {
  * Synthesise speech for `text`.
  * @param {string} text
  * @param {object} [opts]
- * @param {string} [opts.language]
- * @returns {Promise<{provider:string, audioUrl?:string, useBrowserFallback?:boolean, error?:string}>}
+ * @returns {Promise<{provider:string, audioUrl?:string, useBrowserFallback?:boolean, error?:string, durationSeconds?:number, quota?:object}>}
  */
 async function synthesise(text, opts = {}) {
+    void opts; // reserved for future per-call overrides
     if (!ENABLED || !text || !text.trim()) {
         return { provider: 'none', useBrowserFallback: true };
     }
@@ -37,48 +42,73 @@ async function synthesise(text, opts = {}) {
     }
 
     try {
-        const voiceId = parseInt(process.env.TTSMAKER_TTS_VOICE_ID || '2522', 10);
+        const voiceId = parseInt(process.env.TTSMAKER_TTS_VOICE_ID || '147', 10);
         const body = {
-            token: process.env.TTSMAKER_TTS_API_KEY,
-            text: text.trim(),
-            voice_id: voiceId,
-            audio_format: 'mp3',
-            audio_speed: 1.0,
-            audio_volume: 0,
-            text_paragraph_pause_time: 300
+            api_key:                  process.env.TTSMAKER_TTS_API_KEY,
+            text:                     text.trim().slice(0, 19_500),
+            voice_id:                 voiceId,
+            audio_format:             'mp3',
+            audio_speed:              1.0,
+            audio_volume:             1.0,
+            audio_pitch:              1.0,
+            audio_high_quality:       0,
+            text_paragraph_pause_time: 300,
+            emotion_style_key:        '',
+            emotion_intensity:        1
         };
 
         const { data } = await axios.post(
             `${TTSMAKER_BASE}/create-tts-order`,
             body,
-            { timeout: 30_000, headers: { 'Content-Type': 'application/json' } }
+            {
+                timeout: 30_000,
+                headers: { 'Content-Type': 'application/json', accept: 'application/json' }
+            }
         );
 
-        if (data?.error_code === 'SUCCESS' && data?.audio_file_url) {
+        // v2 responds with error_code === 0 on success, audio_download_url for the file.
+        if (data?.error_code === 0 && data?.audio_download_url) {
             return {
                 provider: 'ttsmaker',
-                audioUrl: data.audio_file_url,
-                durationSeconds: data.audio_file_duration_seconds || null
+                audioUrl: data.audio_download_url,
+                audioBackupUrl: data.audio_download_backup_url || null,
+                expiresAt: data.audio_file_expiration_timestamp || null,
+                quota: data.account_status || null
             };
         }
 
-        console.warn('[ttsService] TTSMaker non-success:', data?.error_code, data?.error_details);
-        return {
-            provider: 'browser',
-            useBrowserFallback: true,
-            error: data?.error_details || data?.error_code || 'TTSMaker failed'
-        };
+        const errSummary = data?.error_summary || data?.msg || `error_code=${data?.error_code}`;
+        console.warn('[ttsService] TTSMaker non-success:', errSummary);
+        return { provider: 'browser', useBrowserFallback: true, error: errSummary };
     } catch (err) {
-        console.error('[ttsService] TTSMaker request failed:', err.message);
-        return {
-            provider: 'browser',
-            useBrowserFallback: true,
-            error: err.message
-        };
+        const respData = err.response?.data;
+        const detail = respData?.error_summary || respData?.msg || err.message;
+        console.error('[ttsService] TTSMaker request failed:', detail);
+        return { provider: 'browser', useBrowserFallback: true, error: detail };
+    }
+}
+
+/**
+ * Check the current API key + account quota. Useful for /api/advisor/health.
+ */
+async function checkQuota() {
+    if (!isTtsmakerConfigured()) return { ok: false, error: 'not_configured' };
+    try {
+        const { data } = await axios.get(
+            `${TTSMAKER_BASE}/get-token-status`,
+            { params: { api_key: process.env.TTSMAKER_TTS_API_KEY }, timeout: 10_000 }
+        );
+        if (data?.error_code === 0) {
+            return { ok: true, isDemoKey: data.is_demo_key, account: data.account_status };
+        }
+        return { ok: false, error: data?.error_summary || data?.msg };
+    } catch (err) {
+        return { ok: false, error: err.response?.data?.error_summary || err.message };
     }
 }
 
 module.exports = {
     synthesise,
+    checkQuota,
     isConfigured: isTtsmakerConfigured
 };
