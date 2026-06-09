@@ -35,15 +35,16 @@ app.use(helmet({
             objectSrc: ["'none'"],
             frameAncestors: ["'self'"],
             // Allow unsafe-inline for scripts to support onclick handlers in dynamically generated HTML
-            scriptSrc: ["'self'", "'unsafe-inline'"],
+            // and the Lottie CDN used by the advisor page (optional avatar).
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
             scriptSrcAttr: ["'unsafe-inline'"],
             // Allow unsafe-inline for styles to support dynamic document content from mammoth
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "blob:"],
-            // Allow in-page audio playback when the API returns data: or blob: URLs.
-            mediaSrc: ["'self'", "data:", "blob:"],
-            // Allow same-origin fetch + WebSockets + external stylesheet fetches done by the service worker.
+            // Allow TTSMaker audio URLs + data/blob for in-page audio playback.
+            mediaSrc: ["'self'", "data:", "blob:", "https://*.ttsmaker.com", "https://*.ttsmaker.net"],
+            // Same-origin fetch + WebSockets + external stylesheet/script fetches by the service worker / advisor page.
             connectSrc: ["'self'", "ws:", "wss:", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
         },
     },
@@ -204,14 +205,23 @@ app.get('/api/settings/public', async (req, res) => {
 });
 
 // Serve frontend for all other non-API routes (SPA support)
+// New BMU AI Academic Advisor app is served at "/"; the legacy assistant UI
+// remains available under "/legacy" for backwards compatibility.
+app.get(['/', '/advisor'], (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/advisor.html'));
+});
+
+app.get(['/legacy', '/legacy/*'], (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/index.html'));
+});
+
 app.get('*', (req, res, next) => {
     // Avoid SPA fallback for API or upload paths.
     if (req.path === '/api' || req.path.startsWith('/api/')) return next();
     if (req.path === '/uploads' || req.path.startsWith('/uploads/')) return next();
-    // If the request looks like an asset request, let it 404 instead of returning index.html
-    // This prevents Chrome from downloading HTML for icons and complaining "not a valid image".
+    // If the request looks like an asset request, let it 404 instead of returning HTML.
     if (path.extname(req.path)) return next();
-    res.sendFile(path.join(__dirname, '../client/index.html'));
+    res.sendFile(path.join(__dirname, '../client/advisor.html'));
 });
 
 // Global error handler

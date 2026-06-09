@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="BMU AI Academic Advisor — interactive talking advisor for Bayelsa Medical University students" />
+    <meta name="theme-color" content="#0f3d3e" />
+
+    <title>BMU AI Academic Advisor</title>
+    <link rel="icon" type="image/png" href="bmulogo.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="bmulogo.png" />
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="advisor.css" />
+</head>
+<body>
+    <header class="top-bar">
+        <a class="brand" href="/">
+            <img src="bmulogo.png" alt="BMU" />
+            <div>
+                <strong>BMU AI Academic Advisor</strong>
+                <small>Bayelsa Medical University</small>
+            </div>
+        </a>
+        <nav class="top-actions">
+            <button id="historyToggleBtn" class="icon-btn hidden" title="Conversation history" aria-label="History">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+            </button>
+            <a href="/legacy" class="link-muted" title="Open the legacy assistant">Legacy</a>
+            <div id="authSlot">
+                <button id="loginBtn" class="btn btn-ghost">Sign in</button>
+            </div>
+        </nav>
+    </header>
+
+    <main class="advisor-grid">
+        <!-- Avatar pane -->
+        <section class="avatar-pane" aria-label="Academic advisor">
+            <div class="avatar-stage" id="avatarStage">
+                <!-- SVG avatar — replaced by Lottie if loadLottieCharacter() is called -->
+                <svg id="avatarSvg" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <defs>
+                        <radialGradient id="bgGlow" cx="50%" cy="50%" r="60%">
+                            <stop offset="0%"  stop-color="#7bdcb5" stop-opacity="0.6"/>
+                            <stop offset="100%" stop-color="#0f3d3e" stop-opacity="0"/>
+                        </radialGradient>
+                        <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#7a4b30"/>
+                            <stop offset="100%" stop-color="#5a3622"/>
+                        </linearGradient>
+                        <linearGradient id="coat" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#ffffff"/>
+                            <stop offset="100%" stop-color="#dfe7e9"/>
+                        </linearGradient>
+                    </defs>
+                    <circle cx="100" cy="120" r="105" fill="url(#bgGlow)"/>
+                    <!-- shoulders / coat -->
+                    <path d="M30 230 Q100 170 170 230 L170 250 L30 250 Z" fill="url(#coat)" stroke="#b9c3c6" stroke-width="1"/>
+                    <rect x="92" y="180" width="16" height="40" fill="#0f3d3e" rx="2"/>
+                    <!-- neck -->
+                    <rect x="86" y="155" width="28" height="25" fill="url(#skin)"/>
+                    <!-- head -->
+                    <ellipse cx="100" cy="110" rx="48" ry="56" fill="url(#skin)"/>
+                    <!-- hair -->
+                    <path d="M55 95 Q60 50 100 50 Q140 50 145 95 Q140 80 100 80 Q60 80 55 95 Z" fill="#1a1a1a"/>
+                    <!-- eyes -->
+                    <g id="avatarEyes">
+                        <ellipse class="eye eye-l" cx="82"  cy="110" rx="6" ry="7" fill="#ffffff"/>
+                        <ellipse class="eye eye-r" cx="118" cy="110" rx="6" ry="7" fill="#ffffff"/>
+                        <circle  cx="82"  cy="111" r="3" fill="#1a1a1a"/>
+                        <circle  cx="118" cy="111" r="3" fill="#1a1a1a"/>
+                    </g>
+                    <!-- glasses -->
+                    <g stroke="#0f3d3e" stroke-width="2" fill="none">
+                        <circle cx="82"  cy="111" r="10"/>
+                        <circle cx="118" cy="111" r="10"/>
+                        <line x1="92" y1="111" x2="108" y2="111"/>
+                    </g>
+                    <!-- brows -->
+                    <path d="M72 96 Q82 92 92 96" stroke="#1a1a1a" stroke-width="3" fill="none" stroke-linecap="round"/>
+                    <path d="M108 96 Q118 92 128 96" stroke="#1a1a1a" stroke-width="3" fill="none" stroke-linecap="round"/>
+                    <!-- mouth (animated) -->
+                    <g id="avatarMouth" transform="translate(100 138)">
+                        <ellipse id="mouthShape" cx="0" cy="0" rx="14" ry="3" fill="#3a1f12"/>
+                    </g>
+                    <!-- listening ring -->
+                    <circle id="listenRing" cx="100" cy="120" r="100" fill="none" stroke="#7bdcb5" stroke-width="3" stroke-dasharray="6 8" opacity="0"/>
+                </svg>
+                <div class="avatar-status" id="avatarStatus" data-state="idle">
+                    <span class="dot"></span><span class="label">Ready</span>
+                </div>
+            </div>
+            <div class="avatar-meta">
+                <strong id="advisorName">Dr. Tari</strong>
+                <span>BMU Academic Advisor</span>
+            </div>
+        </section>
+
+        <!-- Conversation pane -->
+        <section class="chat-pane" aria-label="Conversation">
+            <!-- Topic carousel -->
+            <div class="topics-bar" role="navigation" aria-label="Topics">
+                <button class="topic-pill topic-pill--start" data-action="start">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Start
+                </button>
+                <div class="topics-scroller" id="topicsScroller">
+                    <!-- topic pills injected here -->
+                </div>
+            </div>
+
+            <!-- Welcome / transcript -->
+            <div class="transcript" id="transcript" tabindex="0">
+                <article class="bubble bubble--advisor bubble--welcome">
+                    <header><i class="fa-solid fa-graduation-cap"></i> Welcome</header>
+                    <div class="bubble-body">
+                        <p>Hi! I'm <strong id="welcomeName">Dr. Tari</strong>, your BMU Academic Advisor. Ask me about programmes, courses, fees, exams, hostels, or anything about life at BMU.</p>
+                        <p class="muted">I can answer by voice and in writing. Tap the mic to speak, or type below.</p>
+                    </div>
+                </article>
+            </div>
+
+            <!-- Composer -->
+            <form class="composer" id="composer" autocomplete="off">
+                <button type="button" class="mic-btn" id="micBtn" aria-pressed="false" title="Hold to talk">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+                <canvas id="micWave" width="160" height="40" aria-hidden="true"></canvas>
+                <input type="text" id="questionInput" placeholder="Ask the advisor a question…" maxlength="2000" />
+                <button type="submit" class="send-btn" id="sendBtn" title="Send">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+
+            <!-- Follow-up chips area populated dynamically -->
+            <div class="followups" id="followups" aria-live="polite"></div>
+        </section>
+
+        <!-- Sidebar: history (auth-only) -->
+        <aside class="history-pane hidden" id="historyPane" aria-label="Conversation history">
+            <header>
+                <strong>Your conversations</strong>
+                <button class="icon-btn" id="historyCloseBtn" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            </header>
+            <div class="history-list" id="historyList">
+                <p class="muted">Sign in to keep a history of your chats with the advisor.</p>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Escalation modal -->
+    <dialog id="escalateDialog" class="modal">
+        <form method="dialog" id="escalateForm">
+            <h2><i class="fa-solid fa-headset"></i> Talk to a human advisor</h2>
+            <p class="muted">We'll send your message to the BMU Academic Advisor desk. Please share enough context so they can help quickly.</p>
+            <label>
+                Subject
+                <input type="text" name="subject" required maxlength="120" placeholder="e.g. Course registration deadline" />
+            </label>
+            <label>
+                Your message
+                <textarea name="message" required rows="5" maxlength="2000" placeholder="Describe what you need help with…"></textarea>
+            </label>
+            <label>
+                Reply-to email
+                <input type="email" name="contactEmail" placeholder="you@bmu.edu.ng" />
+            </label>
+            <label>
+                Phone (optional)
+                <input type="tel" name="contactPhone" placeholder="0803…" />
+            </label>
+            <menu>
+                <button value="cancel" class="btn btn-ghost">Cancel</button>
+                <button value="confirm" class="btn btn-primary" id="escalateSubmit">Send</button>
+            </menu>
+        </form>
+    </dialog>
+
+    <!-- Toast container -->
+    <div id="toastHost" aria-live="polite"></div>
+
+    <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
+    <script src="advisor.js" defer></script>
+</body>
+</html>
