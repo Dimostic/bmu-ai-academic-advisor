@@ -43,7 +43,17 @@ app.use(helmet({
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "blob:"],
             // Allow TTSMaker audio URLs + data/blob for in-page audio playback.
-            mediaSrc: ["'self'", "data:", "blob:", "https://*.ttsmaker.com", "https://*.ttsmaker.net"],
+            // TTSMaker rotates host suffixes (ttsmaker-vip-file.com, ttsmaker-file*.com,
+            // and the *.ttsmaker.com / *.ttsmaker.net domains), so we whitelist the
+            // family with broad wildcards.
+            mediaSrc: [
+                "'self'", "data:", "blob:",
+                "https://*.ttsmaker.com",
+                "https://*.ttsmaker.net",
+                "https://*.ttsmaker-file.com",
+                "https://*.ttsmaker-file2.com",
+                "https://*.ttsmaker-vip-file.com"
+            ],
             // Same-origin fetch + WebSockets + external stylesheet/script fetches by the service worker / advisor page.
             connectSrc: ["'self'", "ws:", "wss:", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
         },
