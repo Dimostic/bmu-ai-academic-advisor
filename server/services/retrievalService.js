@@ -241,6 +241,8 @@ class RetrievalService {
                 'fee': 'fee payment tuition charges cost levy fees structure',
                 'fees': 'fees fee payment tuition charges cost levy structure schedule',
                 'tuition': 'tuition fee payment levy charges',
+                'cost': 'cost fee tuition payment charge price',
+                'price': 'price cost fee tuition charge',
                 'scholarship': 'scholarship bursary grant financial aid award',
                 'course': 'course program programme module subject class',
 
