@@ -57,6 +57,34 @@ async function getDocumentFAQCount(docId) {
 }
 
 /**
+ * Map a document's `category` tag (or its title) to an FAQ category id so
+ * generated FAQs appear under the right topic in the student-facing handbook
+ * browser. Returns null when nothing matches — the FAQ still saves, it just
+ * won't appear in any topic filter.
+ */
+async function resolveFaqCategoryId(doc) {
+    const title = (doc.title || doc.file_name || '').toLowerCase();
+    const cat   = (doc.category || '').toLowerCase();
+    // Heuristic mapping → matches the slugs seeded in migration_advisor_faq.sql.
+    const rules = [
+        { test: /handbook|student/.test(title) || cat === 'academic' && /handbook|student/.test(title),  name: 'Programmes, courses & registration' },
+        { test: /fee|payment|bursary|scholarship/.test(title) || cat === 'administrative',               name: 'Fees, payments & scholarships' },
+        { test: /calendar|exam|timetable/.test(title),                                                    name: 'Academic calendar & exams' },
+        { test: /grading|gpa|transcript|withdrawal|probation/.test(title),                               name: 'Grading, GPA & transcripts' },
+        { test: /hostel|accommodation|transport/.test(title),                                            name: 'Hostel, accommodation & transport' },
+        { test: /health|counsel|welfare|clinic/.test(title),                                             name: 'Health, counselling & student welfare' },
+        { test: /library|study/.test(title),                                                              name: 'Library & study skills' },
+        { test: /law|act|conduct|disciplin|complaint/.test(title) || cat === 'legal',                    name: 'Code of conduct & complaints' },
+        { test: /career|prospect|intern|posting/.test(title),                                            name: 'Career guidance, internship & clinical postings' },
+        { test: /course|programme|prospectus|curriculum|ccmas|mbbs/.test(title) || cat === 'regulation' || cat === 'academic', name: 'Programmes, courses & registration' }
+    ];
+    const hit = rules.find(r => r.test);
+    if (!hit) return null;
+    const rows = await query('SELECT id FROM faq_categories WHERE name = ? LIMIT 1', [hit.name]);
+    return rows[0]?.id || null;
+}
+
+/**
  * Simple FAQ generation - directly generates Q&A with smaller prompts
  * This is faster and works better with local Ollama models
  */
@@ -64,6 +92,7 @@ async function generateSimpleFAQs(doc) {
     const docId = doc.id;
     const title = doc.title || doc.file_name || 'Document ' + docId;
     const category = doc.category || 'general';
+    const faqCategoryId = await resolveFaqCategoryId(doc);
     
     // Get document content from chunks
     const chunks = await query(
@@ -218,10 +247,11 @@ Important: Return ONLY the JSON object, no other text.`;
                 
                 await query(`
                     INSERT INTO cached_qa 
-                    (document_id, question, question_variations, answer, answer_sources, qa_type, embedding, confidence_score, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    (document_id, category_id, question, question_variations, answer, answer_sources, qa_type, embedding, confidence_score, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 `, [
                     docId,
+                    faqCategoryId,
                     item.question,
                     JSON.stringify(item.variations || []),
                     item.answer,

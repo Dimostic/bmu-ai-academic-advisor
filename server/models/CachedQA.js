@@ -174,7 +174,9 @@ class CachedQA {
     }
 
     /**
-     * Get popular FAQs (most used)
+     * Get popular FAQs (most used). Falls back to most-recent when nothing has
+     * been viewed yet — important for a freshly seeded handbook FAQ index where
+     * `usage_count` is 0 across the board until students start clicking.
      */
     static async getPopular(limit = 10) {
         const rows = await query(
@@ -182,8 +184,8 @@ class CachedQA {
              FROM cached_qa cq
              LEFT JOIN faq_categories fc ON fc.id = cq.category_id
              LEFT JOIN documents d ON d.id = cq.document_id
-             WHERE cq.is_active = TRUE AND cq.usage_count > 0
-             ORDER BY cq.usage_count DESC
+             WHERE cq.is_active = TRUE
+             ORDER BY cq.usage_count DESC, cq.created_at DESC
              LIMIT ?`,
             [limit]
         );
