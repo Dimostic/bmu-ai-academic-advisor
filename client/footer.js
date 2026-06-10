@@ -38,7 +38,7 @@
         f.setAttribute('role', 'contentinfo');
         const year = new Date().getFullYear();
         f.innerHTML =
-            `<span>&copy; ${year} Baze Medical University</span>` +
+            `<span>&copy; ${year} Bayelsa Medical University</span>` +
             `<span class="sep">&middot;</span>` +
             `<span>Developed by <strong>Dimie Ogoina</strong></span>`;
         document.body.appendChild(f);
