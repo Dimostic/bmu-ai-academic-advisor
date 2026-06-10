@@ -107,25 +107,50 @@ Important: Return ONLY the JSON object, no other text.`;
     
     try {
         const axios = require('axios');
-        const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
-        const model = process.env.OLLAMA_CHAT_MODEL || 'llama3.2:3b'; // Use faster model
-        
-        const response = await axios.post(
-            `${ollamaUrl}/api/generate`,
-            {
-                model: model,
-                prompt: prompt,
-                stream: false,
-                format: 'json',
-                options: {
+        // Provider routing: prefer DeepSeek (no GPU contention with embedding job
+        // and higher-quality questions) when DEEPSEEK_API_KEY is set. Fall back
+        // to the local Ollama chat model otherwise.
+        const useDeepSeek = Boolean(process.env.DEEPSEEK_API_KEY) && process.env.FAQ_PROVIDER !== 'ollama';
+        let aiResponse = '';
+        if (useDeepSeek) {
+            const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
+            const model   = process.env.DEEPSEEK_MODEL    || 'deepseek-chat';
+            console.log('   Provider: deepseek (model: ' + model + ')');
+            const ds = await axios.post(
+                `${baseUrl}/v1/chat/completions`,
+                {
+                    model,
+                    messages: [
+                        { role: 'system', content: 'You generate FAQ JSON for academic documents. Reply with a single JSON object only, no prose.' },
+                        { role: 'user',   content: prompt }
+                    ],
+                    response_format: { type: 'json_object' },
                     temperature: 0.3,
-                    num_predict: 2048
+                    max_tokens: 2048
+                },
+                {
+                    headers: { Authorization: 'Bearer ' + process.env.DEEPSEEK_API_KEY, 'Content-Type': 'application/json' },
+                    timeout: 120000
                 }
-            },
-            { timeout: 300000 } // 5 minute timeout
-        );
-        
-        const aiResponse = response.data?.response || '';
+            );
+            aiResponse = ds.data?.choices?.[0]?.message?.content || '';
+        } else {
+            const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+            const model = process.env.OLLAMA_CHAT_MODEL || 'llama3.2:3b';
+            console.log('   Provider: ollama (model: ' + model + ')');
+            const response = await axios.post(
+                `${ollamaUrl}/api/generate`,
+                {
+                    model: model,
+                    prompt: prompt,
+                    stream: false,
+                    format: 'json',
+                    options: { temperature: 0.3, num_predict: 2048 }
+                },
+                { timeout: 300000 }
+            );
+            aiResponse = response.data?.response || '';
+        }
         console.log('   AI response length: ' + aiResponse.length + ' chars');
         
         // Parse JSON
@@ -278,7 +303,10 @@ async function main() {
     }
     
     if (options.simple) {
-        console.log('Generation mode: Simple (faster, uses llama3.2:3b)');
+        const provider = (process.env.DEEPSEEK_API_KEY && process.env.FAQ_PROVIDER !== 'ollama')
+            ? 'deepseek (' + (process.env.DEEPSEEK_MODEL || 'deepseek-chat') + ')'
+            : 'ollama (' + (process.env.OLLAMA_CHAT_MODEL || 'llama3.2:3b') + ')';
+        console.log('Generation mode: Simple — provider: ' + provider);
     }
     
     if (options.phase) {
