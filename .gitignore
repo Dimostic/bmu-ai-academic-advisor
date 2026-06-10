@@ -22,3 +22,5 @@ ingest-extract.log
 
 # Microsoft Office owner-lock files (created while a doc is open in Word/Excel)
 ~$*
+# Word recovery / temp files
+~WRL*.tmp

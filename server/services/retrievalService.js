@@ -76,8 +76,8 @@ class RetrievalService {
             // (case-insensitive substring) has its final score multiplied by
             // `primarySourceBoost`, so when the handbook is relevant at all
             // it surfaces ahead of more specialised documents.
-            primarySourcePattern: (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || "students' handbook").toLowerCase(),
-            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.0')
+            primarySourcePattern: (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || 'quick facts').toLowerCase(),
+            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.20')
         };
         
         // Multi-level caches

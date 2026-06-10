@@ -181,6 +181,7 @@ class DocumentProcessor {
                     break;
                 case '.txt':
                 case '.csv':
+                case '.md':
                     text = await this.extractFromText(filePath);
                     break;
                 case '.rtf':

@@ -44,6 +44,8 @@ const SUPERADMIN_EMAIL = 'bmuapps@bmu.edu.ng';
 // Filename → { category, tags, topic_hint } mapping. Best-effort; the LLM
 // still grounds answers via FULLTEXT/RAG so this is mostly metadata.
 const CATEGORY_RULES = [
+    { match: /quick.?facts|cheat.?sheet/i,        category: 'reference',     tags: ['authoritative', 'reference'] },
+    { match: /calendar|timetable/i,                category: 'academic',      tags: ['calendar', 'dates'] },
     { match: /fees|payment|bursary|scholarship/i, category: 'administrative', tags: ['fees', 'payments'] },
     { match: /law|act|conduct|disciplin/i,        category: 'legal',          tags: ['conduct', 'legal'] },
     { match: /career|prospect/i,                   category: 'academic',       tags: ['career'] },
@@ -86,7 +88,10 @@ async function listSources() {
             // real .docx/.xlsx files but are not valid zip archives, so
             // mammoth/xlsx fail with a "central directory" error and leave
             // a useless `failed` row in the documents table.
-            && !d.name.startsWith('~$'))
+            && !d.name.startsWith('~$')
+            // Word also leaves orphan ~WRL####.tmp recovery files in the
+            // working directory after a crash; skip those too.
+            && !/^~WRL\d+\.tmp$/i.test(d.name))
         .map(d => ({
             name: d.name,
             ext: path.extname(d.name).toLowerCase(),
@@ -186,7 +191,7 @@ async function ingestOne(file, opts = { force: false, extractOnly: false }) {
     const { name, ext, srcPath } = file;
 
     // 1. Skip unsupported extensions early
-    const supported = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.rtf'];
+    const supported = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.rtf', '.md'];
     if (!supported.includes(ext)) {
         console.log(`  ⏭️  Skipping ${name} (unsupported extension ${ext})`);
         return { status: 'skipped', reason: 'unsupported' };
