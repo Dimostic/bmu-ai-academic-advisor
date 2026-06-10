@@ -805,6 +805,8 @@ class RetrievalService {
             ]);
             
             const keywords = queryText
+                .toLowerCase()
+                .replace(/[^\w\s]/g, ' ')   // strip punctuation so "motto?" -> "motto"
                 .split(/\s+/)
                 .filter(word => word.length > 2 && !stopWords.has(word))
                 .slice(0, 10);
