@@ -371,7 +371,10 @@ class RetrievalService {
                 ? this._keywordSearch(processedQuery.normalized, topK * 2, documentIds)
                 : Promise.resolve([]),
             // Title-first search for exact document matching
-            this._titleMatchSearch(processedQuery.original, topK, documentIds),
+            // Title-first search: include both original and expanded query
+            // so that BMU-specific synonym expansions (e.g. fees -> fees
+            // structure, MBBS -> medicine) can match dedicated documents.
+            this._titleMatchSearch(processedQuery.expanded || processedQuery.original, topK, documentIds),
             // Exact phrase match in content - high priority for specific queries
             this._exactPhraseSearch(processedQuery.normalized, topK, documentIds)
         ]);
@@ -644,16 +647,23 @@ class RetrievalService {
             const keyPhrases = [];
             if (queryLower.split(/\s+/).length >= 2) keyPhrases.push(queryLower);
             for (let i = 0; i < words.length - 1; i++) {
-                keyPhrases.push(`${words[i]} ${words[i + 1]}`);
+                const pair = `${words[i]} ${words[i + 1]}`;
+                keyPhrases.push(pair);
+                // Also try a singular variant for common pluralisation (fees -> fee, courses -> course)
+                if (words[i].endsWith('s') && words[i].length > 3) keyPhrases.push(`${words[i].slice(0, -1)} ${words[i + 1]}`);
+                if (words[i + 1].endsWith('s') && words[i + 1].length > 3) keyPhrases.push(`${words[i]} ${words[i + 1].slice(0, -1)}`);
                 if (i < words.length - 2) {
                     keyPhrases.push(`${words[i]} ${words[i + 1]} ${words[i + 2]}`);
                 }
             }
-            if (keyPhrases.length === 0) return [];
+            // Dedupe
+            const seen = new Set();
+            const dedupedPhrases = keyPhrases.filter(p => { if (seen.has(p)) return false; seen.add(p); return true; });
+            if (dedupedPhrases.length === 0) return [];
             
             // Build LIKE conditions for title matching
-            const likeConditions = keyPhrases.map(() => 'LOWER(d.title) LIKE ?').join(' OR ');
-            const likeParams = keyPhrases.map(p => `%${p}%`);
+            const likeConditions = dedupedPhrases.map(() => 'LOWER(d.title) LIKE ?').join(' OR ');
+            const likeParams = dedupedPhrases.map(p => `%${p}%`);
             
             // Add document filter if specified
             let whereClause = `(${likeConditions})`;
@@ -697,8 +707,8 @@ class RetrievalService {
                     score = 1.0;
                 } else {
                     // Count matching key phrases
-                    const matchCount = keyPhrases.filter(p => titleLower.includes(p)).length;
-                    score = 0.5 + (matchCount / keyPhrases.length) * 0.5;
+                    const matchCount = dedupedPhrases.filter(p => titleLower.includes(p)).length;
+                    score = 0.5 + (matchCount / dedupedPhrases.length) * 0.5;
                 }
                 
                 // Prefer earlier chunks (they often contain the introduction/summary)
