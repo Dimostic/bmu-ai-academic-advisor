@@ -44,7 +44,7 @@ const SUPERADMIN_EMAIL = 'bmuapps@bmu.edu.ng';
 // Filename → { category, tags, topic_hint } mapping. Best-effort; the LLM
 // still grounds answers via FULLTEXT/RAG so this is mostly metadata.
 const CATEGORY_RULES = [
-    { match: /quick.?facts|cheat.?sheet/i,        category: 'reference',     tags: ['authoritative', 'reference'] },
+    { match: /quick.?facts|cheat.?sheet/i,        category: 'general',       tags: ['authoritative', 'reference', 'cheat-sheet'] },
     { match: /calendar|timetable/i,                category: 'academic',      tags: ['calendar', 'dates'] },
     { match: /fees|payment|bursary|scholarship/i, category: 'administrative', tags: ['fees', 'payments'] },
     { match: /law|act|conduct|disciplin/i,        category: 'legal',          tags: ['conduct', 'legal'] },
