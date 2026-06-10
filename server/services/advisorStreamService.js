@@ -27,10 +27,97 @@ const tts = require('./ttsService');
 const HISTORY_TURNS = parseInt(process.env.ADVISOR_HISTORY_TURNS || '8', 10);
 const RAG_ENABLED   = process.env.ENABLE_RAG !== 'false';
 const RAG_TIMEOUT_MS = parseInt(process.env.ADVISOR_RAG_TIMEOUT_MS || '4000', 10);
+const KEYWORD_FALLBACK_LIMIT = parseInt(process.env.ADVISOR_KEYWORD_FALLBACK_LIMIT || '4', 10);
+const PRIMARY_SOURCE_PATTERN = (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || "students' handbook").toLowerCase();
+const PRIMARY_SOURCE_BOOST   = parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.6');
 
 let retrievalService = null;
 try { retrievalService = require('./retrievalService'); }
 catch (_) { /* missing optional service */ }
+
+const { query } = require('../../config/db');
+
+/**
+ * Fast keyword-only RAG fallback: a direct FULLTEXT MATCH against documents.
+ *
+ * Ranking: title matches are weighted 5x more than content matches so a
+ * focused 60KB "Fees chart" XLSX out-scores a 1MB curriculum PDF that happens
+ * to mention "students" in its director list.
+ *
+ * Snippet selection: rather than anchoring on the first occurrence of any
+ * single query term (which often lands in boilerplate), we slide a window
+ * across the document and pick the position with the most query-term hits.
+ */
+async function _keywordFallback(question) {
+    try {
+        const q = String(question).slice(0, 200);
+        // Primary-source boost: when the Students' Handbook (or whichever
+        // pattern is configured) matches at all, its score is multiplied by
+        // PRIMARY_SOURCE_BOOST so it surfaces ahead of specialised curricula
+        // / regulations that only expand on the handbook's content.
+        const titleLike = `%${PRIMARY_SOURCE_PATTERN}%`;
+        const rows = await query(
+            `SELECT id, title, category, content_text,
+                    ((MATCH(title, description) AGAINST(? IN NATURAL LANGUAGE MODE) * 5)
+                  +   MATCH(title, description, content_text) AGAINST(? IN NATURAL LANGUAGE MODE))
+                  *  CASE WHEN LOWER(title) LIKE ? THEN ? ELSE 1 END
+                    AS score,
+                    CASE WHEN LOWER(title) LIKE ? THEN 1 ELSE 0 END AS is_primary
+             FROM documents
+             WHERE is_active = TRUE
+               AND content_text IS NOT NULL
+             HAVING score > 0
+             ORDER BY is_primary DESC, score DESC
+             LIMIT ?`,
+            [q, q, titleLike, PRIMARY_SOURCE_BOOST, titleLike, KEYWORD_FALLBACK_LIMIT]
+        );
+        if (!rows.length) return '';
+        if (rows[0]?.is_primary) {
+            console.log(`[advisorStreamService] keyword fallback: handbook chunk surfaced first (score=${Number(rows[0].score).toFixed(3)})`);
+        }
+
+        const SNIPPET_BEFORE = 200;
+        const SNIPPET_AFTER  = 1600;
+        const WINDOW = SNIPPET_BEFORE + SNIPPET_AFTER;
+        const STEP   = 400;
+
+        const stopwords = new Set([
+            'what','when','where','which','about','their','this','that','with',
+            'have','been','they','will','into','from','your','there','these',
+            'those','please','tell','should','would','could'
+        ]);
+        const terms = [...new Set(
+            (q.toLowerCase().match(/[a-z][a-z0-9]{3,}/g) || []).filter(w => !stopwords.has(w))
+        )];
+
+        const snippetFor = (text) => {
+            const lower = text.toLowerCase();
+            if (!terms.length) return text.slice(0, WINDOW);
+            // Slide a window and pick the offset with the highest term-hit count.
+            let bestOffset = 0, bestScore = -1;
+            for (let off = 0; off < lower.length; off += STEP) {
+                const slice = lower.slice(off, off + WINDOW);
+                let hits = 0;
+                for (const t of terms) if (slice.includes(t)) hits++;
+                if (hits > bestScore) { bestScore = hits; bestOffset = off; }
+            }
+            // If nothing matched at all, fall back to the head of the doc.
+            if (bestScore <= 0) return text.slice(0, WINDOW);
+            const start = Math.max(0, bestOffset - SNIPPET_BEFORE);
+            const end   = Math.min(text.length, bestOffset + WINDOW);
+            return (start > 0 ? '… ' : '')
+                + text.slice(start, end).replace(/\s+/g, ' ').trim()
+                + (end < text.length ? ' …' : '');
+        };
+
+        return rows.map(r =>
+            `--- ${r.title} (${r.category || 'general'}) ---\n${snippetFor(r.content_text || '')}`
+        ).join('\n\n');
+    } catch (err) {
+        console.warn('[advisorStreamService] keyword fallback failed:', err.message);
+        return '';
+    }
+}
 
 async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
     if (sessionToken) {
@@ -44,22 +131,35 @@ async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
 }
 
 async function _fetchRagContext(question) {
-    if (!RAG_ENABLED || !retrievalService || !question || question.length < 3) return '';
-    // Race retrieval against a tight timeout so a slow embedding service can't
-    // block the start of the LLM stream. We accept the answer-without-context
-    // trade-off here: streaming responsiveness > document grounding.
-    return await Promise.race([
-        retrievalService.retrieve(question, { limit: 5 })
+    if (!RAG_ENABLED || !question || question.length < 3) return '';
+
+    // Race the full retrieval (semantic + keyword) against a tight timeout.
+    // If retrievalService isn't available or its semantic step blocks past
+    // the timeout, fall back to a fast keyword-only FULLTEXT lookup so the
+    // LLM still gets some grounding from the ingested BMU documents.
+    const TIMEOUT = Symbol('rag-timeout');
+    const fullSearch = retrievalService
+        ? retrievalService.retrieve(question, { limit: 5 })
             .then(r => r?.context || '')
             .catch(err => {
-                console.warn('[advisorStreamService] RAG retrieval failed:', err.message);
+                console.warn('[advisorStreamService] RAG retrieve failed:', err.message);
                 return '';
-            }),
-        new Promise(resolve => setTimeout(() => {
-            console.warn(`[advisorStreamService] RAG timeout >${RAG_TIMEOUT_MS}ms, continuing without context`);
-            resolve('');
-        }, RAG_TIMEOUT_MS))
+            })
+        : Promise.resolve('');
+
+    const winner = await Promise.race([
+        fullSearch.then(ctx => ({ kind: 'full', ctx })),
+        new Promise(resolve => setTimeout(() => resolve({ kind: 'timeout' }), RAG_TIMEOUT_MS))
     ]);
+
+    if (winner.kind === 'full' && winner.ctx) return winner.ctx;
+
+    if (winner.kind === 'timeout') {
+        console.warn(`[advisorStreamService] RAG timeout >${RAG_TIMEOUT_MS}ms; falling back to FULLTEXT keyword search`);
+    } else {
+        console.warn('[advisorStreamService] retrievalService returned empty context; falling back to FULLTEXT keyword search');
+    }
+    return await _keywordFallback(question);
 }
 
 async function _buildHistory(conversationId) {
@@ -124,6 +224,11 @@ async function askStream({
         ]);
     } catch (err) {
         console.warn('[advisorStreamService] context build failed:', err.message);
+    }
+    if (ragContext) {
+        console.log(`[advisorStreamService] RAG context: ${ragContext.length} chars`);
+    } else {
+        console.log('[advisorStreamService] RAG context: EMPTY (model will answer from training data)');
     }
 
     const messages = [

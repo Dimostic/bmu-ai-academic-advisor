@@ -19,10 +19,62 @@ const tts = require('./ttsService');
 const HISTORY_TURNS = parseInt(process.env.ADVISOR_HISTORY_TURNS || '8', 10);
 const RAG_ENABLED   = process.env.ENABLE_RAG !== 'false';
 const RAG_TIMEOUT_MS = parseInt(process.env.ADVISOR_RAG_TIMEOUT_MS || '4000', 10);
+const KEYWORD_FALLBACK_LIMIT = parseInt(process.env.ADVISOR_KEYWORD_FALLBACK_LIMIT || '4', 10);
+const PRIMARY_SOURCE_PATTERN = (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || "students' handbook").toLowerCase();
+const PRIMARY_SOURCE_BOOST   = parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.6');
 
 let retrievalService = null;
 try { retrievalService = require('./retrievalService'); }
 catch (err) { console.warn('[advisorService] retrievalService unavailable:', err.message); }
+
+const { query } = require('../../config/db');
+
+async function _keywordFallback(question) {
+    try {
+        const q = String(question).slice(0, 200);
+        // Boost the Students' Handbook so it wins ties; see
+        // advisorStreamService._keywordFallback for the rationale.
+        const titleLike = `%${PRIMARY_SOURCE_PATTERN}%`;
+        const rows = await query(
+            `SELECT id, title, category, content_text,
+                    ((MATCH(title, description) AGAINST(? IN NATURAL LANGUAGE MODE) * 5)
+                  +   MATCH(title, description, content_text) AGAINST(? IN NATURAL LANGUAGE MODE))
+                  *  CASE WHEN LOWER(title) LIKE ? THEN ? ELSE 1 END
+                    AS score,
+                    CASE WHEN LOWER(title) LIKE ? THEN 1 ELSE 0 END AS is_primary
+             FROM documents
+             WHERE is_active = TRUE AND content_text IS NOT NULL
+             HAVING score > 0
+             ORDER BY is_primary DESC, score DESC LIMIT ?`,
+            [q, q, titleLike, PRIMARY_SOURCE_BOOST, titleLike, KEYWORD_FALLBACK_LIMIT]
+        );
+        if (!rows.length) return '';
+        const SNIPPET_BEFORE = 200, SNIPPET_AFTER = 1600, WINDOW = SNIPPET_BEFORE + SNIPPET_AFTER, STEP = 400;
+        const stopwords = new Set(['what','when','where','which','about','their','this','that','with','have','been','they','will','into','from','your','there','these','those','please','tell','should','would','could']);
+        const terms = [...new Set((q.toLowerCase().match(/[a-z][a-z0-9]{3,}/g) || []).filter(w => !stopwords.has(w)))];
+        const snippetFor = text => {
+            const lower = text.toLowerCase();
+            if (!terms.length) return text.slice(0, WINDOW);
+            let bestOffset = 0, bestScore = -1;
+            for (let off = 0; off < lower.length; off += STEP) {
+                const slice = lower.slice(off, off + WINDOW);
+                let hits = 0;
+                for (const t of terms) if (slice.includes(t)) hits++;
+                if (hits > bestScore) { bestScore = hits; bestOffset = off; }
+            }
+            if (bestScore <= 0) return text.slice(0, WINDOW);
+            const start = Math.max(0, bestOffset - SNIPPET_BEFORE);
+            const end = Math.min(text.length, bestOffset + WINDOW);
+            return (start > 0 ? '… ' : '') + text.slice(start, end).replace(/\s+/g, ' ').trim() + (end < text.length ? ' …' : '');
+        };
+        return rows.map(r =>
+            `--- ${r.title} (${r.category || 'general'}) ---\n${snippetFor(r.content_text || '')}`
+        ).join('\n\n');
+    } catch (err) {
+        console.warn('[advisorService] keyword fallback failed:', err.message);
+        return '';
+    }
+}
 
 /**
  * Resolve (or create) the conversation row for this turn.
@@ -43,16 +95,18 @@ async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
  * Returns "" when RAG is disabled or no relevant chunks were found.
  */
 async function _fetchRagContext(question) {
-    if (!RAG_ENABLED || !retrievalService || !question || question.length < 3) return '';
-    return await Promise.race([
-        retrievalService.retrieve(question, { limit: 5 })
+    if (!RAG_ENABLED || !question || question.length < 3) return '';
+    const fullSearch = retrievalService
+        ? retrievalService.retrieve(question, { limit: 5 })
             .then(r => r?.context || '')
-            .catch(err => {
-                console.warn('[advisorService] RAG retrieval failed:', err.message);
-                return '';
-            }),
-        new Promise(resolve => setTimeout(() => resolve(''), RAG_TIMEOUT_MS))
+            .catch(err => { console.warn('[advisorService] RAG retrieve failed:', err.message); return ''; })
+        : Promise.resolve('');
+    const winner = await Promise.race([
+        fullSearch.then(ctx => ({ kind: 'full', ctx })),
+        new Promise(resolve => setTimeout(() => resolve({ kind: 'timeout' }), RAG_TIMEOUT_MS))
     ]);
+    if (winner.kind === 'full' && winner.ctx) return winner.ctx;
+    return await _keywordFallback(question);
 }
 
 /**

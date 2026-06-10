@@ -216,6 +216,61 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .modal input:focus, .modal textarea:focus { outline: none; border-color: var(--accent); }
 .modal menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 8px 0 0; }
 
+/* Wide variant — used by the handbook browser */
+.modal--wide { max-width: 760px; width: 92%; }
+
+/* -------- Handbook (FAQ) browser -------- */
+.handbook { display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; max-height: 80vh; }
+.handbook header { display: flex; align-items: center; justify-content: space-between; margin: 0; }
+.handbook header h2 { margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; color: var(--bg-deep); }
+.handbook-search {
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: #fff;
+}
+.handbook-search i { color: var(--muted); }
+.handbook-search input { flex: 1; border: none; outline: none; font-size: .95rem; background: transparent; color: var(--text); }
+.handbook-categories { display: flex; flex-wrap: wrap; gap: 6px; }
+.handbook-categories .cat-chip {
+    border: 1px solid var(--line); background: #fff; color: var(--text);
+    padding: 5px 10px; border-radius: 999px; font-size: .82rem; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; transition: background .15s, color .15s, border-color .15s;
+}
+.handbook-categories .cat-chip:hover { border-color: var(--accent); color: var(--accent); }
+.handbook-categories .cat-chip.active { background: var(--bg-deep); color: #fff; border-color: var(--bg-deep); }
+.handbook-categories .cat-chip .count {
+    background: rgba(255,255,255,.18); padding: 1px 6px; border-radius: 999px; font-size: .72rem;
+}
+.handbook-categories .cat-chip:not(.active) .count { background: #eef3f3; color: var(--muted); }
+.handbook-results { overflow-y: auto; flex: 1; min-height: 240px; padding-right: 4px; }
+.handbook-results .faq {
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #fff;
+}
+.handbook-results .faq summary {
+    cursor: pointer; font-weight: 600; color: var(--bg-deep); list-style: none;
+    display: flex; align-items: center; gap: 8px;
+}
+.handbook-results .faq summary::-webkit-details-marker { display: none; }
+.handbook-results .faq summary::before { content: '\f054'; font-family: 'Font Awesome 6 Free'; font-weight: 900; font-size: .7rem; color: var(--muted); transition: transform .15s; }
+.handbook-results .faq[open] summary::before { transform: rotate(90deg); }
+.handbook-results .faq .answer { margin-top: 10px; font-size: .92rem; line-height: 1.55; color: var(--text); white-space: pre-wrap; }
+.handbook-results .faq .sources { margin-top: 8px; font-size: .78rem; color: var(--muted); }
+.handbook-results .faq .actions { margin-top: 10px; display: flex; gap: 8px; }
+.handbook-results .faq .actions button {
+    border: 1px solid var(--line); background: #fff; color: var(--text);
+    padding: 4px 10px; border-radius: 8px; font-size: .8rem; cursor: pointer;
+}
+.handbook-results .faq .actions button:hover { border-color: var(--accent); color: var(--accent); }
+.handbook-results .empty { color: var(--muted); text-align: center; padding: 30px 0; }
+.handbook-results .loading { color: var(--muted); text-align: center; padding: 30px 0; }
+.handbook-results .loading i { margin-right: 6px; }
+
+/* Topbar buttons rendered as anchors/buttons share visual treatment */
+button.link-muted {
+    background: transparent; border: none; cursor: pointer; padding: 6px 8px;
+    font: inherit; color: var(--muted);
+}
+button.link-muted:hover { color: var(--bg-deep); }
+
 /* -------- Toasts -------- */
 #toastHost {
     position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 100;

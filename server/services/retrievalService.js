@@ -65,7 +65,16 @@ class RetrievalService {
             // Query processing
             enableQueryExpansion: process.env.ENABLE_QUERY_EXPANSION !== 'false',
             enableHybridSearch: process.env.ENABLE_HYBRID_SEARCH !== 'false',
-            enableReRanking: process.env.ENABLE_RERANKING !== 'false'
+            enableReRanking: process.env.ENABLE_RERANKING !== 'false',
+
+            // Primary-source boost — the Students' Handbook is the canonical
+            // BMU knowledge base; other documents merely expand on it. Any
+            // chunk whose document title matches `primarySourcePattern`
+            // (case-insensitive substring) has its final score multiplied by
+            // `primarySourceBoost`, so when the handbook is relevant at all
+            // it surfaces ahead of more specialised documents.
+            primarySourcePattern: (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || "students' handbook").toLowerCase(),
+            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.6')
         };
         
         // Multi-level caches
@@ -129,9 +138,18 @@ class RetrievalService {
             const reRankedResults = this.config.enableReRanking
                 ? await this._reRankResults(processedQuery.normalized, searchResults)
                 : searchResults;
-            
+
+            // 5b. Re-apply primary-source boost after re-ranking. The
+            // re-ranker rebuilds `score` from scratch (only ~40% of it comes
+            // from the original boosted score), so without this step the
+            // handbook would lose its lead to other documents with strong
+            // term coverage. We re-sort afterwards so the boosted order is
+            // what feeds the context compressor.
+            const boosted = this._applyPrimarySourceBoost(reRankedResults)
+                .sort((a, b) => b.score - a.score);
+
             // 6. Select top results and compress context
-            const topResults = reRankedResults.slice(0, limit);
+            const topResults = boosted.slice(0, limit);
             const compressedContext = await this._compressContext(topResults, processedQuery.normalized);
             
             // 7. Build final result
@@ -412,10 +430,39 @@ class RetrievalService {
         }
         
         // Sort by combined score and filter by minimum relevance
-        return mergedResults
+        return this._applyPrimarySourceBoost(mergedResults)
             .filter(r => r.score >= this.config.minRelevanceScore)
             .sort((a, b) => b.score - a.score)
             .slice(0, topK);
+    }
+    
+    /**
+     * Multiply the score of any chunk whose document title matches the
+     * configured "primary source" (default: the Students' Handbook). The
+     * handbook is BMU's canonical reference; other curricula / regulations
+     * only expand on it, so when both match we want the handbook chunk first.
+     *
+     * Scores are not re-clamped to 1.0 — downstream code (re-ranker, sorter)
+     * compares scores ordinally, so values >1 are fine and preserve the
+     * relative ranking between two boosted handbook chunks.
+     */
+    _applyPrimarySourceBoost(results) {
+        const pattern = this.config.primarySourcePattern;
+        const boost   = this.config.primarySourceBoost;
+        if (!pattern || !(boost > 1)) return results;
+        let boosted = 0;
+        for (const r of results) {
+            const title = (r.documentTitle || '').toLowerCase();
+            if (title.includes(pattern)) {
+                r.primarySourceBoosted = true;
+                r.score = r.score * boost;
+                boosted++;
+            }
+        }
+        if (boosted > 0) {
+            console.log(`[RetrievalService] Primary-source boost x${boost} applied to ${boosted} chunk(s) matching "${pattern}"`);
+        }
+        return results;
     }
     
     /**

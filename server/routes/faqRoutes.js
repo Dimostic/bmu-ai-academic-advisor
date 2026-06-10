@@ -1,11 +1,12 @@
 /**
  * FAQ Routes - API endpoints for FAQ management and user access
- * 
- * ACCESS LEVELS:
- * - PUBLIC (no auth): Limited FAQ access - categories, popular FAQs (truncated answers)
- * - AUTHENTICATED (logged in): Full FAQ access with complete answers
- * - ADMIN: FAQ management, generation, editing
- * - SUPERADMIN: Batch generation, bulk operations
+ *
+ * ACCESS LEVELS (academic-advisor variant):
+ * - PUBLIC (no auth): Full FAQ content. The audience for this app is BMU
+ *   students and we want zero friction on handbook lookups, so we serve
+ *   complete answers without a login wall.
+ * - ADMIN: FAQ management, generation, editing.
+ * - SUPERADMIN: Batch generation, bulk operations.
  */
 
 const express = require('express');
@@ -19,27 +20,12 @@ const { authenticateToken, requireAdmin, requireSuperAdmin, optionalAuth } = req
 const router = express.Router();
 
 // ============================================================
-// HELPER: Truncate answer for public access
+// HELPER: serialise an FAQ for public/authenticated consumption.
+// In the legacy app this truncated answers for anonymous users. For the
+// academic advisor we serve full content regardless — see access-level
+// note above.
 // ============================================================
-const truncateForPublic = (text, maxLength = 150) => {
-    if (!text || text.length <= maxLength) return text;
-    return text.substring(0, maxLength).trim() + '... [Login to see full answer]';
-};
-
-const formatFAQForAccess = (faq, isAuthenticated = false) => {
-    if (isAuthenticated) {
-        return faq; // Full access
-    }
-    // Public access - truncate sensitive fields
-    return {
-        id: faq.id,
-        question: faq.question,
-        answer: truncateForPublic(faq.answer),
-        category_name: faq.category_name || faq.categoryName,
-        qa_type: faq.qa_type || faq.qaType,
-        isPartial: true // Flag to show login prompt
-    };
-};
+const formatFAQForAccess = (faq /*, isAuthenticated */) => faq;
 
 // ==================== PUBLIC ROUTES (limited access) ====================
 

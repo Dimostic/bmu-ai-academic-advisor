@@ -25,9 +25,15 @@
             </div>
         </a>
         <nav class="top-actions">
+            <button id="handbookBtn" class="link-muted" title="Browse the handbook">
+                <i class="fa-solid fa-book"></i> Handbook
+            </button>
             <button id="historyToggleBtn" class="icon-btn hidden" title="Conversation history" aria-label="History">
                 <i class="fa-solid fa-clock-rotate-left"></i>
             </button>
+            <a id="adminLink" href="/legacy" class="link-muted hidden" title="Admin portal (legacy)">
+                <i class="fa-solid fa-toolbox"></i> Admin
+            </a>
             <a href="/legacy" class="link-muted" title="Open the legacy assistant">Legacy</a>
             <div id="authSlot">
                 <button id="loginBtn" class="btn btn-ghost">Sign in</button>
@@ -148,6 +154,26 @@
             </div>
         </aside>
     </main>
+
+    <!-- Handbook (FAQ) browse modal -->
+    <dialog id="handbookDialog" class="modal modal--wide">
+        <div class="handbook">
+            <header>
+                <h2><i class="fa-solid fa-book"></i> Browse the BMU Students' Handbook</h2>
+                <button type="button" class="icon-btn" id="handbookClose" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            </header>
+            <div class="handbook-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="handbookSearch" placeholder="Search handbook questions… (e.g. 'GPA', 'fees', 'hostel')" autocomplete="off" />
+            </div>
+            <div class="handbook-categories" id="handbookCategories" aria-label="Topics">
+                <!-- category chips injected here -->
+            </div>
+            <div class="handbook-results" id="handbookResults" aria-live="polite">
+                <p class="muted">Pick a topic above or type a search term to browse questions answered straight from the BMU Students' Handbook.</p>
+            </div>
+        </div>
+    </dialog>
 
     <!-- Escalation modal -->
     <dialog id="escalateDialog" class="modal">

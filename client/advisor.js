@@ -39,6 +39,15 @@
     const welcomeName   = $('welcomeName');
     const toastHost     = $('toastHost');
 
+    // Handbook (FAQ) browser
+    const handbookBtn       = $('handbookBtn');
+    const handbookDlg       = $('handbookDialog');
+    const handbookClose     = $('handbookClose');
+    const handbookSearch    = $('handbookSearch');
+    const handbookCategories= $('handbookCategories');
+    const handbookResults   = $('handbookResults');
+    const adminLink         = $('adminLink');
+
     // ---------- State ----------
     const state = {
         sessionToken: localStorage.getItem('bmu_advisor_session') || null,
@@ -585,6 +594,165 @@
 
     // ---------- Form ----------
     composer.addEventListener('submit', (ev) => { ev.preventDefault(); askNow(); });
+
+    // ---------- Handbook (FAQ) browser ----------
+    // State for the open dialog: which category filter is active and the
+    // last search term (so refreshing one doesn't clobber the other).
+    const handbook = { categories: [], activeCategoryId: null, lastQuery: '', searchTimer: null };
+
+    function openHandbook() {
+        if (typeof handbookDlg.showModal === 'function') handbookDlg.showModal();
+        else handbookDlg.setAttribute('open', '');
+        if (!handbook.categories.length) loadHandbookCategories();
+        else if (!handbookResults.dataset.touched) showHandbookPopular();
+    }
+    function closeHandbook() {
+        if (typeof handbookDlg.close === 'function') handbookDlg.close();
+        else handbookDlg.removeAttribute('open');
+    }
+    handbookBtn?.addEventListener('click', openHandbook);
+    handbookClose?.addEventListener('click', closeHandbook);
+    handbookDlg?.addEventListener('cancel', closeHandbook); // Esc key
+
+    async function loadHandbookCategories() {
+        try {
+            const data = await api('/api/faq/categories');
+            handbook.categories = data.categories || [];
+            renderHandbookCategories();
+            showHandbookPopular();
+        } catch (err) {
+            // FAQ tables may not be migrated yet, or no admin has generated any
+            // Q&A. Show a friendly hint instead of an error toast.
+            handbookCategories.innerHTML = '';
+            handbookResults.innerHTML = `<p class="empty">The handbook FAQ index isn't ready yet. An admin can generate it from the Admin portal.</p>`;
+            console.warn('[advisor] FAQ categories failed:', err.message);
+        }
+    }
+
+    function renderHandbookCategories() {
+        handbookCategories.innerHTML = '';
+        const all = document.createElement('button');
+        all.type = 'button';
+        all.className = 'cat-chip' + (handbook.activeCategoryId === null ? ' active' : '');
+        all.innerHTML = `<i class="fa-solid fa-fire"></i> Popular`;
+        all.addEventListener('click', () => { handbook.activeCategoryId = null; renderHandbookCategories(); showHandbookPopular(); });
+        handbookCategories.appendChild(all);
+
+        for (const c of handbook.categories) {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'cat-chip' + (handbook.activeCategoryId === c.id ? ' active' : '');
+            const count = (c.qa_count ?? c.qaCount ?? 0);
+            chip.innerHTML = `<i class="${escapeHtml(c.icon || 'fa-solid fa-folder')}"></i> ${escapeHtml(c.name)}<span class="count">${count}</span>`;
+            chip.addEventListener('click', () => {
+                handbook.activeCategoryId = c.id;
+                renderHandbookCategories();
+                showHandbookCategory(c.id);
+            });
+            handbookCategories.appendChild(chip);
+        }
+    }
+
+    function setHandbookLoading() {
+        handbookResults.dataset.touched = '1';
+        handbookResults.innerHTML = `<div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>`;
+    }
+
+    async function showHandbookPopular() {
+        setHandbookLoading();
+        try {
+            const data = await api('/api/faq/popular?limit=15');
+            renderHandbookList(data.faqs || []);
+        } catch (err) {
+            handbookResults.innerHTML = `<p class="empty">No popular questions yet.</p>`;
+        }
+    }
+    async function showHandbookCategory(categoryId) {
+        setHandbookLoading();
+        try {
+            const data = await api(`/api/faq/category/${categoryId}?limit=50`);
+            renderHandbookList(data.faqs || []);
+        } catch (err) {
+            handbookResults.innerHTML = `<p class="empty">No questions in this topic yet.</p>`;
+        }
+    }
+    async function runHandbookSearch(q) {
+        setHandbookLoading();
+        try {
+            const data = await api(`/api/faq/search?q=${encodeURIComponent(q)}&limit=20`);
+            renderHandbookList(data.results || [], { query: q });
+        } catch (err) {
+            handbookResults.innerHTML = `<p class="empty">No matches for "${escapeHtml(q)}".</p>`;
+        }
+    }
+
+    handbookSearch?.addEventListener('input', (ev) => {
+        const q = ev.target.value.trim();
+        clearTimeout(handbook.searchTimer);
+        if (!q) {
+            handbook.searchTimer = setTimeout(() => {
+                if (handbook.activeCategoryId === null) showHandbookPopular();
+                else showHandbookCategory(handbook.activeCategoryId);
+            }, 250);
+            return;
+        }
+        if (q.length < 2) return;
+        handbook.searchTimer = setTimeout(() => runHandbookSearch(q), 300);
+    });
+
+    function renderHandbookList(faqs, { query: q } = {}) {
+        if (!faqs.length) {
+            handbookResults.innerHTML = q
+                ? `<p class="empty">No handbook questions match "${escapeHtml(q)}". Try asking the advisor directly.</p>`
+                : `<p class="empty">No questions in this topic yet.</p>`;
+            return;
+        }
+        handbookResults.innerHTML = '';
+        for (const faq of faqs) {
+            const det = document.createElement('details');
+            det.className = 'faq';
+            const sources = parseSources(faq.answer_sources);
+            det.innerHTML = `
+                <summary>${escapeHtml(faq.question || '')}</summary>
+                <div class="answer">${escapeHtml(faq.answer || '')}</div>
+                ${sources.length ? `<div class="sources"><strong>Source:</strong> ${sources.map(s => escapeHtml(s.title || s.document_title || s)).join(' • ')}</div>` : ''}
+                <div class="actions">
+                    <button type="button" data-action="ask">Ask the advisor about this</button>
+                    <button type="button" data-action="helpful" title="Mark as helpful"><i class="fa-regular fa-thumbs-up"></i></button>
+                    <button type="button" data-action="not-helpful" title="Mark as unhelpful"><i class="fa-regular fa-thumbs-down"></i></button>
+                </div>`;
+            det.querySelector('[data-action="ask"]').addEventListener('click', () => {
+                closeHandbook();
+                questionInput.value = faq.question;
+                askNow();
+            });
+            det.querySelector('[data-action="helpful"]').addEventListener('click', () => sendFaqFeedback(faq.id, true));
+            det.querySelector('[data-action="not-helpful"]').addEventListener('click', () => sendFaqFeedback(faq.id, false));
+            handbookResults.appendChild(det);
+        }
+    }
+    function parseSources(raw) {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch (_) { return []; }
+    }
+    async function sendFaqFeedback(id, helpful) {
+        try {
+            await api(`/api/faq/item/${id}/feedback`, { method: 'POST', body: { helpful } });
+            toast(helpful ? 'Thanks for the feedback!' : 'Noted — we\'ll improve this.');
+        } catch (err) { /* silent */ }
+    }
+
+    // ---------- Admin link (only shown to admins) ----------
+    // We don't have a /api/advisor/me endpoint yet, so probe an admin-only
+    // endpoint cheaply and reveal the link only if it returns 200.
+    (async () => {
+        if (!state.token) return;
+        try {
+            await api('/api/admin/stats');
+            adminLink?.classList.remove('hidden');
+        } catch (_) { /* not an admin; leave hidden */ }
+    })();
 
     // ---------- Helpers ----------
     function scrollToBottom() { transcript.scrollTop = transcript.scrollHeight; }

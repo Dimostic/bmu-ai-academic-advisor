@@ -8,6 +8,11 @@
     "dev": "nodemon server/app.js",
     "train": "node server/services/trainModel.js",
     "setup-db": "node server/scripts/setupDatabase.js",
+    "ingest": "node server/scripts/ingestSources.js",
+    "ingest:extract": "node server/scripts/ingestSources.js --extract-only",
+    "ingest:embed": "node server/scripts/ingestSources.js --embed-only",
+    "ingest:status": "node server/scripts/ingestSources.js --status",
+    "ingest:normalise": "node server/scripts/ingestSources.js --normalise",
     "test": "node server/scripts/smokeTest.js"
   },
   "keywords": [

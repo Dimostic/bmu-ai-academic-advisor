@@ -17,3 +17,8 @@ build/
 *.local-backup
 
 stream-test.log
+ingest-extract.log
+*.log
+
+# Microsoft Office owner-lock files (created while a doc is open in Word/Excel)
+~$*
