@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f3d3e" />
+    <title>Create your account — BMU AI Academic Advisor</title>
+    <link rel="icon" type="image/png" href="bmulogo.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="advisor.css" />
+    <link rel="stylesheet" href="pages.css" />
+</head>
+<body>
+    <header class="top-bar">
+        <a class="brand" href="/">
+            <img src="bmulogo.png" alt="BMU" />
+            <div>
+                <strong>BMU AI Academic Advisor</strong>
+                <small>Create your account</small>
+            </div>
+        </a>
+        <nav class="top-actions">
+            <a href="/login" class="link-muted">Already have an account? <strong>Sign in</strong></a>
+        </nav>
+    </header>
+
+    <main class="auth-shell">
+        <section class="auth-card">
+            <h1>Create your account</h1>
+            <p class="lede">A BMU email gets you in instantly. Other emails need a quick admin approval.</p>
+
+            <div class="auth-banner">
+                <i class="fa-solid fa-bolt"></i>
+                <span>Use your <strong>@bmu.edu.ng</strong> email to skip approval and start chatting straight away.</span>
+            </div>
+            <div id="errorBox" class="auth-error hidden"></div>
+            <div id="successBox" class="auth-success hidden"></div>
+
+            <form class="auth-form" id="regForm" autocomplete="on">
+                <div class="row">
+                    <label>
+                        First name
+                        <input type="text" name="firstName" required autocomplete="given-name" placeholder="Aisha" />
+                    </label>
+                    <label>
+                        Last name
+                        <input type="text" name="lastName" required autocomplete="family-name" placeholder="Bello" />
+                    </label>
+                </div>
+                <label>
+                    Email
+                    <input type="email" name="email" required autocomplete="email" placeholder="aisha.bello@bmu.edu.ng" />
+                </label>
+                <div class="row">
+                    <label>
+                        Phone (optional)
+                        <input type="tel" name="phone" autocomplete="tel" placeholder="0803…" />
+                    </label>
+                    <label>
+                        Department / Programme
+                        <input type="text" name="department" placeholder="MBBS, BNSc, BMLS…" />
+                    </label>
+                </div>
+                <label>
+                    Password
+                    <input type="password" name="password" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters" />
+                </label>
+                <label>
+                    Confirm password
+                    <input type="password" name="confirmPassword" required autocomplete="new-password" minlength="8" placeholder="Repeat your password" />
+                </label>
+                <button type="submit" class="btn btn-primary" id="submitBtn">
+                    <i class="fa-solid fa-user-plus"></i> Create account
+                </button>
+                <p class="alt-action">
+                    Already registered? <a href="/login" id="loginLink">Sign in</a>
+                </p>
+            </form>
+        </section>
+    </main>
+
+    <script>
+    (() => {
+        // If already signed in, hop straight to the advisor.
+        const existing = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+        const params = new URLSearchParams(location.search);
+        const next = params.get('next') || '/advisor';
+        const presetQ = params.get('q');
+        if (existing) { window.location.replace(next); return; }
+
+        // Preserve next/q for the login link too
+        const loginLink = document.getElementById('loginLink');
+        const lurl = new URL('/login', location.origin);
+        lurl.searchParams.set('next', next);
+        if (presetQ) lurl.searchParams.set('q', presetQ);
+        loginLink.href = lurl.pathname + lurl.search;
+
+        const form = document.getElementById('regForm');
+        const errorBox = document.getElementById('errorBox');
+        const successBox = document.getElementById('successBox');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorBox.classList.add('hidden');
+            successBox.classList.add('hidden');
+
+            const fd = new FormData(form);
+            const password = fd.get('password');
+            const confirmPassword = fd.get('confirmPassword');
+            if (password !== confirmPassword) {
+                errorBox.textContent = 'Passwords do not match.';
+                errorBox.classList.remove('hidden');
+                return;
+            }
+            if (password.length < 8) {
+                errorBox.textContent = 'Password must be at least 8 characters.';
+                errorBox.classList.remove('hidden');
+                return;
+            }
+
+            const payload = {
+                firstName: fd.get('firstName'),
+                lastName:  fd.get('lastName'),
+                email:     fd.get('email'),
+                phone:     fd.get('phone') || undefined,
+                department:fd.get('department') || undefined,
+                password
+            };
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating account…';
+
+            try {
+                const r = await fetch('/api/users/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                if (!r.ok || !data.success) {
+                    if (Array.isArray(data.errors) && data.errors.length) {
+                        throw new Error(data.errors.map(x => x.msg || x.message || x).join('; '));
+                    }
+                    throw new Error(data.error || 'Registration failed');
+                }
+
+                if (data.autoApproved) {
+                    // Auto sign-in for BMU emails: use the same credentials.
+                    successBox.textContent = 'Account created — signing you in…';
+                    successBox.classList.remove('hidden');
+                    try {
+                        const loginRes = await fetch('/api/users/login', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: payload.email, password })
+                        }).then(r => r.json());
+                        if (loginRes?.success) {
+                            localStorage.setItem('bmu_token', loginRes.token);
+                            localStorage.setItem('bmu_user', JSON.stringify(loginRes.user));
+                            let target = next;
+                            if (presetQ) target += (target.includes('?') ? '&' : '?') + 'q=' + encodeURIComponent(presetQ);
+                            setTimeout(() => window.location.replace(target), 600);
+                            return;
+                        }
+                    } catch (_) { /* fall through to message */ }
+                    successBox.innerHTML = 'Account created. <a href="/login">Sign in to continue.</a>';
+                } else {
+                    successBox.innerHTML = data.message || 'Account created. Check your email to verify, then wait for admin approval.';
+                    successBox.classList.remove('hidden');
+                    form.reset();
+                }
+            } catch (err) {
+                errorBox.textContent = err.message || 'Registration failed. Please try again.';
+                errorBox.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-user-plus"></i> Create account';
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

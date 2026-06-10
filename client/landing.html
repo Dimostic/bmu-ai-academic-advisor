@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Meet Dr. Tari — your BMU AI Academic Advisor. Sign in for instant answers about programmes, fees, courses, and student life at Bayelsa Medical University." />
+    <meta name="theme-color" content="#0f3d3e" />
+
+    <title>BMU AI Academic Advisor — Sign in to chat with Dr. Tari</title>
+    <link rel="icon" type="image/png" href="bmulogo.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="bmulogo.png" />
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="advisor.css" />
+    <link rel="stylesheet" href="pages.css" />
+</head>
+<body>
+    <header class="top-bar">
+        <a class="brand" href="/">
+            <img src="bmulogo.png" alt="BMU" />
+            <div>
+                <strong>BMU AI Academic Advisor</strong>
+                <small>Bayelsa Medical University</small>
+            </div>
+        </a>
+        <nav class="top-actions">
+            <a href="https://bmuaiagent.mehetti.com" class="link-muted" title="BMU AI Assistant (staff portal)">
+                <i class="fa-solid fa-briefcase"></i> Staff portal
+            </a>
+            <a href="/login" class="btn btn-ghost">Sign in</a>
+            <a href="/register" class="btn btn-primary">Get started</a>
+        </nav>
+    </header>
+
+    <main class="page">
+        <!-- Hero -->
+        <section class="hero">
+            <div>
+                <h1>Meet <span class="accent">Dr. Tari</span> — your AI advisor for life at BMU.</h1>
+                <p>Programmes, courses, fees, exam schedules, hostel rules, scholarships — ask in plain English (or Nigerian English) and get an answer cited from the official BMU documents in seconds.</p>
+                <div class="hero-cta">
+                    <a href="/register" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Create your account</a>
+                    <a href="/login" class="btn btn-ghost"><i class="fa-solid fa-arrow-right-to-bracket"></i> I already have an account</a>
+                </div>
+                <p style="margin-top: 14px; font-size: .9rem; opacity: .8;">
+                    <i class="fa-solid fa-circle-check"></i>
+                    Students with a <strong>@bmu.edu.ng</strong> email are approved instantly. Others need quick admin approval.
+                </p>
+            </div>
+            <div class="hero-illust">
+                <img src="bmulogo.png" alt="BMU logo" />
+                <div class="stat-line">
+                    <div class="stat"><strong id="statDocs">14</strong><span>BMU documents</span></div>
+                    <div class="stat"><strong id="statFaqs">…</strong><span>handbook FAQs</span></div>
+                    <div class="stat"><strong>24/7</strong><span>availability</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Topic teaser -->
+        <section class="section">
+            <h2><i class="fa-solid fa-compass"></i> What can Dr. Tari help with?</h2>
+            <p class="lede">Tap a topic to see a sample question. Sign in for the full conversation.</p>
+            <div class="topic-tiles" id="topicTiles">
+                <button class="topic-tile" data-q="What is the fee for MBBS 100 level at BMU?">
+                    <i class="fa-solid fa-naira-sign"></i>
+                    <strong>Fees, payments & scholarships</strong>
+                    <small>Per-programme tuition for 2025/2026</small>
+                </button>
+                <button class="topic-tile" data-q="What courses do 100 level Nursing students take?">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                    <strong>Programmes, courses & registration</strong>
+                    <small>Course codes, levels, prerequisites</small>
+                </button>
+                <button class="topic-tile" data-q="When does first semester begin in 2025/2026?">
+                    <i class="fa-solid fa-calendar"></i>
+                    <strong>Academic calendar & exams</strong>
+                    <small>Important dates and deadlines</small>
+                </button>
+                <button class="topic-tile" data-q="What are the BMU core values?">
+                    <i class="fa-solid fa-shield-heart"></i>
+                    <strong>Code of conduct & values</strong>
+                    <small>Student handbook policies</small>
+                </button>
+                <button class="topic-tile" data-q="Tell me about the BMU library">
+                    <i class="fa-solid fa-book"></i>
+                    <strong>Library & study skills</strong>
+                    <small>Resources and study tips</small>
+                </button>
+                <button class="topic-tile" data-q="What career paths are available after BMU?">
+                    <i class="fa-solid fa-briefcase"></i>
+                    <strong>Career guidance</strong>
+                    <small>Internships, postings, life after BMU</small>
+                </button>
+            </div>
+        </section>
+
+        <!-- FAQ teaser -->
+        <section class="section">
+            <h2><i class="fa-solid fa-circle-question"></i> Popular questions, answered</h2>
+            <p class="lede">A peek at what students have been asking. The full conversation, voice replies and personalised follow-ups are available after sign-in.</p>
+            <div class="faq-teaser" id="faqTeaser">
+                <div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading questions…</div>
+            </div>
+            <div class="more">
+                <a href="/login" class="btn btn-primary">Sign in to ask your own question</a>
+            </div>
+        </section>
+    </main>
+
+    <script>
+    (() => {
+        // If a session token already exists, skip the landing page and go to /advisor.
+        const tok = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+        if (tok) {
+            window.location.replace('/advisor');
+            return;
+        }
+
+        // Load top FAQs publicly (no auth required) and also surface document count.
+        async function bootstrap() {
+            try {
+                const cats = await fetch('/api/faq/categories').then(r => r.json());
+                if (cats?.success) {
+                    const total = (cats.categories || []).reduce((s, c) => s + (c.qa_count || 0), 0);
+                    document.getElementById('statFaqs').textContent = total;
+                }
+            } catch (_) { document.getElementById('statFaqs').textContent = '—'; }
+
+            const teaser = document.getElementById('faqTeaser');
+            try {
+                const data = await fetch('/api/faq/popular?limit=6').then(r => r.json());
+                if (!data?.success || !data.faqs?.length) {
+                    teaser.innerHTML = '<p class="empty">No FAQs ready yet. Sign in and ask Dr. Tari directly!</p>';
+                    return;
+                }
+                teaser.innerHTML = '';
+                for (const f of data.faqs) {
+                    const det = document.createElement('details');
+                    det.className = 'faq';
+                    det.innerHTML = `
+                        <summary>${escapeHtml(f.question)}</summary>
+                        <div class="answer">${escapeHtml(f.answer)}</div>
+                    `;
+                    teaser.appendChild(det);
+                }
+            } catch (err) {
+                teaser.innerHTML = '<p class="empty">Could not load FAQs right now. Sign in to ask Dr. Tari directly.</p>';
+            }
+        }
+
+        // Topic tile click — bounce to login with the question pre-filled.
+        document.querySelectorAll('.topic-tile').forEach(el => {
+            el.addEventListener('click', () => {
+                const q = el.dataset.q || '';
+                window.location.href = '/login?next=/advisor&q=' + encodeURIComponent(q);
+            });
+        });
+
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        bootstrap();
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f3d3e" />
+    <title>Admin — BMU AI Academic Advisor</title>
+    <link rel="icon" type="image/png" href="bmulogo.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="advisor.css" />
+    <link rel="stylesheet" href="pages.css" />
+</head>
+<body>
+    <header class="top-bar">
+        <a class="brand" href="/">
+            <img src="bmulogo.png" alt="BMU" />
+            <div>
+                <strong>BMU AI Advisor</strong>
+                <small>Admin portal</small>
+            </div>
+        </a>
+        <nav class="top-actions">
+            <a href="/advisor" class="link-muted"><i class="fa-solid fa-message"></i> Advisor</a>
+            <a href="https://bmuaiagent.mehetti.com" class="link-muted"><i class="fa-solid fa-briefcase"></i> Staff portal</a>
+            <div id="authSlot"></div>
+        </nav>
+    </header>
+
+    <main class="admin-shell">
+        <aside class="admin-nav" aria-label="Admin sections">
+            <button data-section="dashboard" class="active"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
+            <button data-section="documents"><i class="fa-solid fa-folder-open"></i> Documents</button>
+            <button data-section="faqs"><i class="fa-solid fa-comments"></i> FAQs</button>
+            <button data-section="users"><i class="fa-solid fa-users"></i> Users</button>
+            <button data-section="audit"><i class="fa-solid fa-shield-halved"></i> Audit trail</button>
+            <button data-section="metrics"><i class="fa-solid fa-chart-line"></i> Retrieval metrics</button>
+        </aside>
+
+        <section class="admin-main" id="adminMain">
+            <div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>
+        </section>
+    </main>
+
+    <div id="toastHost" aria-live="polite"></div>
+
+    <script src="admin.js" defer></script>
+</body>
+</html>

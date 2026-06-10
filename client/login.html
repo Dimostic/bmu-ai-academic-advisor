@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f3d3e" />
+    <title>Sign in — BMU AI Academic Advisor</title>
+    <link rel="icon" type="image/png" href="bmulogo.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="advisor.css" />
+    <link rel="stylesheet" href="pages.css" />
+</head>
+<body>
+    <header class="top-bar">
+        <a class="brand" href="/">
+            <img src="bmulogo.png" alt="BMU" />
+            <div>
+                <strong>BMU AI Academic Advisor</strong>
+                <small>Sign in to continue</small>
+            </div>
+        </a>
+        <nav class="top-actions">
+            <a href="/" class="link-muted"><i class="fa-solid fa-arrow-left"></i> Back home</a>
+        </nav>
+    </header>
+
+    <main class="auth-shell">
+        <section class="auth-card">
+            <h1>Welcome back</h1>
+            <p class="lede">Sign in to chat with Dr. Tari, browse the handbook, and pick up where you left off.</p>
+
+            <div id="banner" class="auth-banner hidden">
+                <i class="fa-solid fa-circle-info"></i>
+                <span id="bannerMsg"></span>
+            </div>
+            <div id="errorBox" class="auth-error hidden"></div>
+
+            <form class="auth-form" id="loginForm" autocomplete="on">
+                <label>
+                    Email
+                    <input type="email" name="email" required autocomplete="username" placeholder="you@bmu.edu.ng" />
+                </label>
+                <label>
+                    Password
+                    <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••" minlength="6" />
+                </label>
+                <button type="submit" class="btn btn-primary" id="submitBtn">
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i> Sign in
+                </button>
+                <p class="alt-action">
+                    New to BMU AI Advisor? <a href="/register" id="registerLink">Create an account</a>
+                </p>
+                <p class="alt-action" style="margin-top: 4px;">
+                    <a href="#" id="forgotLink">Forgot your password?</a>
+                </p>
+            </form>
+        </section>
+    </main>
+
+    <script>
+    (() => {
+        // If already signed in, skip login.
+        const existing = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+        const params = new URLSearchParams(location.search);
+        const next = params.get('next') || '/advisor';
+        const presetQ = params.get('q');
+
+        if (existing) { window.location.replace(next); return; }
+
+        // Carry next/q into the register link so the round-trip is preserved.
+        const regLink = document.getElementById('registerLink');
+        const regUrl = new URL('/register', location.origin);
+        regUrl.searchParams.set('next', next);
+        if (presetQ) regUrl.searchParams.set('q', presetQ);
+        regLink.href = regUrl.pathname + regUrl.search;
+
+        // Optional banner: show a friendly note if user came from a topic tile.
+        if (presetQ) {
+            const banner = document.getElementById('banner');
+            document.getElementById('bannerMsg').textContent =
+                'Sign in to ask Dr. Tari: "' + presetQ + '"';
+            banner.classList.remove('hidden');
+        }
+
+        const form = document.getElementById('loginForm');
+        const errorBox = document.getElementById('errorBox');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorBox.classList.add('hidden');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Signing in…';
+
+            const fd = new FormData(form);
+            const payload = { email: fd.get('email'), password: fd.get('password') };
+
+            try {
+                const r = await fetch('/api/users/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                if (!r.ok || !data.success) {
+                    throw new Error(data.error || 'Sign-in failed');
+                }
+                // Store token + user info; remember-me via localStorage by default
+                localStorage.setItem('bmu_token', data.token);
+                localStorage.setItem('bmu_user', JSON.stringify(data.user));
+
+                // Hand back to whatever page asked us to authenticate
+                let target = next;
+                if (presetQ) target += (target.includes('?') ? '&' : '?') + 'q=' + encodeURIComponent(presetQ);
+                window.location.replace(target);
+            } catch (err) {
+                errorBox.textContent = err.message || 'Sign-in failed. Please try again.';
+                errorBox.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i> Sign in';
+            }
+        });
+
+        // Forgot password — friendly stub.
+        document.getElementById('forgotLink').addEventListener('click', (e) => {
+            e.preventDefault();
+            const email = form.querySelector('input[name=email]').value.trim();
+            if (!email) {
+                alert('Type your email above first, then click "Forgot your password?" again.');
+                return;
+            }
+            fetch('/api/users/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            }).then(r => r.json()).then(data => {
+                alert(data.message || 'If an account exists for that email, a reset link has been sent.');
+            }).catch(() => alert('Could not send reset link right now.'));
+        });
+    })();
+    </script>
+</body>
+</html>

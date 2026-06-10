@@ -23,14 +23,16 @@ router.post('/register', registerValidation, async (req, res) => {
         // Check if user already exists (including unverified)
         const existingUser = await User.findByEmailAny(email);
         if (existingUser) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Email already registered' 
+            return res.status(400).json({
+                success: false,
+                error: 'Email already registered'
             });
         }
 
-        // Create user with verification token
-        const { userId, verificationToken } = await User.create({
+        // Create user with verification token. User.create auto-approves
+        // accounts with a @<UNIVERSITY_DOMAIN> email so legitimate BMU
+        // students can log in immediately without admin intervention.
+        const { userId, verificationToken, autoApproved } = await User.create({
             email,
             password,
             firstName,
@@ -40,20 +42,21 @@ router.post('/register', registerValidation, async (req, res) => {
             role: 'staff'
         });
 
-        // Send verification email
-        const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-        const verificationUrl = `${baseUrl}/#/verify-email?token=${verificationToken}`;
-
-        try {
-            await emailService.sendVerificationEmail({
-                to: email,
-                userName: firstName || email.split('@')[0],
-                verifyUrl: verificationUrl
-            });
-            console.log(`[Registration] Verification email sent to: ${email}`);
-        } catch (emailError) {
-            console.error('[Registration] Failed to send verification email:', emailError.message);
-            // Don't fail registration, user can request resend
+        // Email flow: send a verification email only when we did NOT auto-
+        // approve. Auto-approved users are usable immediately.
+        if (!autoApproved) {
+            const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+            const verificationUrl = `${baseUrl}/#/verify-email?token=${verificationToken}`;
+            try {
+                await emailService.sendVerificationEmail({
+                    to: email,
+                    userName: firstName || email.split('@')[0],
+                    verifyUrl: verificationUrl
+                });
+                console.log(`[Registration] Verification email sent to: ${email}`);
+            } catch (emailError) {
+                console.error('[Registration] Failed to send verification email:', emailError.message);
+            }
         }
 
         // Log action
@@ -62,24 +65,27 @@ router.post('/register', registerValidation, async (req, res) => {
             action: 'USER_REGISTERED',
             entityType: 'user',
             entityId: userId,
-            details: { email, requiresVerification: true },
+            details: { email, autoApproved },
             ipAddress: req.ip,
             userAgent: req.headers['user-agent']
         });
 
-        res.status(201).json({ 
-            success: true, 
-            message: 'Registration successful! Please check your email to verify your account.',
+        res.status(201).json({
+            success: true,
+            message: autoApproved
+                ? 'Registration successful! You can sign in now with your BMU email.'
+                : 'Registration successful! Please check your email to verify your account.',
             userId,
-            requiresVerification: true,
-            requiresApproval: true
+            requiresVerification: !autoApproved,
+            requiresApproval: !autoApproved,
+            autoApproved
         });
 
     } catch (error) {
         console.error('Registration error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Registration failed. Please try again.' 
+        res.status(500).json({
+            success: false,
+            error: 'Registration failed. Please try again.'
         });
     }
 });

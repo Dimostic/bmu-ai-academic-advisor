@@ -114,11 +114,30 @@ app.get('/bmulogo.png', (req, res) => {
     res.sendFile(path.join(__dirname, '../bmulogo.png'));
 });
 
-// New homepage: the BMU AI Academic Advisor.
-// These explicit routes MUST be registered before express.static, otherwise the
-// static middleware will serve the legacy client/index.html for "/" first.
-app.get(['/', '/advisor'], (req, res) => {
+// Page routes — explicit routes registered BEFORE express.static so they win
+// over any same-name file in client/. The actual auth gating is enforced on
+// the API side; the client also redirects to /login when no token exists.
+//
+//   /          -> public marketing landing (with FAQ teaser)
+//   /login     -> sign-in form
+//   /register  -> account creation form (auto-approves @bmu.edu.ng)
+//   /advisor   -> the talking advisor (login required client-side)
+//   /admin     -> advisor-styled admin portal (admin role required client-side)
+//   /legacy    -> the inherited assistant SPA (kept for backwards compat)
+app.get(['/', '/landing'], (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/landing.html'));
+});
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/login.html'));
+});
+app.get('/register', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/register.html'));
+});
+app.get('/advisor', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/advisor.html'));
+});
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/admin.html'));
 });
 app.get(['/legacy', '/legacy/'], (req, res) => {
     res.sendFile(path.join(__dirname, '../client/index.html'));
@@ -224,20 +243,22 @@ app.get('/api/settings/public', async (req, res) => {
     }
 });
 
-// Serve frontend for all other non-API routes (SPA support)
-// Primary advisor routes are mounted earlier (before express.static). The
-// catch-all below covers deep links and SPA-style sub-paths.
+// Serve frontend for all other non-API routes (SPA support).
+// Primary page routes are mounted earlier (before express.static). The
+// catch-all below covers deep links and unknown paths.
 app.get('*', (req, res, next) => {
-    // Avoid SPA fallback for API or upload paths.
     if (req.path === '/api' || req.path.startsWith('/api/')) return next();
     if (req.path === '/uploads' || req.path.startsWith('/uploads/')) return next();
-    // If the request looks like an asset request, let it 404 instead of returning HTML.
     if (path.extname(req.path)) return next();
-    // /legacy/* sub-paths still go to the legacy SPA.
     if (req.path.startsWith('/legacy/')) {
         return res.sendFile(path.join(__dirname, '../client/index.html'));
     }
-    res.sendFile(path.join(__dirname, '../client/advisor.html'));
+    if (req.path.startsWith('/admin'))    return res.sendFile(path.join(__dirname, '../client/admin.html'));
+    if (req.path.startsWith('/advisor'))  return res.sendFile(path.join(__dirname, '../client/advisor.html'));
+    if (req.path.startsWith('/login'))    return res.sendFile(path.join(__dirname, '../client/login.html'));
+    if (req.path.startsWith('/register')) return res.sendFile(path.join(__dirname, '../client/register.html'));
+    // Default: marketing landing.
+    res.sendFile(path.join(__dirname, '../client/landing.html'));
 });
 
 // Global error handler

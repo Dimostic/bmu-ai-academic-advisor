@@ -17,6 +17,23 @@
 (() => {
     'use strict';
 
+    // -----------------------------------------------------------------------
+    // Auth gate: the advisor experience requires a signed-in user. If we
+    // don't have a JWT, bounce to /login carrying the URL we wanted to land
+    // on (so the login page can come back here). Any ?q=... param survives
+    // the round-trip via the login page.
+    // -----------------------------------------------------------------------
+    const _existingToken = sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token');
+    if (!_existingToken) {
+        const here = location.pathname + location.search;
+        const params = new URLSearchParams();
+        params.set('next', '/advisor');
+        const presetQ = new URLSearchParams(location.search).get('q');
+        if (presetQ) params.set('q', presetQ);
+        location.replace('/login?' + params.toString());
+        return;
+    }
+
     // ---------- DOM ----------
     const $ = (id) => document.getElementById(id);
     const transcript    = $('transcript');
@@ -771,5 +788,48 @@
         const personaName = window.ADVISOR_NAME || 'Dr. Tari';
         advisorName.textContent = personaName;
         welcomeName.textContent = personaName;
+
+        // -------------------------------------------------------------------
+        // Auth UI: replace the static "Sign in" button with a sign-out
+        // control showing the signed-in user's first name. The auth gate at
+        // the top of this IIFE has already redirected unauthenticated
+        // visitors to /login, so by this point a user must exist.
+        // -------------------------------------------------------------------
+        let user = null;
+        try { user = JSON.parse(localStorage.getItem('bmu_user') || 'null'); } catch (_) {}
+        if (!user) {
+            // Fall back to /api/users/me if we somehow didn't cache the user.
+            try { const me = await api('/api/users/me'); user = me?.user || null; }
+            catch (_) { /* leave null */ }
+        }
+        const authSlot = document.getElementById('authSlot');
+        if (authSlot) {
+            const name = (user?.firstName || user?.first_name || user?.email || 'You').toString().split(' ')[0];
+            authSlot.innerHTML = `
+                <span class="link-muted" title="${escapeHtml(user?.email || '')}">
+                    <i class="fa-solid fa-user"></i> ${escapeHtml(name)}
+                </span>
+                <button id="logoutBtn" class="btn btn-ghost" title="Sign out">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out
+                </button>
+            `;
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                try { await api('/api/users/logout', { method: 'POST' }); } catch (_) {}
+                localStorage.removeItem('bmu_token');
+                localStorage.removeItem('bmu_user');
+                sessionStorage.removeItem('bmu_token');
+                location.replace('/');
+            });
+        }
+
+        // If the user came here from a topic tile (?q=…), pre-fill and ask.
+        const presetQ = new URLSearchParams(location.search).get('q');
+        if (presetQ) {
+            try {
+                history.replaceState(null, '', '/advisor');  // clean the URL
+                questionInput.value = presetQ;
+                setTimeout(askNow, 400);
+            } catch (_) { /* non-fatal */ }
+        }
     })();
 })();

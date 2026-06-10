@@ -7,25 +7,39 @@ class User {
     static async create(userData) {
         const { email, password, firstName, lastName, phone, department, role = 'staff' } = userData;
         const hashedPassword = await bcrypt.hash(password, 10);
-        
-        // Generate verification token
+
+        // Auto-approve accounts whose email belongs to the BMU university
+        // domain. These users skip the email-verification + admin-approval
+        // workflow entirely — they can log in immediately. Anyone with a
+        // non-BMU email still goes through the verify-then-approve queue.
+        const universityDomain = (process.env.UNIVERSITY_DOMAIN || 'bmu.edu.ng').toLowerCase();
+        const autoApprove = typeof email === 'string'
+            && email.toLowerCase().endsWith('@' + universityDomain);
+
+        // Generate verification token (still set even when auto-approving,
+        // in case an admin later wants to revoke and re-verify).
         const verificationToken = crypto.randomBytes(32).toString('hex');
-        const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-        
+        const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
         // Default monthly_prompt_limit is 100 for staff users
         const sql = `
-            INSERT INTO users (email, password, first_name, last_name, phone, department, role, 
-                verification_token, verification_token_expires, is_verified, is_approved, is_active, 
-                monthly_prompt_limit, monthly_prompt_count, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, TRUE, 100, 0, NOW())
+            INSERT INTO users (email, password, first_name, last_name, phone, department, role,
+                verification_token, verification_token_expires, is_verified, is_approved, is_active,
+                approved_at,
+                monthly_prompt_limit, monthly_prompt_count, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, 100, 0, NOW())
         `;
         const result = await query(sql, [
             email, hashedPassword, firstName, lastName, phone, department, role,
-            verificationToken, verificationTokenExpires
+            verificationToken, verificationTokenExpires,
+            autoApprove ? 1 : 0,           // is_verified
+            autoApprove ? 1 : 0,           // is_approved
+            autoApprove ? new Date() : null // approved_at
         ]);
-        return { 
-            userId: result.insertId, 
-            verificationToken // Return token for sending verification email
+        return {
+            userId: result.insertId,
+            verificationToken, // Return token for sending verification email (skipped when autoApprove=true)
+            autoApproved: autoApprove
         };
     }
 
