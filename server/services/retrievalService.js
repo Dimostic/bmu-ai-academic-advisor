@@ -829,6 +829,15 @@ class RetrievalService {
                 console.log(`[RetrievalService] Keyword search with doc filter: ${documentIds.join(',')}`);
             }
             
+            // Score chunks in SQL by counting how many of the requested
+            // keywords match. Without this, MySQL returns the first N rows
+            // it finds with no ordering — typically by insertion order — so
+            // smaller / later-inserted documents (like the 8-chunk fees doc)
+            // are dropped before they're considered. Now we score and
+            // ORDER BY DESC, then take the top K.
+            const scoreExpr = keywords.map(() => '(LOWER(dc.content) LIKE ?)').join(' + ');
+            const scoreParams = keywords.map(k => `%${k}%`);
+
             const rows = await query(`
                 SELECT 
                     dc.id,
@@ -836,12 +845,14 @@ class RetrievalService {
                     dc.chunk_index as chunkIndex,
                     dc.content,
                     d.title as documentTitle,
-                    d.category as documentCategory
+                    d.category as documentCategory,
+                    (${scoreExpr}) AS match_count
                 FROM document_chunks dc
                 JOIN documents d ON dc.document_id = d.id
                 WHERE ${whereClause}
+                ORDER BY match_count DESC, dc.document_id ASC
                 LIMIT ?
-            `, [...queryParams, topK]);
+            `, [...scoreParams, ...queryParams, topK]);
             
             // Calculate simple relevance score based on keyword matches
             return (rows || []).map(row => {
