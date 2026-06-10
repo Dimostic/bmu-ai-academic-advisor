@@ -50,9 +50,12 @@ class RetrievalService {
             reRankTopK: parseInt(process.env.RERANK_TOP_K) || 7,
             minRelevanceScore: parseFloat(process.env.MIN_RELEVANCE_SCORE) || 0.2, // Lowered from 0.3
             
-            // Hybrid search weights - more balanced for better exact match handling
-            semanticWeight: parseFloat(process.env.SEMANTIC_WEIGHT) || 0.6,
-            keywordWeight: parseFloat(process.env.KEYWORD_WEIGHT) || 0.4,
+            // Hybrid search weights — give semantic full weight so high-cosine
+            // matches compete with the bounded title/exact-phrase boosts.
+            // Title match contributes via the boost ladder above, not via
+            // per-chunk weight.
+            semanticWeight: parseFloat(process.env.SEMANTIC_WEIGHT) || 1.0,
+            keywordWeight: parseFloat(process.env.KEYWORD_WEIGHT) || 0.5,
             
             // Caching
             queryCacheTTL: 5 * 60 * 1000, // 5 minutes
@@ -351,8 +354,11 @@ class RetrievalService {
         const seen = new Set();
         const mergedResults = [];
         
-        // PRIORITY 0: Add exact phrase matches with HIGHEST boost
-        // These are chunks that contain the exact query phrase
+        // PRIORITY 0: Exact phrase matches.
+        // Previously forced to score 0.98+, which (combined with the title
+        // match floor of 0.95) meant any chunk merely containing 2 query
+        // words could outrank the best semantic hit. Now treated as a high
+        // but bounded score that still respects content relevance.
         for (const result of exactPhraseResults) {
             const key = `${result.documentId}-${result.chunkIndex}`;
             if (!seen.has(key)) {
@@ -363,15 +369,21 @@ class RetrievalService {
                     keywordScore: 0,
                     titleMatchScore: 0,
                     exactPhraseScore: result.score,
-                    // Exact phrase matches get the highest boost
-                    score: 0.98 + (result.score * 0.02)
+                    score: 0.65 + (result.score * 0.20)
                 });
                 console.log(`[RetrievalService] Exact phrase match: "${result.documentTitle}" score=${result.score.toFixed(3)}`);
             }
         }
         
-        // PRIORITY 1: Add title-matched results with HIGH boost
-        // These are chunks from documents whose titles match the query
+        // PRIORITY 1: Title-matched results.
+        //
+        // Previously these were forced to score >=0.95 which made them ALWAYS
+        // outrank semantic hits. Combined with over-fired title matching that
+        // can be triggered by many docs, this caused the wrong document to
+        // dominate (e.g. handbook crushes a dedicated fees doc on a fee
+        // query). Now we treat title-match as a strong but bounded boost on
+        // top of the chunk's own semantic score so the relevance of the
+        // chunk content still matters.
         for (const result of titleMatchResults) {
             const key = `${result.documentId}-${result.chunkIndex}`;
             if (!seen.has(key)) {
@@ -382,8 +394,7 @@ class RetrievalService {
                     keywordScore: 0,
                     titleMatchScore: result.score,
                     exactPhraseScore: 0,
-                    // Title matches get a massive boost (1.5x) to ensure they appear first
-                    score: 0.95 + (result.score * 0.05)
+                    score: 0.55 + (result.score * 0.25)
                 });
                 console.log(`[RetrievalService] Title match: "${result.documentTitle}" score=${result.score.toFixed(3)}`);
             }
@@ -577,34 +588,41 @@ class RetrievalService {
     }
     
     /**
-     * Title-first search: Find documents whose titles match the query phrase
-     * This ensures that when a user asks about "ASPIRE Agenda", documents with that title are prioritized
+     * Title-first search: Find documents whose titles match the query phrase.
+     *
+     * IMPORTANT: only match on multi-token phrases (>=2 words), never single
+     * words. Single-word title matching badly over-fires when titles share
+     * any common term — e.g. searching "What are the fees for MBBS" against
+     * a doc titled "BMU CAREER PROSPECTS" returns hits because both contain
+     * "BMU". This drowns out the dedicated fees document in the merge step
+     * (which scores title hits at 0.95+, far above any semantic match).
+     *
+     * Stop-words excluded so phrases like "the fees" don't match either.
      */
     async _titleMatchSearch(queryText, topK, documentIds = null) {
         try {
             const queryLower = queryText.toLowerCase().trim();
-            
-            // Extract key phrases (2-3 word combinations that might be document names)
-            const words = queryLower.split(/\s+/).filter(w => w.length > 2);
+            const STOPWORDS = new Set([
+                'what','when','where','which','about','their','this','that','with',
+                'have','been','they','will','into','from','your','there','these',
+                'those','please','tell','should','would','could','what','is','the',
+                'about','tell','me','can','you','how','does','do','for','are','any','many'
+            ]);
+            const words = queryLower
+                .replace(/[^a-z0-9 ]/g, ' ')
+                .split(/\s+/)
+                .filter(w => w.length > 2 && !STOPWORDS.has(w));
+
+            // Build ONLY multi-token phrases (2-3 words). Single words are
+            // intentionally dropped — they cause too many spurious hits.
             const keyPhrases = [];
-            
-            // Add the full query as a phrase
-            keyPhrases.push(queryLower);
-            
-            // Add significant word pairs and triplets
+            if (queryLower.split(/\s+/).length >= 2) keyPhrases.push(queryLower);
             for (let i = 0; i < words.length - 1; i++) {
                 keyPhrases.push(`${words[i]} ${words[i + 1]}`);
                 if (i < words.length - 2) {
                     keyPhrases.push(`${words[i]} ${words[i + 1]} ${words[i + 2]}`);
                 }
             }
-            
-            // Add individual significant words (not stop words)
-            const significantWords = words.filter(w => 
-                !['what', 'is', 'the', 'about', 'tell', 'me', 'can', 'you', 'how', 'does', 'do'].includes(w)
-            );
-            keyPhrases.push(...significantWords);
-            
             if (keyPhrases.length === 0) return [];
             
             // Build LIKE conditions for title matching
