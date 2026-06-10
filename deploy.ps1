@@ -5,7 +5,7 @@
 $ErrorActionPreference = 'Stop'
 
 $VpsHost  = 'bmu-vps'
-$AppDir   = '/var/www/bmuaiagent'
+$AppDir   = '/var/www/bmu-ai-academic-advisor'
 $AppName  = 'bmu-ai-academic-advisor'
 $AppEntry = 'server/app.js'
 

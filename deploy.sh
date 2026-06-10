@@ -5,7 +5,7 @@
 set -e
 
 VPS_HOST="bmu-vps"
-APP_DIR="/var/www/bmuaiagent"
+APP_DIR="/var/www/bmu-ai-academic-advisor"
 APP_NAME="bmuaiagent"
 APP_ENTRY="server/app.js"
 
