@@ -50,7 +50,52 @@
                 </p>
             </div>
             <div class="hero-illust">
-                <img src="bmulogo.png" alt="BMU logo" />
+                <div class="hero-card">
+                    <div class="hero-card-glow" aria-hidden="true"></div>
+                    <div class="hero-avatar" aria-hidden="true">
+                        <!-- Stylised Dr. Tari portrait, BMU teal palette. -->
+                        <svg viewBox="0 0 200 200" width="148" height="148" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Dr. Tari avatar">
+                            <defs>
+                                <radialGradient id="ringGrad" cx="50%" cy="50%" r="50%">
+                                    <stop offset="0%" stop-color="#23b6a5" stop-opacity="0.55"/>
+                                    <stop offset="70%" stop-color="#0d3d3a" stop-opacity="0"/>
+                                </radialGradient>
+                                <linearGradient id="coatGrad" x1="0" x2="0" y1="0" y2="1">
+                                    <stop offset="0%" stop-color="#ffffff"/>
+                                    <stop offset="100%" stop-color="#dfeeec"/>
+                                </linearGradient>
+                            </defs>
+                            <circle cx="100" cy="100" r="98" fill="url(#ringGrad)"/>
+                            <circle cx="100" cy="100" r="78" fill="#0a2e2c" stroke="#23b6a5" stroke-width="2"/>
+                            <!-- shoulders / coat -->
+                            <path d="M30 178 Q100 120 170 178 L170 200 L30 200 Z" fill="url(#coatGrad)"/>
+                            <path d="M88 138 L100 168 L112 138 Z" fill="#23b6a5"/>
+                            <!-- neck -->
+                            <rect x="88" y="120" width="24" height="20" fill="#a37152"/>
+                            <!-- head -->
+                            <ellipse cx="100" cy="98" rx="32" ry="36" fill="#a37152"/>
+                            <!-- hair -->
+                            <path d="M68 88 Q70 60 100 58 Q130 60 132 88 Q132 76 100 72 Q68 76 68 88 Z" fill="#1a1a1a"/>
+                            <!-- eyes -->
+                            <circle cx="89" cy="100" r="3" fill="#1a1a1a"/>
+                            <circle cx="111" cy="100" r="3" fill="#1a1a1a"/>
+                            <!-- glasses -->
+                            <circle cx="89" cy="100" r="8" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+                            <circle cx="111" cy="100" r="8" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+                            <line x1="97" y1="100" x2="103" y2="100" stroke="#1a1a1a" stroke-width="1.5"/>
+                            <!-- smile -->
+                            <path d="M91 116 Q100 124 109 116" stroke="#1a1a1a" stroke-width="2" fill="none" stroke-linecap="round"/>
+                            <!-- BMU badge on coat -->
+                            <circle cx="135" cy="180" r="9" fill="#23b6a5"/>
+                            <text x="135" y="184" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#fff">BMU</text>
+                        </svg>
+                    </div>
+                    <div class="hero-card-name">
+                        <strong>Dr. Tari</strong>
+                        <span>BMU AI Academic Advisor</span>
+                    </div>
+                    <img class="hero-card-logo" src="bmulogo.png" alt="Baze Medical University" />
+                </div>
                 <div class="stat-line">
                     <div class="stat"><strong id="statDocs">14</strong><span>BMU documents</span></div>
                     <div class="stat"><strong id="statFaqs">…</strong><span>handbook FAQs</span></div>

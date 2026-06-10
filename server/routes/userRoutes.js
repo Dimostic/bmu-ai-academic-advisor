@@ -18,7 +18,7 @@ const router = express.Router();
 // Registration
 router.post('/register', registerValidation, async (req, res) => {
     try {
-        const { email, password, firstName, lastName, phone, department } = req.body;
+        const { email, password, firstName, lastName, phone, department, matricNo } = req.body;
 
         // Check if user already exists (including unverified)
         const existingUser = await User.findByEmailAny(email);
@@ -39,6 +39,7 @@ router.post('/register', registerValidation, async (req, res) => {
             lastName,
             phone,
             department,
+            matricNo,
             role: 'staff'
         });
 

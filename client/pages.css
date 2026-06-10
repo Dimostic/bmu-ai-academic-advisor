@@ -50,6 +50,34 @@
 .hero-illust .stat strong { display: block; font-size: 1.4rem; font-weight: 800; color: var(--accent-soft); }
 .hero-illust .stat span { font-size: .82rem; opacity: .85; }
 
+/* Hero card – portrait + name + BMU lockup */
+.hero-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+        "avatar name"
+        "logo   logo";
+    gap: 14px 18px;
+    align-items: center;
+    padding: 14px 6px 10px;
+}
+.hero-card-glow {
+    position: absolute; inset: -10px; z-index: 0; border-radius: 22px;
+    background: radial-gradient(60% 60% at 30% 30%, rgba(35,182,165,.35), transparent 70%);
+    filter: blur(10px); pointer-events: none;
+}
+.hero-avatar { grid-area: avatar; position: relative; z-index: 1; }
+.hero-avatar svg { display: block; border-radius: 50%; box-shadow: 0 10px 28px rgba(0,0,0,.35); }
+.hero-card-name { grid-area: name; position: relative; z-index: 1; text-align: left; }
+.hero-card-name strong { display: block; font-size: 1.6rem; line-height: 1.1; color: #fff; }
+.hero-card-name span { display: block; font-size: .92rem; color: var(--accent-soft); margin-top: 4px; }
+.hero-card-logo {
+    grid-area: logo; max-width: 120px; margin: 6px auto 0; opacity: .92;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,.35));
+}
+
 /* -------- Section cards -------- */
 .section {
     margin-top: 32px;

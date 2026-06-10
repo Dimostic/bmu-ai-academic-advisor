@@ -5,7 +5,7 @@ const { query } = require('../../config/db');
 class User {
     // Create a new user (email verification ENABLED)
     static async create(userData) {
-        const { email, password, firstName, lastName, phone, department, role = 'staff' } = userData;
+        const { email, password, firstName, lastName, phone, department, matricNo, role = 'staff' } = userData;
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Auto-approve accounts whose email belongs to the BMU university
@@ -21,16 +21,23 @@ class User {
         const verificationToken = crypto.randomBytes(32).toString('hex');
         const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-        // Default monthly_prompt_limit is 100 for staff users
+        // Default monthly_prompt_limit is 100 (was 30 in the legacy
+        // assistant); daily_prompt_limit is 10. Admin/superadmin are -1
+        // (unlimited) but accounts are created as 'staff' so this default
+        // applies to all incoming students.
         const sql = `
-            INSERT INTO users (email, password, first_name, last_name, phone, department, role,
+            INSERT INTO users (email, password, first_name, last_name, phone, department, matric_no, role,
                 verification_token, verification_token_expires, is_verified, is_approved, is_active,
                 approved_at,
-                monthly_prompt_limit, monthly_prompt_count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, 100, 0, NOW())
+                monthly_prompt_limit, monthly_prompt_count,
+                daily_prompt_limit,   daily_prompt_count,
+                created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, 100, 0, 10, 0, NOW())
         `;
         const result = await query(sql, [
-            email, hashedPassword, firstName, lastName, phone, department, role,
+            email, hashedPassword, firstName, lastName, phone, department,
+            matricNo || null,
+            role,
             verificationToken, verificationTokenExpires,
             autoApprove ? 1 : 0,           // is_verified
             autoApprove ? 1 : 0,           // is_approved

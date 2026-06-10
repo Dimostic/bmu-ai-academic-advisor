@@ -17,6 +17,7 @@ const multer = require('multer');
 const router = express.Router();
 
 const { optionalAuth } = require('../middleware/auth');
+const { enforceLimits, recordUsage, getUsage } = require('../middleware/usageLimits');
 const Advisor = require('../models/Advisor');
 const advisorService = require('../services/advisorService');
 const advisorStreamService = require('../services/advisorStreamService');
@@ -45,6 +46,11 @@ router.get('/topics', async (_req, res) => {
         res.status(500).json({ success: false, error: 'Could not load topics' });
     }
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/advisor/usage — caller's quota for the day + month
+// ---------------------------------------------------------------------------
+router.get('/usage', optionalAuth, getUsage);
 
 // ---------------------------------------------------------------------------
 // GET /api/advisor/health
@@ -87,7 +93,7 @@ router.get('/sse-test', (req, res) => {
 // POST /api/advisor/ask
 // Body: { question, sessionToken?, voiceEnabled?, inputMode? }
 // ---------------------------------------------------------------------------
-router.post('/ask', optionalAuth, async (req, res) => {
+router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
     try {
         const { question, sessionToken, voiceEnabled = true, inputMode = 'text' } = req.body || {};
         if (!question || typeof question !== 'string' || !question.trim()) {
@@ -106,6 +112,9 @@ router.post('/ask', optionalAuth, async (req, res) => {
             student,
             voiceEnabled: voiceEnabled !== false
         });
+        // Increment quota counters AFTER a successful reply so failed calls
+        // don't burn quota.
+        await recordUsage(req);
         res.json(result);
     } catch (err) {
         console.error('[advisorRoutes] ask:', err);
@@ -125,7 +134,7 @@ router.post('/ask', optionalAuth, async (req, res) => {
 //   done          — final structured payload
 //   error         — fatal error (stream then ends)
 // ---------------------------------------------------------------------------
-router.post('/ask/stream', optionalAuth, async (req, res) => {
+router.post('/ask/stream', optionalAuth, enforceLimits, async (req, res) => {
     const { question, sessionToken, voiceEnabled = true, inputMode = 'text' } = req.body || {};
     if (!question || typeof question !== 'string' || !question.trim()) {
         return res.status(400).json({ success: false, error: 'question is required' });
@@ -170,6 +179,8 @@ router.post('/ask/stream', optionalAuth, async (req, res) => {
             voiceEnabled: voiceEnabled !== false,
             send
         });
+        // Quota credit for streamed conversations as well
+        await recordUsage(req);
     } catch (err) {
         console.error('[advisorRoutes] ask/stream:', err);
         send('error', { error: err.message || 'Advisor stream failed' });

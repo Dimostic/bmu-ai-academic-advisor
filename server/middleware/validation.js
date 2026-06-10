@@ -56,6 +56,11 @@ const registerValidation = [
         .trim()
         .isLength({ max: 100 })
         .withMessage('Department name too long'),
+    body('matricNo')
+        .optional({ checkFalsy: true })
+        .trim()
+        .matches(/^[A-Za-z0-9\/\-]{3,40}$/)
+        .withMessage('Matric number must be 3-40 letters, digits, hyphens or slashes'),
     handleValidationErrors
 ];
 

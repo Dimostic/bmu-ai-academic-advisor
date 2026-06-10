@@ -930,14 +930,15 @@ router.get('/metrics/elasticsearch', authenticateToken, requireAdmin, async (req
 // Get FAQ cache metrics
 router.get('/metrics/faq', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        // Get FAQ stats from database
+        // NOTE: column is `last_used_at` in the academic-advisor schema (was
+        // `last_used` in the legacy assistant DB).
         const stats = await query(`
             SELECT 
                 COUNT(*) as total_faqs,
                 COUNT(DISTINCT document_id) as documents_with_faqs,
                 AVG(confidence_score) as avg_confidence,
                 SUM(usage_count) as total_usage,
-                MAX(last_used) as last_used_at
+                MAX(last_used_at) as last_used_at
             FROM cached_qa
         `);
         

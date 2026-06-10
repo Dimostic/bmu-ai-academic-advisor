@@ -375,6 +375,19 @@
                 })
             });
             if (!res.ok || !res.body) {
+                // Surface friendly 429 quota errors instead of a generic
+                // "HTTP 429" toast, since these are expected end-user states.
+                if (res.status === 429) {
+                    let msg = 'You have reached your usage limit. Please try again later.';
+                    try {
+                        const j = await res.json();
+                        if (j?.error) msg = j.error;
+                    } catch (_) { /* ignore */ }
+                    bubble.body.textContent = msg;
+                    if (bubble.caret) bubble.caret.remove();
+                    setAvatarState('idle', 'Limit reached');
+                    return;
+                }
                 throw new Error(`HTTP ${res.status}`);
             }
 
