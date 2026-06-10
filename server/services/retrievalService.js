@@ -445,17 +445,28 @@ class RetrievalService {
             }
         }
         
-        // PRIORITY 3: Merge keyword results
+        // PRIORITY 3: Merge keyword results.
+        //
+        // A chunk where every keyword matches is a strong relevance signal
+        // — it's exactly the case where we want a small dedicated doc (e.g.
+        // a 31-chunk Brief Profile chunk that contains every word of the
+        // user's question) to compete with semantic hits from giant docs.
+        // We map raw keyword score (matchCount / keywords.length) onto a
+        // fixed range that respects but doesn't dwarf semantic scores:
+        //   raw 1.0 (all keywords match) -> 0.85
+        //   raw 0.5                      -> 0.55
+        //   raw 0.0                      -> 0.25
+        const kwToScore = (raw) => 0.25 + (raw * 0.60);
         for (const result of keywordResults) {
             const key = `${result.documentId}-${result.chunkIndex}`;
             const existing = mergedResults.find(r => 
                 r.documentId === result.documentId && r.chunkIndex === result.chunkIndex
             );
-            
+            const kwScore = kwToScore(result.score);
             if (existing) {
-                // Combine scores
+                // Combine: take the max of existing and keyword-derived score
                 existing.keywordScore = result.score;
-                existing.score += result.score * this.config.keywordWeight;
+                existing.score = Math.max(existing.score, kwScore);
             } else if (!seen.has(key)) {
                 seen.add(key);
                 mergedResults.push({
@@ -464,7 +475,7 @@ class RetrievalService {
                     keywordScore: result.score,
                     titleMatchScore: 0,
                     exactPhraseScore: 0,
-                    score: result.score * this.config.keywordWeight
+                    score: kwScore
                 });
             }
         }
