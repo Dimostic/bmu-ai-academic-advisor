@@ -238,9 +238,35 @@ class RetrievalService {
                 'result': 'result grade score mark performance outcome',
                 'graduation': 'graduation convocation certificate degree completion',
                 'transcript': 'transcript result academic record statement',
-                'fee': 'fee payment tuition charges cost levy',
+                'fee': 'fee payment tuition charges cost levy fees structure',
+                'fees': 'fees fee payment tuition charges cost levy structure schedule',
+                'tuition': 'tuition fee payment levy charges',
                 'scholarship': 'scholarship bursary grant financial aid award',
                 'course': 'course program programme module subject class',
+
+                // BMU-specific programme name aliases. The fees and curriculum
+                // documents use the official programme groupings (e.g. "MEDICINE
+                // & DENTISTRY"), but students naturally ask using degree codes
+                // (MBBS, BNSc, BMLS). Without these aliases the embedding model
+                // doesn't connect "MBBS fees" to a chunk titled
+                // "## 1. MEDICINE & DENTISTRY".
+                'mbbs':       'mbbs medicine dentistry clinical sciences',
+                'medicine':   'medicine dentistry mbbs clinical sciences faculty',
+                'dentistry':  'dentistry medicine dental sciences clinical mbbs',
+                'bds':        'bds dentistry dental medicine',
+                'nursing':    'nursing bnsc',
+                'pharmacy':   'pharmacy pharmaceutical sciences pharm',
+                'bnsc':       'bnsc nursing science',
+                'bmls':       'bmls medical laboratory science',
+                'medical lab':'medical lab laboratory science bmls',
+                'optometry':  'optometry vision sciences',
+                'physiotherapy':'physiotherapy physical therapy',
+                'radiography':'radiography radiology imaging',
+                'biochemistry':'biochemistry basic medical sciences',
+                'anatomy':    'anatomy human anatomy basic medical sciences',
+                'physiology': 'physiology human physiology basic medical sciences',
+                'public health':'public health community health',
+                'nutrition':  'nutrition human nutrition dietetics',
                 
                 // Personnel
                 'staff': 'staff employee worker personnel member faculty',
