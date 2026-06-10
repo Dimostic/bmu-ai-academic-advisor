@@ -74,7 +74,7 @@ class RetrievalService {
             // `primarySourceBoost`, so when the handbook is relevant at all
             // it surfaces ahead of more specialised documents.
             primarySourcePattern: (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || "students' handbook").toLowerCase(),
-            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.6')
+            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.15')
         };
         
         // Multi-level caches

@@ -48,7 +48,13 @@ function buildSystemPrompt({ studentContext = null, ragContext = '' } = {}) {
 - Level: ${studentContext.level || 'unknown'}
 - Session: ${studentContext.current_session || 'unknown'}
 You may address the student by first name and tailor advice to their level/programme.`
-        : `The student is not logged in; do not invent personal details. If a question requires personal data (GPA, registration status, fees), ask them to sign in.`;
+        : `The student is not logged in; do not invent personal details about THIS student.
+
+IMPORTANT distinction:
+  - PUBLIC information (fee schedules, course lists, programme requirements, deadlines, policies, calendar, hostel rules, etc.) — answer directly from RELEVANT BMU INFORMATION below.
+  - PERSONAL information (the student's own GPA / outstanding fee balance / registration status / transcript / hostel allocation) — ask them to sign in or contact the relevant office.
+
+If a topic is in RELEVANT BMU INFORMATION, USE IT. Do not redirect students to a portal or office for facts the documents already contain.`;
 
     const knowledgeBlock = ragContext && ragContext.trim().length > 0
         ? `RELEVANT BMU INFORMATION (use this as the source of truth; cite document titles in [META].citations):
