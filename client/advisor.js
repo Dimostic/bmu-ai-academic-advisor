@@ -451,9 +451,12 @@
             bubble.caret.remove();
 
             if (final) {
-                // If we ended up with nothing typed (e.g. model didn't follow format),
-                // paste the full display_markdown from the final payload.
-                if (!bubble.body.textContent && final.reply?.display_markdown) {
+                // Replace the streamed-in raw text with the server-cleaned
+                // display_markdown — that version has had vocatives and
+                // residual markdown symbols (** ## etc.) stripped, so the
+                // user sees a tidy final answer even when intermediate
+                // tokens contained formatting characters.
+                if (final.reply?.display_markdown) {
                     bubble.body.textContent = final.reply.display_markdown;
                 }
                 fillBubbleMeta(bubble, {

@@ -40,15 +40,32 @@ const SECTION_RE = {
 
 /** Build the system prompt used for every advisor turn. */
 function buildSystemPrompt({ studentContext = null, ragContext = '' } = {}) {
+    // Pull the user's first name if we have one (logged-in user). When the
+    // route only had a `users` row (no student record) we still set
+    // `first_name` so the model can address them by name occasionally.
+    const firstName = studentContext?.first_name
+        || (studentContext?.full_name || '').trim().split(/\s+/)[0]
+        || null;
+
     const studentBlock = studentContext
         ? `STUDENT PROFILE:
-- Name: ${studentContext.full_name || 'unknown'}
+- First name: ${firstName || 'unknown'}
+- Full name: ${studentContext.full_name || 'unknown'}
 - Matric: ${studentContext.matric_no || 'unknown'}
 - Programme: ${studentContext.programme_name || studentContext.programme_code || 'unknown'}
 - Level: ${studentContext.level || 'unknown'}
 - Session: ${studentContext.current_session || 'unknown'}
-You may address the student by first name and tailor advice to their level/programme.`
+
+ADDRESSING THE STUDENT:
+- Use the student's first name SPARINGLY: at most once per reply, and only on roughly one in three replies. Most replies should not address them by name at all.
+- Look at the recent conversation history below: if the previous advisor reply already used the student's first name, do NOT use it again this turn.
+- NEVER use familial, pidgin, or generic vocatives. Forbidden: "my brother", "my sister", "my friend", "my dear", "bro", "sis", "bestie", "oga", "abeg", "guy", "comrade".
+- A neutral opening with no salutation is preferred. If you do open with a name, just use the first name on its own (e.g. "${firstName || 'Aisha'}, ").`
         : `The student is not logged in; do not invent personal details about THIS student.
+
+ADDRESSING THE STUDENT:
+- Do NOT use any vocative (no "my brother", "my sister", "my friend", "my dear", "bro", "sis", "bestie", "oga", "abeg", "guy", "comrade", etc.).
+- Open replies neutrally — go straight to the answer.
 
 IMPORTANT distinction:
   - PUBLIC information (fee schedules, course lists, programme requirements, deadlines, policies, calendar, hostel rules, etc.) — answer directly from RELEVANT BMU INFORMATION below.
@@ -72,10 +89,10 @@ ${knowledgeBlock}
 OUTPUT FORMAT — your reply MUST be exactly three sections, in this order, separated by blank lines. Output the section markers literally on their own line. Do NOT wrap any section in markdown code fences.
 
 [SPEECH]
-A short, conversational spoken summary in plain text (no markdown, no lists). One short paragraph. Maximum ${SPEECH_MAX} characters. The avatar will read this aloud.
+A short, conversational spoken summary in PLAIN TEXT only. ABSOLUTELY no markdown symbols of any kind: no asterisks (* or **), no hash signs (#), no underscores, no backticks, no square brackets, no bullet markers, no numbered lists. One short paragraph of natural sentences. Maximum ${SPEECH_MAX} characters. The avatar will read this aloud, so write it the way you would speak it — never include the word "asterisk" or "hash" either.
 
 [ANSWER]
-A richer written answer in markdown — headings, bullet lists and bold are welcome. Keep it under ~500 words. The student sees this typed out as you write it.
+A richer written answer for the on-screen panel. Use plain prose with short paragraphs. You MAY use a simple "- " bullet list when a list genuinely helps. Do NOT use heading markers (#, ##, ###), do NOT use bold/italic markers (**, __, *, _), do NOT use code fences or backticks. Keep it under ~500 words. The student sees this typed out as you write it.
 
 [META]
 A SINGLE JSON object on one or more lines, with these keys:
@@ -144,9 +161,10 @@ function parseAdvisorReply(rawContent, originalQuestion) {
 
     // Fallback: model didn't follow the format at all → use the whole text.
     if (!speechText && !displayMd) {
+        const cleaned = scrubAll(text || '');
         return {
-            speech_text: truncate(text || `I could not generate a structured reply. Could you rephrase the question?`, SPEECH_MAX),
-            display_markdown: text || 'I could not generate a reply just now. Please try again.',
+            speech_text: truncate(cleaned || `I could not generate a structured reply. Could you rephrase the question?`, SPEECH_MAX),
+            display_markdown: cleaned || 'I could not generate a reply just now. Please try again.',
             topic_slug: null, citations: [], suggested_actions: [], follow_up_questions: [],
             needs_escalation: !text, confidence: 0.2,
             _parse_error: true
@@ -164,8 +182,8 @@ function parseAdvisorReply(rawContent, originalQuestion) {
     }
 
     return {
-        speech_text:         truncate(speechText || displayMd, SPEECH_MAX),
-        display_markdown:    displayMd || speechText,
+        speech_text:         truncate(scrubAll(speechText || displayMd), SPEECH_MAX),
+        display_markdown:    scrubAll(displayMd || speechText),
         topic_slug:          TOPIC_SLUGS.includes(meta.topic_slug) ? meta.topic_slug : null,
         citations:           Array.isArray(meta.citations) ? meta.citations.slice(0, 8) : [],
         suggested_actions:   Array.isArray(meta.suggested_actions) ? meta.suggested_actions.slice(0, 6) : [],
@@ -216,7 +234,16 @@ function streamScan(accumulated, lastAnswerEmitted = 0) {
 
     const answerStart = aIdx + text.slice(aIdx).match(SECTION_RE.answer)[0].length;
     const answerEnd   = mIdx >= 0 ? mIdx : text.length;
-    const answerSoFar = text.slice(answerStart, answerEnd);
+    let answerSoFar = text.slice(answerStart, answerEnd);
+
+    // While the [META] marker has NOT yet appeared, the model may be in the
+    // middle of typing it. Hold back the trailing characters that could be a
+    // prefix of "[META]" so we don't briefly leak "[ME" / "[" into the
+    // typewriter panel before the next chunk arrives.
+    if (mIdx < 0) {
+        const hb = partialMetaTailLength(answerSoFar);
+        if (hb > 0) answerSoFar = answerSoFar.slice(0, answerSoFar.length - hb);
+    }
 
     const newAnswer = answerSoFar.length > lastAnswerEmitted
         ? answerSoFar.slice(lastAnswerEmitted)
@@ -233,6 +260,103 @@ function streamScan(accumulated, lastAnswerEmitted = 0) {
 function truncate(s, n) { return s && s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s; }
 function clamp01(n) { const v = Number(n); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5; }
 
+// ---------------------------------------------------------------------------
+// Output scrubbing.
+//
+// Even with explicit "no markdown" instructions, DeepSeek occasionally
+// emits **bold** / ### Headings / `code` and casual vocatives like "My
+// brother,". We strip those out belt-and-braces so the typewriter and TTS
+// receive clean text.
+//
+// `scrubMarkdown`  — used for both [SPEECH] and the [ANSWER] panel since the
+//                    client renders the answer with `textContent` (not a
+//                    markdown renderer). It removes formatting *symbols* but
+//                    keeps the surrounding letters / numbers intact.
+// `scrubVocatives` — strips disallowed openers / interjections so we never
+//                    say "my brother" / "abeg" etc., regardless of locale.
+// `scrubAll`       — convenience wrapper that does both, plus tidies up
+//                    leftover punctuation (e.g. "  ,  " → ", ").
+// ---------------------------------------------------------------------------
+
+function scrubMarkdown(text) {
+    if (!text) return text;
+    let s = String(text);
+    // Code fences and inline code → keep the inner text only.
+    s = s.replace(/```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g, '$1');
+    s = s.replace(/`([^`\n]+)`/g, '$1');
+    // Bold / italic — strip the wrapping symbols, keep the content.
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '$1');
+    s = s.replace(/__([^_\n]+)__/g, '$1');
+    s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?=$|[^*\w])/g, '$1$2');
+    s = s.replace(/(^|[^_\w])_([^_\n]+)_(?=$|[^_\w])/g, '$1$2');
+    // Strikethrough.
+    s = s.replace(/~~([^~\n]+)~~/g, '$1');
+    // Heading markers at the start of a line.
+    s = s.replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '');
+    // Blockquote markers at the start of a line.
+    s = s.replace(/^[ \t]{0,3}>[ \t]?/gm, '');
+    // Markdown links [text](url) → text.
+    s = s.replace(/\[([^\]\n]+)\]\((?:https?:\/\/|mailto:|\/)[^\s)]+\)/g, '$1');
+    // Stray asterisks / hashes that survived (single chars, not followed by
+    // word boundary). Keep `#1` etc. so we don't mangle things like "#1 in
+    // Bayelsa".
+    s = s.replace(/\*+/g, '');
+    s = s.replace(/(^|\s)#{2,6}(?=\s)/g, '$1');
+    return s;
+}
+
+// Disallowed openers / interjections. We anchor on word boundaries so we
+// don't accidentally maul "brotherhood" or "abegail".
+const VOCATIVE_RE = new RegExp(
+    '(?:^|(?<=[\\s\\.\\?\\!,;:—\\-]))' +
+    '(?:my\\s+(?:brother|sister|friend|dear|guy|love|people)|' +
+        'bros|sis|bestie|oga|abeg|comrade|chief)' +
+    '(?=[\\s\\.\\?\\!,;:—\\-]|$)',
+    'gi'
+);
+
+function scrubVocatives(text) {
+    if (!text) return text;
+    let s = String(text)
+        .replace(VOCATIVE_RE, '')
+        // Tidy up any "  ," / " ." left behind, plus stray double-spaces.
+        .replace(/\s+([,.;:!?])/g, '$1')
+        .replace(/[ \t]{2,}/g, ' ');
+    // Strip leading punctuation/whitespace exposed by vocative removal
+    // ("My brother, the fees..." → ", the fees..." → "the fees...").
+    s = s.replace(/^[\s,.;:!?\-—]+/, '');
+    // Capitalise the first letter if our removal exposed a lowercase opener.
+    s = s.replace(/^([a-z])/, (m, c) => c.toUpperCase());
+    return s.trim();
+}
+
+function scrubAll(text) {
+    return scrubVocatives(scrubMarkdown(text));
+}
+
+/**
+ * If the trailing characters of `text` could be a partial match for the
+ * literal string "[META]" (or any longer marker we use), return how many
+ * tail characters to hold back from the streamed [ANSWER] output.
+ *
+ * Example:
+ *   text = "...help.\n\n[ME"   → returns 3   (3 chars are a prefix of "[META]")
+ *   text = "...help."          → returns 0
+ *   text = "...help.\n\n["     → returns 1
+ *
+ * This prevents the UI from briefly flashing "[ME" before the second chunk
+ * carrying "TA]" arrives and the section detector finally trips.
+ */
+function partialMetaTailLength(text) {
+    if (!text) return 0;
+    const META = '[META]';
+    const max = Math.min(META.length - 1, text.length);
+    for (let len = max; len > 0; len--) {
+        if (META.startsWith(text.slice(text.length - len))) return len;
+    }
+    return 0;
+}
+
 module.exports = {
     ADVISOR_NAME,
     ADVISOR_TITLE,
@@ -240,5 +364,8 @@ module.exports = {
     buildSystemPrompt,
     buildUserPrompt,
     parseAdvisorReply,
-    streamScan
+    streamScan,
+    scrubAll,
+    scrubMarkdown,
+    scrubVocatives
 };

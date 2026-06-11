@@ -103,6 +103,13 @@ router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
         let student = null;
         if (req.user?.id) {
             student = await Advisor.findStudentByUserId(req.user.id);
+            // Even when there's no `students` row, surface the user's first
+            // name so the advisor can address them by name occasionally.
+            if (!student && req.user.first_name) {
+                student = { first_name: req.user.first_name, full_name: `${req.user.first_name} ${req.user.last_name || ''}`.trim() };
+            } else if (student && req.user.first_name && !student.first_name) {
+                student.first_name = req.user.first_name;
+            }
         }
 
         const result = await advisorService.ask({
@@ -169,7 +176,14 @@ router.post('/ask/stream', optionalAuth, enforceLimits, async (req, res) => {
 
     try {
         let student = null;
-        if (req.user?.id) student = await Advisor.findStudentByUserId(req.user.id);
+        if (req.user?.id) {
+            student = await Advisor.findStudentByUserId(req.user.id);
+            if (!student && req.user.first_name) {
+                student = { first_name: req.user.first_name, full_name: `${req.user.first_name} ${req.user.last_name || ''}`.trim() };
+            } else if (student && req.user.first_name && !student.first_name) {
+                student.first_name = req.user.first_name;
+            }
+        }
 
         await advisorStreamService.askStream({
             question,
