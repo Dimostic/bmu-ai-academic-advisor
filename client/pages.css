@@ -317,3 +317,19 @@
 
 /* Generic visibility helper */
 .hidden { display: none !important; }
+
+/* Compose-new Q&A collapsible block */
+.curate-compose {
+    background: var(--bg-elev);
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+}
+.curate-compose > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--bg-deep);
+    padding: 4px 0;
+}
+.curate-compose[open] > summary { margin-bottom: 6px; }

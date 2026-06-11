@@ -1551,4 +1551,192 @@ router.delete('/cached-qa/:id', authenticateToken, requireAdmin, async (req, res
     }
 });
 
+// ----------------------------------------------------------------------------
+// AI text-cleanup helper.
+//
+// Runs the question + answer through the LLM with a strict "edit-only"
+// instruction: fix grammar, spelling, clarity, but keep all factual content
+// EXACTLY as supplied. Returns {question, answer} the admin can review,
+// optionally tweak further, then save.
+//
+// Body:  { question: string, answer: string }
+// 200:   { success, question, answer, changed: boolean }
+// ----------------------------------------------------------------------------
+router.post('/advisor/cleanup-text', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const question = String(req.body?.question || '').trim();
+        const answer   = String(req.body?.answer   || '').trim();
+        if (!question || !answer) {
+            return res.status(400).json({ success: false, error: 'question and answer are required' });
+        }
+
+        const llm = require('../services/llmClient');
+        const persona = require('../services/advisorPersonaService');
+
+        const sys = `You are a careful copy-editor. The user will give you a Q&A pair for a Bayelsa Medical University FAQ. Your ONLY job is to:
+1. Fix spelling, grammar, punctuation and capitalisation.
+2. Tighten wording for clarity and brevity.
+3. Make sentences flow naturally.
+
+You MUST NOT:
+- Add new facts, figures, dates, names, numbers, or claims.
+- Remove or alter any factual content (numbers, names, dates, requirements, fee amounts).
+- Add markdown formatting symbols (no **, ##, backticks, etc.).
+- Add salutations, vocatives, or filler ("My dear student", "I hope this helps", etc.).
+
+Return STRICT JSON only, with this shape:
+{"question":"<edited question>","answer":"<edited answer>"}
+No prose before or after the JSON.`;
+
+        const user = `Edit this for clarity, grammar and language. Keep ALL facts identical.
+
+QUESTION:
+${question}
+
+ANSWER:
+${answer}`;
+
+        let edited = { question, answer };
+        let changed = false;
+        try {
+            const r = await llm.chat(
+                [
+                    { role: 'system', content: sys },
+                    { role: 'user',   content: user }
+                ],
+                { jsonMode: true, maxTokens: 1024, temperature: 0.2, timeoutMs: 30_000 }
+            );
+            const parsed = JSON.parse(r.content || '{}');
+            const eq = persona.scrubAll(String(parsed.question || '').trim());
+            const ea = persona.scrubAll(String(parsed.answer || '').trim());
+            if (eq && ea) {
+                edited = { question: eq, answer: ea };
+                changed = (eq !== question) || (ea !== answer);
+            }
+        } catch (err) {
+            console.warn('[cleanup-text] LLM call failed, returning original:', err.message);
+        }
+
+        res.json({ success: true, ...edited, changed });
+    } catch (err) {
+        console.error('cleanup-text error:', err);
+        res.status(500).json({ success: false, error: 'Cleanup failed' });
+    }
+});
+
+// ----------------------------------------------------------------------------
+// Create a cached_qa entry directly from an admin form (no advisor message
+// to promote — the admin types both fields). Generates the embedding so the
+// new row is reachable by semantic search.
+//
+// Body:  { question: string, answer: string, categoryId?: number,
+//          documentId?: number, qaType?: string }
+// 201:   { success, cachedQaId, mode: 'created' | 'refreshed' }
+// ----------------------------------------------------------------------------
+router.post('/cached-qa', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const persona = require('../services/advisorPersonaService');
+        const aiService = require('../services/aiService');
+        const CachedQA = require('../models/CachedQA');
+
+        const question  = persona.scrubAll(String(req.body?.question || '').trim());
+        const answer    = persona.scrubAll(String(req.body?.answer   || '').trim());
+        const categoryId = req.body?.categoryId ? parseInt(req.body.categoryId, 10) : null;
+        const documentId = req.body?.documentId ? parseInt(req.body.documentId, 10) : null;
+        const qaType    = (req.body?.qaType || 'curated').slice(0, 50);
+
+        if (!question || question.length < 5) {
+            return res.status(400).json({ success: false, error: 'Question is too short' });
+        }
+        if (!answer || answer.length < 8) {
+            return res.status(400).json({ success: false, error: 'Answer is too short' });
+        }
+
+        // De-dupe: refresh any existing active row with the exact same question.
+        const existingRows = await query(
+            `SELECT id FROM cached_qa WHERE is_active = 1 AND question = ? LIMIT 1`,
+            [question]
+        );
+
+        let embedding = null;
+        try {
+            embedding = await aiService.generateEmbedding(question, true);
+        } catch (err) {
+            console.warn('[create cached-qa] embedding failed:', err.message);
+        }
+
+        if (existingRows.length) {
+            const id = existingRows[0].id;
+            await query(
+                `UPDATE cached_qa
+                 SET answer            = ?,
+                     embedding         = ?,
+                     category_id       = COALESCE(?, category_id),
+                     document_id       = COALESCE(?, document_id),
+                     confidence_score  = 1.0,
+                     is_active         = 1,
+                     is_verified       = 1,
+                     verified_by       = ?,
+                     verified_at       = NOW(),
+                     qa_type           = ?,
+                     updated_at        = NOW()
+                 WHERE id = ?`,
+                [
+                    answer,
+                    embedding ? JSON.stringify(embedding) : null,
+                    categoryId, documentId,
+                    req.user.id,
+                    qaType,
+                    id
+                ]
+            );
+            await AuditTrail.log({
+                userId: req.user.id,
+                action: 'CREATE_CACHED_QA',
+                entityType: 'cached_qa',
+                entityId: id,
+                details: { mode: 'refreshed', qaType },
+                ipAddress: req.ip,
+                userAgent: req.headers['user-agent']
+            });
+            return res.json({ success: true, mode: 'refreshed', cachedQaId: id });
+        }
+
+        const newId = await CachedQA.create({
+            documentId,
+            categoryId,
+            question,
+            questionVariations: [],
+            answer,
+            answerSources: [],
+            embedding,
+            confidenceScore: 1.0,
+            createdBy: req.user.id,
+            qaType
+        });
+
+        try {
+            await query(
+                `UPDATE cached_qa SET is_verified = 1, verified_by = ?, verified_at = NOW() WHERE id = ?`,
+                [req.user.id, newId]
+            );
+        } catch (_) { /* ignore if columns absent */ }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'CREATE_CACHED_QA',
+            entityType: 'cached_qa',
+            entityId: newId,
+            details: { mode: 'created', qaType },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.status(201).json({ success: true, mode: 'created', cachedQaId: newId });
+    } catch (err) {
+        console.error('Create cached_qa error:', err);
+        res.status(500).json({ success: false, error: 'Could not create Q&A' });
+    }
+});
+
 module.exports = router;

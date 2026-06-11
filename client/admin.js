@@ -268,18 +268,114 @@
     }
 
     // -------------------------------------------------------- CURATE Q&A
+    // Wire up the "Compose a new Q&A" form rendered at the top of the
+    // Curate panel. Two buttons:
+    //   - AI cleanup: round-trips the text through the LLM with strict
+    //                 "edit-only" rules (no new facts) and replaces the
+    //                 form contents with the tidied version.
+    //   - Save to cache: POST /api/admin/cached-qa, which embeds the
+    //                    question and stores the row.
+    function wireComposeForm() {
+        const form = document.getElementById('composeForm');
+        if (!form) return;
+
+        const cleanupBtn = document.getElementById('composeCleanupBtn');
+        cleanupBtn.addEventListener('click', async () => {
+            const question = form.querySelector('input[name="question"]').value.trim();
+            const answer   = form.querySelector('textarea[name="answer"]').value.trim();
+            if (!question || answer.length < 8) {
+                toast('Type a question and an answer first', 'error');
+                return;
+            }
+            cleanupBtn.disabled = true;
+            cleanupBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cleaning up…';
+            try {
+                const r = await api('/api/admin/advisor/cleanup-text', {
+                    method: 'POST',
+                    body: { question, answer }
+                });
+                form.querySelector('input[name="question"]').value = r.question || question;
+                form.querySelector('textarea[name="answer"]').value = r.answer || answer;
+                toast(r.changed ? 'AI tidied the wording — review before saving' : 'Already clean — nothing changed');
+            } catch (err) {
+                toast(err.message || 'AI cleanup failed', 'error');
+            } finally {
+                cleanupBtn.disabled = false;
+                cleanupBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> AI cleanup';
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const question = form.querySelector('input[name="question"]').value.trim();
+            const answer   = form.querySelector('textarea[name="answer"]').value.trim();
+            if (!question || answer.length < 8) {
+                toast('Question and answer are both required', 'error');
+                return;
+            }
+            const submit = form.querySelector('button[type="submit"]');
+            submit.disabled = true;
+            submit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+            try {
+                const r = await api('/api/admin/cached-qa', {
+                    method: 'POST',
+                    body: { question, answer }
+                });
+                toast(r.mode === 'created' ? 'Added to FAQ cache' : 'Refreshed an existing FAQ');
+                form.reset();
+                document.getElementById('composeBlock').open = false;
+                renderCurate();
+            } catch (err) {
+                toast(err.message || 'Could not save', 'error');
+            } finally {
+                submit.disabled = false;
+                submit.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save to cache';
+            }
+        });
+    }
+
     // Lists the most recent advisor replies and lets an admin promote any
     // of them into the FAQ cache so they short-circuit the LLM next time.
     async function renderCurate() {
         main.innerHTML = `
             <h2>Curate Q&amp;A</h2>
-            <p class="lede">Recent advisor replies. Click <strong>Promote</strong> to save a reply to the FAQ cache so future, similar questions get instant answers without calling the LLM.</p>
+            <p class="lede">Add new question-answer pairs by hand, or promote existing advisor replies. Both go into the FAQ cache that short-circuits the LLM for future students.</p>
+
+            <details class="curate-compose" id="composeBlock">
+                <summary><i class="fa-solid fa-plus"></i> Compose a new Q&amp;A</summary>
+                <form id="composeForm" class="curate-edit" style="margin-top:12px;">
+                    <label>
+                        Question
+                        <input type="text" name="question" maxlength="500" required
+                               placeholder="e.g. How do I apply for hostel accommodation at BMU?" />
+                    </label>
+                    <label>
+                        Answer
+                        <textarea name="answer" rows="6" required
+                                  placeholder="Type the answer in plain prose. The first line is used as the spoken summary, so put the headline up front."></textarea>
+                    </label>
+                    <p class="muted" style="font-size:.85rem;">
+                        Tip: click <strong>AI cleanup</strong> to have the model fix grammar, spelling, and clarity without changing any facts.
+                    </p>
+                    <div class="curate-actions">
+                        <button type="button" class="btn btn-ghost btn-sm" id="composeCleanupBtn">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> AI cleanup
+                        </button>
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="fa-solid fa-floppy-disk"></i> Save to cache
+                        </button>
+                    </div>
+                </form>
+            </details>
+
+            <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Recent advisor replies</h3>
             <div class="admin-actions">
                 <button class="btn btn-ghost" id="curateRefresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
             </div>
             <div id="curateList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
         document.getElementById('curateRefresh').addEventListener('click', renderCurate);
+        wireComposeForm();
 
         const listEl = document.getElementById('curateList');
         try {
@@ -522,12 +618,18 @@
         `;
         try {
             const r = await api('/api/admin/audit?limit=100');
-            const items = r.entries || r.audit || r.data || [];
+            // Server returns `{logs, pagination}`. Older endpoints used
+            // `entries`/`audit`/`data` so we keep them as fallbacks.
+            const items = r.logs || r.entries || r.audit || r.data || [];
             if (!items.length) { document.getElementById('auditList').innerHTML = '<p class="empty">No audit entries yet.</p>'; return; }
             const rows = items.map(a => [
-                escapeHtml(formatDate(a.createdAt || a.created_at)),
+                escapeHtml(formatDate(a.created_at || a.createdAt)),
                 escapeHtml(a.action || a.event || ''),
-                escapeHtml(a.user_email || a.userEmail || a.userId || a.user_id || '—'),
+                escapeHtml(
+                    (a.user_email || a.userEmail) ||
+                    (a.first_name && a.last_name ? `${a.first_name} ${a.last_name}` : '') ||
+                    a.user_id || a.userId || '—'
+                ),
                 escapeHtml(a.entity_type || a.entityType || ''),
                 escapeHtml(a.ip_address || a.ipAddress || '')
             ]);
@@ -543,7 +645,7 @@
     async function renderMetrics() {
         main.innerHTML = `
             <h2>Retrieval metrics</h2>
-            <p class="lede">How well the RAG pipeline is performing.</p>
+            <p class="lede">How well the RAG pipeline is performing. Counters are kept in process memory and reset on every server restart.</p>
             <div id="metricsBody"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
         try {
@@ -552,26 +654,39 @@
                 api('/api/admin/metrics/faq').catch(e => ({ error: e.message })),
                 api('/api/admin/metrics/performance').catch(e => ({ error: e.message }))
             ]);
+            // Server shapes:
+            //   /metrics/retrieval  -> { metrics: {totalQueries, cacheHits, cacheHitRate, avgRetrievalTime, avgReRankTime, ...} }
+            //   /metrics/faq        -> { faq: { total_faqs, total_usage, avg_confidence, last_used_at, byDocument } }
+            //   /metrics/performance-> { performance: {...} } (or top-level fields, depending on env)
             const r = retrieval.metrics || retrieval || {};
-            const f = faq.metrics || faq || {};
-            const p = perf.metrics || perf || {};
+            const f = faq.faq || faq.metrics || faq || {};
+            const p = perf.performance || perf.metrics || perf || {};
+
+            const fmtMs = v => v ? Math.round(v) + ' ms' : '—';
+            const fmtPct = v => (v == null ? '—' : (typeof v === 'string' ? v : (v * 100).toFixed(1) + '%'));
+            const fmtNum = v => (v == null ? '—' : Number(v).toLocaleString());
+
             document.getElementById('metricsBody').innerHTML = `
                 <div class="stat-row">
-                    ${stat('Total queries', r.totalQueries ?? '—')}
+                    ${stat('Total queries',  fmtNum(r.totalQueries))}
+                    ${stat('Cache hits',     fmtNum(r.cacheHits))}
                     ${stat('Cache hit rate', r.cacheHitRate ?? '—')}
-                    ${stat('Avg retrieval', (r.avgRetrievalTime ? Math.round(r.avgRetrievalTime) + ' ms' : '—'))}
-                    ${stat('Avg re-rank',  (r.avgReRankTime    ? Math.round(r.avgReRankTime)    + ' ms' : '—'))}
+                    ${stat('Avg retrieval',  fmtMs(r.avgRetrievalTime))}
+                    ${stat('Avg re-rank',    fmtMs(r.avgReRankTime))}
                 </div>
                 <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">FAQ cache</h3>
                 <div class="stat-row">
-                    ${stat('FAQs total', f.totalFAQs ?? f.total ?? '—')}
-                    ${stat('Cache hits',  f.cacheHits ?? '—')}
-                    ${stat('Cache hit rate', f.hitRate ?? '—')}
+                    ${stat('FAQs total',          fmtNum(f.total_faqs ?? f.totalFAQs ?? f.total))}
+                    ${stat('Documents covered',   fmtNum(f.documents_with_faqs))}
+                    ${stat('Avg confidence',      f.avg_confidence != null ? Number(f.avg_confidence).toFixed(2) : '—')}
+                    ${stat('Total cache hits',    fmtNum(f.total_usage ?? f.cacheHits))}
+                    ${stat('Last cache hit',      f.last_used_at ? formatDate(f.last_used_at) : '—')}
                 </div>
                 <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Performance</h3>
                 <div class="stat-row">
-                    ${stat('Memory (MB)', p.memoryMB ?? '—')}
-                    ${stat('Uptime',     p.uptime ?? '—')}
+                    ${stat('Memory (MB)', fmtNum(p.memoryMB ?? p.memory_mb))}
+                    ${stat('Uptime',      p.uptime ?? p.uptime_human ?? '—')}
+                    ${stat('Vector chunks', fmtNum(p.totalChunks ?? p.total_chunks))}
                 </div>
             `;
         } catch (err) {
