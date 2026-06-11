@@ -194,11 +194,32 @@ router.get('/users', authenticateToken, requireAdmin, async (req, res) => {
         const countResult = await query(`SELECT COUNT(*) as total FROM users WHERE ${whereClause}`, params);
         const total = countResult[0]?.total || 0;
         
-        // Get users - use only columns that definitely exist in base schema
+        // Get users - include the prompt-usage counters so the admin UI
+        // can show how many prompts each user has burned this day/month.
+        // The columns may not exist in older deployments, so guard with
+        // information_schema.
+        const cols = await query(
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`
+        );
+        const colSet = new Set((cols || []).map(c => c.COLUMN_NAME));
+        const optional = [
+            'monthly_prompt_limit', 'monthly_prompt_count',
+            'daily_prompt_limit',   'daily_prompt_count',
+            'matric_no', 'last_login'
+        ].filter(c => colSet.has(c));
+
+        const selectCols = [
+            'id', 'email', 'first_name', 'last_name', 'role',
+            'department', 'phone',
+            'is_active', 'is_verified', 'is_approved',
+            'created_at', 'updated_at',
+            ...optional
+        ];
+
         const users = await query(`
-            SELECT id, email, first_name, last_name, role, department, phone,
-                   is_active, is_verified, is_approved, created_at, updated_at
-            FROM users 
+            SELECT ${selectCols.join(', ')}
+            FROM users
             WHERE ${whereClause}
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
@@ -243,7 +264,7 @@ router.post('/users', authenticateToken, requireSuperAdmin, async (req, res) => 
         if (!password || password.length < 8) {
             return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
         }
-        if (!['staff', 'admin', 'superadmin'].includes(role)) {
+        if (!['student', 'staff', 'admin', 'superadmin'].includes(role)) {
             return res.status(400).json({ success: false, error: 'Invalid role' });
         }
 

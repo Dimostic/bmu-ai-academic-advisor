@@ -574,7 +574,8 @@
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                         <label>Role
                             <select name="role">
-                                <option value="staff">Staff / student</option>
+                                <option value="student" selected>Student</option>
+                                <option value="staff">Staff</option>
                                 <option value="admin">Admin</option>
                                 <option value="superadmin">Super-admin</option>
                             </select>
@@ -620,17 +621,26 @@
                     const cls = status === 'Active' ? 'badge-success'
                             : status === 'Pending approval' ? 'badge-warn'
                             : 'badge-info';
+                    // Format usage as "used / limit". Limit of -1 means
+                    // unlimited (admin/superadmin).
+                    const fmt = (used, limit) => {
+                        if (limit == null) return '—';
+                        if (Number(limit) === -1) return '∞';
+                        return `${Number(used || 0)} / ${Number(limit)}`;
+                    };
                     return [
                         `<div><strong>${escapeHtml(fullName)}</strong>
                           <div style="color:var(--muted); font-size:.82rem;">${escapeHtml(u.email)}</div></div>`,
-                        escapeHtml(u.role || 'staff'),
+                        escapeHtml(u.role || 'student'),
                         `<span class="badge ${cls}">${status}</span>`,
+                        escapeHtml(fmt(u.daily_prompt_count, u.daily_prompt_limit)),
+                        escapeHtml(fmt(u.monthly_prompt_count, u.monthly_prompt_limit)),
                         escapeHtml(formatDate(u.createdAt || u.created_at)),
                         userActions(u, status)
                     ];
                 });
                 document.getElementById('userList').innerHTML = table(
-                    ['User', 'Role', 'Status', 'Joined', 'Actions'], rows
+                    ['User', 'Role', 'Status', 'Today', 'This month', 'Joined', 'Actions'], rows
                 );
                 attachUserActions();
             } catch (err) {
@@ -649,6 +659,7 @@
                 buttons.push(`<button class="btn btn-ghost" data-act="deactivate" data-id="${id}"><i class="fa-solid fa-pause"></i> Deactivate</button>`);
             }
             const roleSel = `<select data-act="role" data-id="${id}" class="btn btn-ghost" style="padding:6px 10px;">
+                <option value="student" ${u.role==='student'?'selected':''}>student</option>
                 <option value="staff" ${u.role==='staff'?'selected':''}>staff</option>
                 <option value="admin" ${u.role==='admin'?'selected':''}>admin</option>
                 <option value="superadmin" ${u.role==='superadmin'?'selected':''}>superadmin</option>

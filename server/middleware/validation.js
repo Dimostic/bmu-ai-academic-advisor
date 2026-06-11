@@ -22,15 +22,15 @@ const registerValidation = [
         .withMessage('Please provide a valid email address')
         .normalizeEmail()
         .custom((value, { req }) => {
-            // Check if email is from university domain (for staff) or allow alternate for admin
+            // Students and staff alike must register with their BMU email.
+            // Admins can be created on a different domain via the admin
+            // create-user form (POST /api/admin/users), so we only enforce
+            // the domain rule on self-registration (role student/staff).
             const universityDomain = process.env.UNIVERSITY_DOMAIN || 'bmu.edu.ng';
             const isUniversityEmail = value.endsWith(`@${universityDomain}`);
-            
-            // If role is not specified or is 'staff', must use university email
-            if (!req.body.role || req.body.role === 'staff') {
-                if (!isUniversityEmail) {
-                    throw new Error(`Staff must register with a @${universityDomain} email address`);
-                }
+            const role = req.body.role || 'student';
+            if ((role === 'student' || role === 'staff') && !isUniversityEmail) {
+                throw new Error(`Please register with a @${universityDomain} email address`);
             }
             return true;
         }),

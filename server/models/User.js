@@ -16,7 +16,7 @@ class User {
     // This closes the spoof-the-domain hole without losing the convenience
     // of fast onboarding for legitimate BMU staff/students.
     static async create(userData) {
-        const { email, password, firstName, lastName, phone, department, matricNo, role = 'staff' } = userData;
+        const { email, password, firstName, lastName, phone, department, matricNo, role = 'student' } = userData;
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const universityDomain = (process.env.UNIVERSITY_DOMAIN || 'bmu.edu.ng').toLowerCase();
@@ -54,7 +54,7 @@ class User {
     // Create a user from an admin form. Skips email verification entirely
     // (the admin is vouching for the address) and forces a password change
     // on the next login so the temporary password the admin chose isn't kept.
-    static async adminCreate({ email, password, firstName, lastName, role = 'staff', department = null, phone = null, matricNo = null }) {
+    static async adminCreate({ email, password, firstName, lastName, role = 'student', department = null, phone = null, matricNo = null }) {
         const hashedPassword = await bcrypt.hash(password, 10);
         const sql = `
             INSERT INTO users (email, password, must_change_password,
@@ -336,7 +336,7 @@ class User {
 
     // Update user role (admin only)
     static async updateRole(id, role) {
-        const validRoles = ['staff', 'admin', 'superadmin'];
+        const validRoles = ['student', 'staff', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
             throw new Error('Invalid role');
         }
@@ -454,7 +454,7 @@ class User {
 
     // Approve user with role assignment
     static async approveUserWithRole(userId, approvedById, role = 'staff') {
-        const validRoles = ['staff', 'admin', 'superadmin'];
+        const validRoles = ['student', 'staff', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
             throw new Error('Invalid role');
         }
@@ -478,7 +478,7 @@ class User {
 
     // Update role with appropriate limits
     static async updateRoleWithLimits(id, role) {
-        const validRoles = ['staff', 'admin', 'superadmin'];
+        const validRoles = ['student', 'staff', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
             throw new Error('Invalid role');
         }

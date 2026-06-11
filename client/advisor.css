@@ -10,13 +10,33 @@
     --line: #d9e1e4;
     --shadow: 0 6px 24px rgba(15, 61, 62, .08);
     --radius: 14px;
+    --page-gradient: linear-gradient(180deg, #eaf3f2 0%, #f4f7f8 100%);
 }
+
+/* Dark theme overrides — toggled via document.documentElement[data-theme="dark"]
+ * (see theme.js). All UI lands on CSS variables, so this single block is
+ * enough to flip every page. */
+html[data-theme="dark"] {
+    --bg: #0d1518;
+    --bg-elev: #19262a;
+    --bg-deep: #143638;
+    --accent: #2fbf9e;
+    --accent-soft: #6deec8;
+    --danger: #ef6e6e;
+    --muted: #98a8af;
+    --text: #e7eef0;
+    --line: #2b3a3f;
+    --shadow: 0 6px 24px rgba(0, 0, 0, .35);
+    --page-gradient: linear-gradient(180deg, #0d1518 0%, #14222a 100%);
+    color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
 html, body {
     margin: 0; padding: 0;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     color: var(--text);
-    background: linear-gradient(180deg, #eaf3f2 0%, #f4f7f8 100%);
+    background: var(--page-gradient);
     min-height: 100vh;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -281,3 +301,97 @@ button.link-muted:hover { color: var(--bg-deep); }
 }
 .toast.toast--error { background: var(--danger); }
 @keyframes toast-in { from { transform: translateY(20px); opacity: 0; } }
+
+
+/* ========================================================================
+   Quota badge in the topbar (advisor page).
+   ===================================================================== */
+.quota-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(35,182,165,.12);
+    color: var(--bg-deep);
+    font-size: .8rem; font-weight: 600;
+    border: 1px solid rgba(35,182,165,.25);
+}
+.quota-badge.quota-warn {
+    background: #fff5dc; color: #8a4f12; border-color: #f0c87a;
+}
+html[data-theme="dark"] .quota-badge {
+    background: rgba(47,191,158,.18); color: var(--accent-soft);
+    border-color: rgba(47,191,158,.4);
+}
+html[data-theme="dark"] .quota-badge.quota-warn {
+    background: #463512; color: #fdd989; border-color: #856425;
+}
+
+/* ========================================================================
+   Topbar: keep the brand on the left, actions wrap onto a new row on phones
+   so they never overflow off-screen.
+   ===================================================================== */
+.topbar { gap: 12px; flex-wrap: wrap; }
+.topbar .top-actions, .topbar nav.top-actions {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-left: auto;
+}
+@media (max-width: 720px) {
+    .topbar { padding: 10px 14px !important; }
+    .topbar .brand small { font-size: .72rem; }
+    .topbar .top-actions { width: 100%; justify-content: flex-end; }
+    .quota-badge { font-size: .72rem; padding: 3px 8px; }
+}
+
+/* ========================================================================
+   Form rows: stop two-input rows overflowing on narrow screens. The
+   register and admin create-user forms used a fixed two-column grid which
+   pushed the right-hand input past its container's right edge on small
+   phones (~360px). Switching to flex with min-width:0 keeps both inputs
+   inside the form margins and stacks them on tiny screens.
+   ===================================================================== */
+.auth-form .row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; min-width: 0;
+}
+.auth-form .row > label, .auth-form > label,
+form.curate-edit > label, form.curate-edit .row > label {
+    min-width: 0;
+}
+.auth-form input, .auth-form select, .auth-form textarea,
+form.curate-edit input, form.curate-edit select, form.curate-edit textarea {
+    width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
+}
+@media (max-width: 540px) {
+    .auth-form .row { grid-template-columns: 1fr; }
+}
+
+/* ========================================================================
+   Mobile-friendly chat shell.
+   ===================================================================== */
+@media (max-width: 800px) {
+    main.chat-shell, .chat-shell, .advisor-shell, .admin-shell {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+    .topic-tiles { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 480px) {
+    .topic-tiles { grid-template-columns: 1fr !important; }
+}
+
+/* Dark-theme polish for elements not auto-covered by variables */
+html[data-theme="dark"] body { background: var(--page-gradient); }
+html[data-theme="dark"] .topic-pill,
+html[data-theme="dark"] .followup-chip,
+html[data-theme="dark"] .handbook-search,
+html[data-theme="dark"] .handbook-categories .cat-chip {
+    background: var(--bg-elev); color: var(--text); border-color: var(--line);
+}
+html[data-theme="dark"] .topic-pill--start,
+html[data-theme="dark"] .handbook-categories .cat-chip.active {
+    background: var(--accent); color: #061215; border-color: var(--accent);
+}
+html[data-theme="dark"] .bubble--student {
+    background: rgba(47,191,158,.18); color: var(--text);
+}
+html[data-theme="dark"] .bubble--advisor { background: var(--bg-elev); }
+html[data-theme="dark"] .mic-btn { background: var(--bg-elev); color: var(--accent); }

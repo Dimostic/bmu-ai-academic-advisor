@@ -505,6 +505,11 @@
         } finally {
             sendBtn.disabled = false;
             if (!audioStarted) setAvatarState('idle', 'Ready');
+            // Refresh the quota badge — usage went up by one (or stayed
+            // the same if the call failed before recordUsage ran).
+            if (typeof window.refreshAdvisorQuota === 'function') {
+                window.refreshAdvisorQuota();
+            }
         }
     }
 
@@ -847,10 +852,17 @@
         const authSlot = document.getElementById('authSlot');
         if (authSlot) {
             const name = (user?.firstName || user?.first_name || user?.email || 'You').toString().split(' ')[0];
+            // Hide quota for superadmin (they're unlimited and don't need to
+            // see "0 / -1"); render a placeholder we'll fill from the API.
+            const showQuota = user?.role !== 'superadmin';
             authSlot.innerHTML = `
+                ${showQuota ? '<span id="quotaBadge" class="quota-badge" title="Loading usage…"><i class="fa-solid fa-gauge"></i> <span class="q-text">…</span></span>' : ''}
                 <span class="link-muted" title="${escapeHtml(user?.email || '')}">
                     <i class="fa-solid fa-user"></i> ${escapeHtml(name)}
                 </span>
+                <button id="themeToggleBtn" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
                 <button id="logoutBtn" class="btn btn-ghost" title="Sign out">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out
                 </button>
@@ -862,6 +874,31 @@
                 sessionStorage.removeItem('bmu_token');
                 location.replace('/');
             });
+
+            // Pull live quota and refresh the badge.
+            if (showQuota) {
+                refreshQuotaBadge();
+                // Refresh after each ask completes (askNow updates the cached
+                // quota via this same call).
+                window.refreshAdvisorQuota = refreshQuotaBadge;
+            }
+        }
+
+        async function refreshQuotaBadge() {
+            const badge = document.getElementById('quotaBadge');
+            if (!badge) return;
+            try {
+                const u = await api('/api/advisor/usage');
+                if (u?.anonymous) { badge.remove(); return; }
+                const day = u.day || {};
+                const month = u.month || {};
+                const fmt = (used, limit) => Number(limit) === -1 ? '∞' : `${used}/${limit}`;
+                badge.innerHTML = `<i class="fa-solid fa-gauge"></i> Today ${fmt(day.used, day.limit)} · Month ${fmt(month.used, month.limit)}`;
+                // Visually warn when within 1 of either limit.
+                const nearDay = Number(day.limit) !== -1 && day.used >= day.limit - 1;
+                const nearMonth = Number(month.limit) !== -1 && month.used >= month.limit - 1;
+                badge.classList.toggle('quota-warn', nearDay || nearMonth);
+            } catch (_) { /* leave placeholder */ }
         }
 
         // If the user came here from a topic tile (?q=…), pre-fill and ask.

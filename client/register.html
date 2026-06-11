@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f3d3e" />
     <title>Create your account — BMU AI Academic Advisor</title>
+    <script src="theme.js"></script>
     <link rel="icon" type="image/png" href="bmulogo.png" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
@@ -22,6 +23,7 @@
         </a>
         <nav class="top-actions">
             <a href="/login" class="link-muted">Already have an account? <strong>Sign in</strong></a>
+            <button id="themeToggleBtn" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme"><i class="fa-solid fa-moon"></i></button>
         </nav>
     </header>
 
@@ -52,6 +54,13 @@
                     Email
                     <input type="email" name="email" required autocomplete="email" placeholder="aisha.bello@bmu.edu.ng" />
                 </label>
+                <label>
+                    I am a&hellip;
+                    <select name="role" id="roleSel" required>
+                        <option value="student" selected>Student</option>
+                        <option value="staff">Staff</option>
+                    </select>
+                </label>
                 <div class="row">
                     <label>
                         Phone (optional)
@@ -63,7 +72,7 @@
                     </label>
                 </div>
                 <label id="matricRow">
-                    Matric Number <span class="hint" style="font-weight:400; color:var(--muted);">(optional, for current students)</span>
+                    Matric Number <span class="hint" style="font-weight:400; color:var(--muted);">(students only)</span>
                     <input type="text" name="matricNo" maxlength="40"
                            placeholder="e.g. BMU/MBBS/22/0001" />
                 </label>
@@ -129,6 +138,7 @@
                 firstName: fd.get('firstName'),
                 lastName:  fd.get('lastName'),
                 email:     fd.get('email'),
+                role:      fd.get('role') || 'student',
                 phone:     fd.get('phone') || undefined,
                 department:fd.get('department') || undefined,
                 matricNo:  (fd.get('matricNo') || '').trim() || undefined,

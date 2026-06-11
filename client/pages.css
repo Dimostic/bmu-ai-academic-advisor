@@ -140,15 +140,19 @@
     margin: 0 0 6px; font-size: 1.6rem; color: var(--bg-deep);
 }
 .auth-card .lede { color: var(--muted); margin: 0 0 24px; }
-.auth-form { display: flex; flex-direction: column; gap: 12px; }
-.auth-form label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
-.auth-form input {
+.auth-form { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.auth-form label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); min-width: 0; }
+.auth-form input, .auth-form select, .auth-form textarea {
     border: 1px solid var(--line); border-radius: 10px;
-    padding: 10px 12px; font-size: 1rem; color: var(--text); background: #fff;
+    padding: 10px 12px; font-size: 1rem; color: var(--text); background: var(--bg-elev);
+    width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
+    font: inherit;
 }
-.auth-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26,130,112,.18); }
-.auth-form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 480px) { .auth-form .row { grid-template-columns: 1fr; } }
+.auth-form input:focus, .auth-form select:focus, .auth-form textarea:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26,130,112,.18);
+}
+.auth-form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-width: 0; }
+@media (max-width: 540px) { .auth-form .row { grid-template-columns: 1fr; } }
 .auth-form .btn-primary { width: 100%; padding: 12px; font-size: 1rem; margin-top: 6px; }
 .auth-form .alt-action { text-align: center; color: var(--muted); margin-top: 16px; font-size: .9rem; }
 .auth-form .alt-action a { color: var(--accent); font-weight: 600; text-decoration: none; }
