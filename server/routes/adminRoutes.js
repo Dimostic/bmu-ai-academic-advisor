@@ -1316,4 +1316,239 @@ router.post('/cache/warmup-queries', authenticateToken, requireAdmin, async (req
     }
 });
 
+// ============================================================================
+// FAQ Curation — review recent advisor Q&A turns and promote them into the
+// `cached_qa` table so they short-circuit the LLM next time the same (or
+// semantically similar) question is asked.
+//
+// Workflow:
+//   GET    /admin/advisor/recent-qa      — recent advisor turns + cache hit?
+//   POST   /admin/advisor/promote/:id    — turn an advisor_messages row into a
+//                                          cached_qa entry (with embedding)
+//   DELETE /admin/cached-qa/:id          — deactivate (soft-delete) a cache
+//                                          entry curated earlier
+// ============================================================================
+
+// List the most recent advisor reply turns paired with the immediately-
+// preceding student question, so an admin can decide what to promote.
+router.get('/advisor/recent-qa', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const limit  = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 30));
+        const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+
+        // Pair each advisor row with its most-recent earlier student row in
+        // the same conversation. We sort by the advisor row's id descending.
+        const rows = await query(`
+            SELECT
+                a.id              AS advisor_message_id,
+                a.conversation_id,
+                a.created_at,
+                a.text            AS advisor_text,
+                a.display_markdown,
+                a.speech_text,
+                a.tokens_in, a.tokens_out, a.latency_ms,
+                a.citations_json,
+                (SELECT s.text
+                   FROM advisor_messages s
+                   WHERE s.conversation_id = a.conversation_id
+                     AND s.role = 'student'
+                     AND s.id < a.id
+                   ORDER BY s.id DESC LIMIT 1)        AS question_text,
+                (SELECT q.id FROM cached_qa q
+                   WHERE q.is_active = 1
+                     AND q.question = (SELECT s2.text
+                                         FROM advisor_messages s2
+                                         WHERE s2.conversation_id = a.conversation_id
+                                           AND s2.role = 'student'
+                                           AND s2.id < a.id
+                                         ORDER BY s2.id DESC LIMIT 1)
+                   LIMIT 1)                            AS existing_cache_id
+            FROM advisor_messages a
+            WHERE a.role = 'advisor'
+            ORDER BY a.id DESC
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
+
+        // Drop rows that have no preceding student question (would be useless
+        // to cache).
+        const items = rows.filter(r => r.question_text && r.question_text.trim().length > 2);
+
+        res.json({ success: true, items });
+    } catch (err) {
+        console.error('Recent advisor Q&A error:', err);
+        res.status(500).json({ success: false, error: 'Could not load recent Q&A' });
+    }
+});
+
+// Promote an advisor reply into the FAQ cache. Generates the question
+// embedding via the existing embedding service so the FAQ similarity search
+// will pick it up.
+router.post('/advisor/promote/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const advisorId = parseInt(req.params.id, 10);
+        if (!advisorId) return res.status(400).json({ success: false, error: 'Invalid id' });
+
+        // Optional overrides
+        let { question, answer, categoryId, qaType } = req.body || {};
+
+        // Pull the advisor row + its preceding student question.
+        const arows = await query(
+            `SELECT id, conversation_id, text AS advisor_text,
+                    display_markdown, speech_text, citations_json
+             FROM advisor_messages
+             WHERE id = ? AND role = 'advisor' LIMIT 1`,
+            [advisorId]
+        );
+        const a = arows[0];
+        if (!a) return res.status(404).json({ success: false, error: 'Advisor message not found' });
+
+        if (!question) {
+            const srows = await query(
+                `SELECT text FROM advisor_messages
+                 WHERE conversation_id = ? AND role = 'student' AND id < ?
+                 ORDER BY id DESC LIMIT 1`,
+                [a.conversation_id, a.id]
+            );
+            question = (srows[0]?.text || '').trim();
+        }
+        if (!question) {
+            return res.status(400).json({
+                success: false,
+                error: 'No preceding student question found; supply `question` in the body to override.'
+            });
+        }
+
+        if (!answer) {
+            // Prefer the cleaner display_markdown; fall back to speech_text.
+            answer = (a.display_markdown || a.speech_text || a.advisor_text || '').trim();
+        }
+        if (!answer || answer.length < 8) {
+            return res.status(400).json({ success: false, error: 'Answer is empty or too short to cache.' });
+        }
+
+        // De-dupe: if this exact question is already cached & active, refresh
+        // its answer instead of inserting a duplicate.
+        const existingRows = await query(
+            `SELECT id FROM cached_qa WHERE is_active = 1 AND question = ? LIMIT 1`,
+            [question]
+        );
+
+        let answerSources = [];
+        try { answerSources = a.citations_json ? JSON.parse(a.citations_json) : []; }
+        catch (_) { answerSources = []; }
+
+        // Generate embedding for the question.
+        let embedding = null;
+        try {
+            const aiService = require('../services/aiService');
+            embedding = await aiService.generateEmbedding(question, true);
+        } catch (err) {
+            console.warn('[promote-qa] embedding failed:', err.message);
+            // Still allow promotion — the FAQ service will skip rows with no
+            // embedding when matching, but the row is still usable via
+            // exact-question lookup.
+        }
+
+        const CachedQA = require('../models/CachedQA');
+
+        if (existingRows.length) {
+            const id = existingRows[0].id;
+            // Direct SQL update (CachedQA.update() whitelists fewer columns
+            // than we need for a curated refresh — we want to bump answer,
+            // sources, embedding, verification AND qa_type in one shot).
+            await query(
+                `UPDATE cached_qa
+                 SET answer            = ?,
+                     answer_sources    = ?,
+                     embedding         = ?,
+                     confidence_score  = 1.0,
+                     is_active         = 1,
+                     is_verified       = 1,
+                     verified_by       = ?,
+                     verified_at       = NOW(),
+                     qa_type           = ?,
+                     updated_at        = NOW()
+                 WHERE id = ?`,
+                [
+                    answer,
+                    JSON.stringify(answerSources),
+                    embedding ? JSON.stringify(embedding) : null,
+                    req.user.id,
+                    qaType || 'curated',
+                    id
+                ]
+            );
+            await AuditTrail.log({
+                userId: req.user.id,
+                action: 'PROMOTE_ADVISOR_QA',
+                entityType: 'cached_qa',
+                entityId: id,
+                details: { advisorMessageId: advisorId, mode: 'refreshed' },
+                ipAddress: req.ip,
+                userAgent: req.headers['user-agent']
+            });
+            return res.json({ success: true, mode: 'refreshed', cachedQaId: id });
+        }
+
+        const newId = await CachedQA.create({
+            documentId: null,
+            categoryId: categoryId || null,
+            question,
+            questionVariations: [],
+            answer,
+            answerSources,
+            embedding,
+            confidenceScore: 1.0,
+            createdBy: req.user.id,
+            qaType: qaType || 'curated'
+        });
+
+        // Mark verified (curated by an admin).
+        try {
+            await query(
+                `UPDATE cached_qa SET is_verified = 1, verified_by = ?, verified_at = NOW() WHERE id = ?`,
+                [req.user.id, newId]
+            );
+        } catch (_) { /* table may not have these columns in all envs */ }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'PROMOTE_ADVISOR_QA',
+            entityType: 'cached_qa',
+            entityId: newId,
+            details: { advisorMessageId: advisorId, mode: 'created' },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.json({ success: true, mode: 'created', cachedQaId: newId });
+    } catch (err) {
+        console.error('Promote advisor Q&A error:', err);
+        res.status(500).json({ success: false, error: 'Could not promote Q&A' });
+    }
+});
+
+// Soft-delete a cached_qa entry.
+router.delete('/cached-qa/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json({ success: false, error: 'Invalid id' });
+        const CachedQA = require('../models/CachedQA');
+        await CachedQA.deactivate(id);
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DELETE_CACHED_QA',
+            entityType: 'cached_qa',
+            entityId: id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Delete cached_qa error:', err);
+        res.status(500).json({ success: false, error: 'Could not delete cache entry' });
+    }
+});
+
 module.exports = router;

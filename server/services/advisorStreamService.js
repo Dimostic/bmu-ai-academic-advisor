@@ -24,6 +24,10 @@ const llm = require('./llmClient');
 const persona = require('./advisorPersonaService');
 const tts = require('./ttsService');
 
+let faqService = null;
+try { faqService = require('./faqService'); }
+catch (_) { /* optional */ }
+
 const HISTORY_TURNS = parseInt(process.env.ADVISOR_HISTORY_TURNS || '8', 10);
 const RAG_ENABLED   = process.env.ENABLE_RAG !== 'false';
 const RAG_TIMEOUT_MS = parseInt(process.env.ADVISOR_RAG_TIMEOUT_MS || '4000', 10);
@@ -213,6 +217,117 @@ async function askStream({
         });
     } catch (err) {
         console.warn('[advisorStreamService] persist student turn failed:', err.message);
+    }
+
+    // ------------------------------------------------------------------
+    // FAQ-cache short-circuit.
+    //
+    // If an admin has previously promoted (or auto-generated) an answer
+    // for a semantically equivalent question, serve it without paying the
+    // LLM round-trip. Falls through silently on any error.
+    // ------------------------------------------------------------------
+    if (faqService) {
+        try {
+            const cached = await faqService.getCachedResponse(trimmed, {
+                userId: student?.user_id || null,
+                sessionId: conversation.id
+            });
+            if (cached?.cachedQA?.answer) {
+                const cachedAnswer = persona.scrubAll(cached.cachedQA.answer);
+                const cachedSpeech = persona.scrubAll(
+                    (cachedAnswer.split('\n').find(l => l.trim()) || cachedAnswer).slice(0, 600)
+                );
+                console.log(`[advisorStreamService] FAQ cache hit: cached_qa_id=${cached.cachedQA.id} (${(cached.similarityScore * 100).toFixed(1)}%)`);
+
+                // Emit speech, full answer, then audio (cache uses TTS too).
+                send('speech_ready', { speech_text: cachedSpeech });
+                if (cachedAnswer) send('token', { text: cachedAnswer });
+
+                let audio = { provider: 'none' };
+                if (voiceEnabled !== false && conversation.voice_enabled) {
+                    try {
+                        audio = await tts.synthesise(cachedSpeech);
+                        if (audio.audioUrl) {
+                            send('audio', {
+                                provider: audio.provider,
+                                audio_url: audio.audioUrl,
+                                from_cache: Boolean(audio.fromCache),
+                                speech_text: cachedSpeech
+                            });
+                        } else {
+                            send('audio', {
+                                provider: 'browser',
+                                use_browser_fallback: true,
+                                speech_text: cachedSpeech
+                            });
+                        }
+                    } catch (err) {
+                        send('audio', {
+                            provider: 'browser', use_browser_fallback: true,
+                            speech_text: cachedSpeech, error: err.message
+                        });
+                    }
+                } else {
+                    send('audio', { provider: 'none', use_browser_fallback: false, speech_text: cachedSpeech });
+                }
+
+                // Persist advisor turn so transcripts stay coherent.
+                let citations = [];
+                try { citations = JSON.parse(cached.cachedQA.answer_sources || '[]'); }
+                catch (_) { citations = []; }
+                let messageId = null;
+                try {
+                    messageId = await Advisor.addMessage({
+                        conversationId: conversation.id,
+                        role: 'advisor',
+                        inputMode: 'text',
+                        text: cachedAnswer,
+                        speechText: cachedSpeech,
+                        displayMarkdown: cachedAnswer,
+                        audioUrl: audio.audioUrl || null,
+                        citationsJson: JSON.stringify(citations),
+                        suggestedActionsJson: JSON.stringify([]),
+                        followUpsJson: JSON.stringify([]),
+                        latencyMs: Date.now() - startedAt
+                    });
+                    await Advisor.touchConversation(conversation.id, null);
+                } catch (err) {
+                    console.warn('[advisorStreamService] persist cached advisor turn failed:', err.message);
+                }
+
+                send('done', {
+                    success: true,
+                    sessionToken: conversation.session_token,
+                    conversationId: conversation.id,
+                    messageId,
+                    reply: {
+                        speech_text: cachedSpeech,
+                        display_markdown: cachedAnswer,
+                        topic_slug: null,
+                        citations,
+                        suggested_actions: [],
+                        follow_up_questions: [],
+                        needs_escalation: false,
+                        confidence: cached.similarityScore || 0.95
+                    },
+                    audio: {
+                        provider:             audio.provider || 'none',
+                        audio_url:            audio.audioUrl || null,
+                        from_cache:           Boolean(audio.fromCache),
+                        use_browser_fallback: Boolean(audio.useBrowserFallback)
+                    },
+                    meta: {
+                        latency_ms: Date.now() - startedAt,
+                        source: 'faq_cache',
+                        cached_qa_id: cached.cachedQA.id,
+                        similarity: cached.similarityScore
+                    }
+                });
+                return;
+            }
+        } catch (err) {
+            console.warn('[advisorStreamService] FAQ cache lookup failed:', err.message);
+        }
     }
 
     let history = [];

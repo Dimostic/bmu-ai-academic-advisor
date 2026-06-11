@@ -97,7 +97,8 @@
         faqs:      renderFAQs,
         users:     renderUsers,
         audit:     renderAudit,
-        metrics:   renderMetrics
+        metrics:   renderMetrics,
+        curate:    renderCurate
     };
     navButtons.forEach(b => b.addEventListener('click', () => {
         navButtons.forEach(x => x.classList.remove('active'));
@@ -263,6 +264,75 @@
             });
         } catch (err) {
             main.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    // -------------------------------------------------------- CURATE Q&A
+    // Lists the most recent advisor replies and lets an admin promote any
+    // of them into the FAQ cache so they short-circuit the LLM next time.
+    async function renderCurate() {
+        main.innerHTML = `
+            <h2>Curate Q&amp;A</h2>
+            <p class="lede">Recent advisor replies. Click <strong>Promote</strong> to save a reply to the FAQ cache so future, similar questions get instant answers without calling the LLM.</p>
+            <div class="admin-actions">
+                <button class="btn btn-ghost" id="curateRefresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+            </div>
+            <div id="curateList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+        `;
+        document.getElementById('curateRefresh').addEventListener('click', renderCurate);
+
+        const listEl = document.getElementById('curateList');
+        try {
+            const r = await api('/api/admin/advisor/recent-qa?limit=40');
+            const items = r.items || [];
+            if (!items.length) {
+                listEl.innerHTML = '<p class="lede">No advisor replies yet. Once students chat with Dr. Tari, their Q&amp;A pairs will appear here.</p>';
+                return;
+            }
+            listEl.innerHTML = items.map(it => {
+                const cached = it.existing_cache_id
+                    ? '<span class="badge badge-ok"><i class="fa-solid fa-check"></i> in cache</span>'
+                    : '<span class="badge">not cached</span>';
+                const when = new Date(it.created_at).toLocaleString();
+                const ans = (it.display_markdown || it.advisor_text || '').slice(0, 800);
+                return `
+                <article class="curate-card" data-id="${it.advisor_message_id}">
+                    <div class="curate-meta">
+                        <span class="muted">${escapeHtml(when)}</span>
+                        ${cached}
+                    </div>
+                    <div class="curate-q"><strong>Q:</strong> ${escapeHtml(it.question_text || '')}</div>
+                    <details class="curate-a">
+                        <summary>Show advisor reply (${ans.length} chars)</summary>
+                        <pre>${escapeHtml(ans)}</pre>
+                    </details>
+                    <div class="curate-actions">
+                        <button class="btn btn-primary btn-sm promote-btn" type="button">
+                            <i class="fa-solid fa-star"></i> ${it.existing_cache_id ? 'Refresh in cache' : 'Promote to cache'}
+                        </button>
+                    </div>
+                </article>`;
+            }).join('');
+
+            listEl.querySelectorAll('.promote-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const card = btn.closest('.curate-card');
+                    const id   = card.dataset.id;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Promoting…';
+                    try {
+                        const r = await api('/api/admin/advisor/promote/' + id, { method: 'POST', body: {} });
+                        toast(r.mode === 'created' ? 'Added to FAQ cache' : 'Refreshed in FAQ cache');
+                        renderCurate();
+                    } catch (err) {
+                        toast(err.message || 'Could not promote', 'error');
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa-solid fa-star"></i> Promote to cache';
+                    }
+                });
+            });
+        } catch (err) {
+            listEl.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
         }
     }
 

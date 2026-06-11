@@ -258,3 +258,32 @@
 }
 .loading i { margin-right: 8px; color: var(--accent); }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+
+/* -------- Curate Q&A panel -------- */
+.curate-card {
+    background: var(--bg-elev);
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.curate-meta { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; font-size: .85rem; }
+.curate-meta .muted { color: var(--muted); }
+.curate-q { margin: 6px 0; line-height: 1.45; }
+.curate-a { margin: 8px 0; }
+.curate-a summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+.curate-a pre {
+    white-space: pre-wrap; word-break: break-word;
+    background: rgba(0,0,0,.03); padding: 10px 12px; border-radius: 8px;
+    margin-top: 8px; max-height: 320px; overflow: auto;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.curate-actions { margin-top: 10px; }
+.btn.btn-sm { padding: 6px 12px; font-size: .9rem; }
+.badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    background: rgba(0,0,0,.06); font-size: .78rem; font-weight: 600;
+    color: var(--muted);
+}
+.badge.badge-ok { background: #dff5e3; color: #1f7a3a; }
