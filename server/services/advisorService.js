@@ -16,6 +16,10 @@ const llm = require('./llmClient');
 const persona = require('./advisorPersonaService');
 const tts = require('./ttsService');
 
+let faqService = null;
+try { faqService = require('./faqService'); }
+catch (_) { /* optional */ }
+
 const HISTORY_TURNS = parseInt(process.env.ADVISOR_HISTORY_TURNS || '8', 10);
 const RAG_ENABLED   = process.env.ENABLE_RAG !== 'false';
 const RAG_TIMEOUT_MS = parseInt(process.env.ADVISOR_RAG_TIMEOUT_MS || '4000', 10);
@@ -155,6 +159,47 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         inputMode,
         text: trimmed
     });
+
+    // 2b. FAQ-cache short-circuit. If we already have a curated/auto-
+    // generated answer for a semantically equivalent question, serve it
+    // without paying the LLM round-trip.
+    if (faqService) {
+        try {
+            const cached = await faqService.getCachedResponse(trimmed, {
+                userId: student?.user_id || null,
+                sessionId: conversation.id
+            });
+            if (cached?.cachedQA?.answer) {
+                console.log(`[advisorService] FAQ cache hit: cached_qa_id=${cached.cachedQA.id} (${(cached.similarityScore * 100).toFixed(1)}%)`);
+                const cachedAnswer = persona.scrubAll(cached.cachedQA.answer);
+                const cachedSpeech = persona.scrubAll(
+                    (cachedAnswer.split('\n').find(l => l.trim()) || cachedAnswer).slice(0, 600)
+                );
+                let citations = [];
+                try { citations = JSON.parse(cached.cachedQA.answer_sources || '[]'); }
+                catch (_) { citations = []; }
+                const parsed = {
+                    speech_text: cachedSpeech,
+                    display_markdown: cachedAnswer,
+                    topic_slug: null,
+                    citations,
+                    suggested_actions: [],
+                    follow_up_questions: [],
+                    needs_escalation: false,
+                    confidence: cached.similarityScore || 0.95
+                };
+                const result = await _persistAndPackage({
+                    conversation, parsed, llmUsage: null, voiceEnabled, startedAt
+                });
+                result.meta.source = 'faq_cache';
+                result.meta.cached_qa_id = cached.cachedQA.id;
+                result.meta.similarity = cached.similarityScore;
+                return result;
+            }
+        } catch (err) {
+            console.warn('[advisorService] FAQ cache lookup failed:', err.message);
+        }
+    }
 
     // 3. Context: history + RAG
     const [history, ragContext] = await Promise.all([
