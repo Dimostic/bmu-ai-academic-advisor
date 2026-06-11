@@ -337,3 +337,133 @@
     padding: 4px 0;
 }
 .curate-compose[open] > summary { margin-bottom: 6px; }
+
+/* ========================================================================
+   Theme harmonisation — pages mix .top-bar (hyphenated) and .topbar (no
+   hyphen). Make both render identically and make sure the mobile wrap and
+   dark-mode rules apply to both.
+   ===================================================================== */
+.top-bar, .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px; background: var(--bg-elev);
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    position: sticky; top: 0; z-index: 20;
+    gap: 12px; flex-wrap: wrap;
+}
+.top-bar .top-actions, .topbar .top-actions,
+.top-bar nav.top-actions, .topbar nav.top-actions {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-left: auto;
+}
+@media (max-width: 720px) {
+    .top-bar, .topbar { padding: 10px 14px; }
+    .top-bar .brand small, .topbar .brand small { font-size: .72rem; }
+    .top-bar .top-actions, .topbar .top-actions {
+        width: 100%; justify-content: flex-end;
+    }
+}
+
+/* Default-button styling needs to be theme-aware too. The previous rule
+   used a fixed light hover (#eef3f3) which sat as a near-white block on a
+   dark page. */
+.btn-ghost:hover { background: rgba(0,0,0,.05); }
+.icon-btn:hover { background: rgba(0,0,0,.05); }
+
+/* ========================================================================
+   Dark-theme overrides — touches every place that hard-coded a light
+   background or text colour. Anything else (using CSS variables) flips
+   automatically via :root vs html[data-theme="dark"] in advisor.css.
+   ===================================================================== */
+html[data-theme="dark"] .btn-ghost { color: var(--text); border-color: var(--line); }
+html[data-theme="dark"] .btn-ghost:hover { background: rgba(255,255,255,.08); }
+html[data-theme="dark"] .icon-btn { color: var(--accent-soft); border-color: var(--line); }
+html[data-theme="dark"] .icon-btn:hover { background: rgba(255,255,255,.08); }
+
+/* Landing hero: the gradient is the fixed brand panel; keep it dark in both
+   modes but make the buttons readable in both. */
+html[data-theme="dark"] .hero-cta .btn-primary { background: var(--accent); color: #061215; }
+html[data-theme="dark"] .hero-cta .btn-primary:hover { background: var(--accent-soft); }
+html[data-theme="dark"] .hero-cta .btn-ghost { color: #fff; border-color: rgba(255,255,255,.4); }
+
+/* Sections / cards / tiles on landing + admin */
+html[data-theme="dark"] .section,
+html[data-theme="dark"] .auth-card {
+    background: var(--bg-elev); color: var(--text);
+}
+html[data-theme="dark"] .section h2,
+html[data-theme="dark"] .section h3,
+html[data-theme="dark"] .auth-card h1 { color: var(--text); }
+html[data-theme="dark"] .topic-tile {
+    background: rgba(47,191,158,.08); border-color: rgba(47,191,158,.25);
+    color: var(--text);
+}
+html[data-theme="dark"] .topic-tile:hover { box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+html[data-theme="dark"] .topic-tile strong { color: var(--text); }
+
+html[data-theme="dark"] .faq-teaser .faq {
+    background: rgba(255,255,255,.04); border-color: var(--line);
+}
+html[data-theme="dark"] .faq-teaser .faq summary { color: var(--accent-soft); }
+html[data-theme="dark"] .faq-teaser .faq .answer { color: var(--text); }
+
+/* Auth forms — inputs need higher-contrast borders + body bg in dark */
+html[data-theme="dark"] .auth-form input,
+html[data-theme="dark"] .auth-form select,
+html[data-theme="dark"] .auth-form textarea {
+    background: #0f1c1f; color: var(--text); border-color: var(--line);
+}
+html[data-theme="dark"] .auth-form input:focus,
+html[data-theme="dark"] .auth-form select:focus,
+html[data-theme="dark"] .auth-form textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(47,191,158,.18);
+}
+html[data-theme="dark"] .auth-banner {
+    background: rgba(47,191,158,.10); border-color: rgba(47,191,158,.3); color: var(--text);
+}
+html[data-theme="dark"] .auth-error { background: rgba(198,66,66,.12); color: #f4b3ad; border-color: rgba(198,66,66,.4); }
+html[data-theme="dark"] .auth-success { background: rgba(47,191,158,.12); color: #cdf3e3; border-color: rgba(47,191,158,.4); }
+
+/* Admin shell: nav buttons, table zebra, badges */
+html[data-theme="dark"] .admin-nav { background: var(--bg-elev); }
+html[data-theme="dark"] .admin-nav button { color: var(--text); }
+html[data-theme="dark"] .admin-nav button:hover { background: rgba(255,255,255,.06); }
+html[data-theme="dark"] .admin-nav button.active { background: var(--accent); color: #061215; }
+html[data-theme="dark"] .admin-table { background: var(--bg-elev); color: var(--text); }
+html[data-theme="dark"] .admin-table thead th { background: #0f1c1f; color: var(--accent-soft); }
+html[data-theme="dark"] .admin-table tr:hover td { background: rgba(255,255,255,.04); }
+html[data-theme="dark"] .badge-success { background: rgba(47,191,158,.18); color: #aef0d2; }
+html[data-theme="dark"] .badge-warn { background: rgba(245,158,11,.18); color: #fde0a3; }
+html[data-theme="dark"] .badge-danger { background: rgba(198,66,66,.18); color: #f4b3ad; }
+html[data-theme="dark"] .badge-info { background: rgba(96,165,250,.18); color: #c2d8f5; }
+html[data-theme="dark"] .badge.badge-ok { background: rgba(47,191,158,.18); color: #aef0d2; }
+html[data-theme="dark"] .badge { background: rgba(255,255,255,.08); color: var(--muted); }
+html[data-theme="dark"] .dropzone { background: rgba(255,255,255,.03); border-color: var(--line); color: var(--muted); }
+html[data-theme="dark"] .dropzone:hover { background: rgba(47,191,158,.08); }
+
+/* Curate-Q&A panel cards (cards land on hard-coded #fff in some places) */
+html[data-theme="dark"] .curate-card,
+html[data-theme="dark"] .curate-compose { background: var(--bg-elev); border-color: var(--line); }
+html[data-theme="dark"] .curate-edit {
+    background: rgba(47,191,158,.06); border-color: rgba(47,191,158,.25);
+}
+html[data-theme="dark"] .curate-edit input,
+html[data-theme="dark"] .curate-edit textarea {
+    background: #0f1c1f; color: var(--text); border-color: var(--line);
+}
+html[data-theme="dark"] .curate-a pre { background: rgba(255,255,255,.04); color: var(--text); }
+
+/* Footer credit line (footer.js) */
+html[data-theme="dark"] #bmu-global-footer { color: rgba(255,255,255,.7); }
+html[data-theme="dark"] body.has-light-footer #bmu-global-footer { color: rgba(255,255,255,.7); }
+
+/* Generic links */
+html[data-theme="dark"] a:not(.btn):not(.brand) { color: var(--accent-soft); }
+html[data-theme="dark"] a:not(.btn):not(.brand):hover { color: #fff; }
+
+/* Stats row strong values (admin dashboard) */
+html[data-theme="dark"] .stat-row .stat strong { color: var(--accent-soft); }
+
+/* Loading spinners */
+html[data-theme="dark"] .loading { color: var(--muted); }
