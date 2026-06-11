@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f3d3e" />
+    <title>Email verification — BMU AI Advisor</title>
+    <link rel="icon" type="image/png" href="bmulogo.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="advisor.css" />
+    <link rel="stylesheet" href="pages.css" />
+</head>
+<body>
+    <header class="topbar">
+        <a href="/" class="brand">
+            <img src="bmulogo.png" alt="BMU" />
+            <div>
+                <strong>Dr. Tari</strong>
+                <small>Bayelsa Medical University</small>
+            </div>
+        </a>
+    </header>
+
+    <main class="auth-shell">
+        <section class="auth-card">
+            <h1><i class="fa-solid fa-envelope-circle-check"></i> Verifying your email</h1>
+            <div id="status" class="lede">Working…</div>
+            <p style="margin-top:18px;">
+                <a class="btn btn-primary" href="/login">Continue to sign in</a>
+            </p>
+        </section>
+    </main>
+
+    <script>
+    (async () => {
+        const status = document.getElementById('status');
+        const params = new URLSearchParams(location.search);
+        const token = params.get('token');
+        if (!token) {
+            status.innerHTML = '<span class="auth-error">Missing verification token.</span>';
+            return;
+        }
+        try {
+            const r = await fetch('/api/users/verify-email?token=' + encodeURIComponent(token));
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.error || 'Verification failed');
+            }
+            status.innerHTML = '<span class="auth-success">' +
+                '<i class="fa-solid fa-circle-check"></i> ' +
+                (data.message || 'Email verified. You can sign in now.') +
+                '</span>';
+        } catch (err) {
+            status.innerHTML = '<span class="auth-error"><i class="fa-solid fa-circle-exclamation"></i> ' +
+                (err.message || 'Verification failed') + '</span>';
+        }
+    })();
+    </script>
+    <script src="footer.js" defer></script>
+</body>
+</html>

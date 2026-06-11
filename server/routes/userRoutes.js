@@ -32,7 +32,7 @@ router.post('/register', registerValidation, async (req, res) => {
         // Create user with verification token. User.create auto-approves
         // accounts with a @<UNIVERSITY_DOMAIN> email so legitimate BMU
         // students can log in immediately without admin intervention.
-        const { userId, verificationToken, autoApproved } = await User.create({
+        const { userId, verificationToken, isUniversityEmail } = await User.create({
             email,
             password,
             firstName,
@@ -43,21 +43,23 @@ router.post('/register', registerValidation, async (req, res) => {
             role: 'staff'
         });
 
-        // Email flow: send a verification email only when we did NOT auto-
-        // approve. Auto-approved users are usable immediately.
-        if (!autoApproved) {
-            const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-            const verificationUrl = `${baseUrl}/#/verify-email?token=${verificationToken}`;
-            try {
-                await emailService.sendVerificationEmail({
-                    to: email,
-                    userName: firstName || email.split('@')[0],
-                    verifyUrl: verificationUrl
-                });
-                console.log(`[Registration] Verification email sent to: ${email}`);
-            } catch (emailError) {
-                console.error('[Registration] Failed to send verification email:', emailError.message);
-            }
+        // Always send a verification email so we can prove the registrant
+        // actually controls the inbox. Without this step a fake
+        // "attacker@bmu.edu.ng" address (i.e. one whose holder doesn't
+        // exist) could otherwise auto-approve into the system.
+        let emailSent = false;
+        const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+        const verificationUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
+        try {
+            const r = await emailService.sendVerificationEmail({
+                to: email,
+                userName: firstName || email.split('@')[0],
+                verifyUrl: verificationUrl
+            });
+            emailSent = r && r.success !== false;
+            console.log(`[Registration] Verification email ${emailSent ? 'sent' : 'NOT sent'} to: ${email}`);
+        } catch (emailError) {
+            console.error('[Registration] Failed to send verification email:', emailError.message);
         }
 
         // Log action
@@ -66,20 +68,27 @@ router.post('/register', registerValidation, async (req, res) => {
             action: 'USER_REGISTERED',
             entityType: 'user',
             entityId: userId,
-            details: { email, autoApproved },
+            details: { email, isUniversityEmail, emailSent },
             ipAddress: req.ip,
             userAgent: req.headers['user-agent']
         });
 
+        // Friendly response: the account is always in "needs verification"
+        // state. If email isn't configured (EMAIL_ENABLED=false on the
+        // server), tell the user to ask an admin to approve them — they
+        // can't self-verify without the link.
+        const message = emailSent
+            ? `Registration successful! We've sent a verification link to ${email}. Click it to activate your account.${isUniversityEmail ? ' Once verified, your BMU account is approved automatically.' : ' After verification an admin will review and approve your account.'}`
+            : 'Registration successful, but we could not send the verification email automatically. Please contact an administrator to activate your account.';
+
         res.status(201).json({
             success: true,
-            message: autoApproved
-                ? 'Registration successful! You can sign in now with your BMU email.'
-                : 'Registration successful! Please check your email to verify your account.',
+            message,
             userId,
-            requiresVerification: !autoApproved,
-            requiresApproval: !autoApproved,
-            autoApproved
+            requiresVerification: true,
+            requiresApproval: !isUniversityEmail,
+            emailSent,
+            autoApproved: false
         });
 
     } catch (error) {
@@ -279,7 +288,8 @@ router.post('/login', loginValidation, async (req, res) => {
                 firstName: user.first_name,
                 lastName: user.last_name,
                 role: user.role,
-                department: user.department
+                department: user.department,
+                mustChangePassword: !!user.must_change_password
             }
         });
 
@@ -379,6 +389,9 @@ router.post('/change-password', authenticateToken, passwordChangeValidation, asy
         }
 
         await User.updatePassword(req.user.id, newPassword);
+        // Clear the must_change_password flag so the user is no longer
+        // forced to the change-password screen on subsequent logins.
+        await User.setMustChangePassword(req.user.id, false);
 
         await AuditTrail.log({
             userId: req.user.id,

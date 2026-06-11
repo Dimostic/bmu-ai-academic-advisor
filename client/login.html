@@ -110,6 +110,13 @@
                 localStorage.setItem('bmu_token', data.token);
                 localStorage.setItem('bmu_user', JSON.stringify(data.user));
 
+                // If the admin created this account they must pick a fresh
+                // password before reaching the rest of the app.
+                if (data.user && data.user.mustChangePassword) {
+                    window.location.replace('/change-password');
+                    return;
+                }
+
                 // Hand back to whatever page asked us to authenticate
                 let target = next;
                 if (presetQ) target += (target.includes('?') ? '&' : '?') + 'q=' + encodeURIComponent(presetQ);

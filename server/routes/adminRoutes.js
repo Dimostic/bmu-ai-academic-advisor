@@ -223,7 +223,59 @@ router.get('/users', authenticateToken, requireAdmin, async (req, res) => {
     }
 });
 
-// Update user status (activate/deactivate)
+// Create a user from the admin form. Skips email verification (admin
+// vouches for the address) and sets must_change_password=1 so the new
+// user is forced to choose their own password on first login.
+router.post('/users', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const {
+            email, password, firstName, lastName,
+            role = 'staff', department = null, phone = null, matricNo = null
+        } = req.body || {};
+
+        // Basic validation (re-uses the same constraints as self-registration).
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ success: false, error: 'Valid email is required' });
+        }
+        if (!firstName || !lastName) {
+            return res.status(400).json({ success: false, error: 'First and last name are required' });
+        }
+        if (!password || password.length < 8) {
+            return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+        }
+        if (!['staff', 'admin', 'superadmin'].includes(role)) {
+            return res.status(400).json({ success: false, error: 'Invalid role' });
+        }
+
+        const existing = await User.findByEmailAny(email);
+        if (existing) {
+            return res.status(409).json({ success: false, error: 'A user with that email already exists' });
+        }
+
+        const userId = await User.adminCreate({
+            email, password, firstName, lastName, role, department, phone, matricNo
+        });
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'USER_CREATED_BY_ADMIN',
+            entityType: 'user',
+            entityId: userId,
+            details: { email, role, by: req.user.email },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.status(201).json({
+            success: true,
+            userId,
+            message: `Account created for ${email}. The user must change their password on first login.`
+        });
+    } catch (error) {
+        console.error('Admin user-create error:', error);
+        res.status(500).json({ success: false, error: 'Could not create user' });
+    }
+});
 router.put('/users/:id/status', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;

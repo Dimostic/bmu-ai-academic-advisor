@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f3d3e" />
+    <title>BMU Students' Handbook — read &amp; search</title>
+    <link rel="icon" type="image/png" href="bmulogo.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="advisor.css" />
+    <link rel="stylesheet" href="pages.css" />
+    <style>
+        .handbook-shell {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 20px;
+            max-width: 1280px;
+            margin: 24px auto;
+            padding: 0 20px;
+        }
+        @media (max-width: 800px) {
+            .handbook-shell { grid-template-columns: 1fr; }
+            .toc-pane { order: 2; }
+        }
+        .toc-pane {
+            background: var(--bg-elev, #fff);
+            border-radius: var(--radius, 14px);
+            padding: 16px;
+            box-shadow: var(--shadow, 0 4px 16px rgba(0,0,0,.06));
+            position: sticky; top: 80px;
+            max-height: calc(100vh - 100px);
+            overflow: auto;
+        }
+        .toc-pane h3 { margin: 0 0 8px; color: var(--bg-deep); font-size: 1rem; }
+        .toc-pane ul { list-style: none; padding: 0; margin: 0; }
+        .toc-pane li { margin: 2px 0; }
+        .toc-pane a {
+            display: block; padding: 4px 8px; border-radius: 6px;
+            color: var(--text); text-decoration: none; font-size: .9rem;
+        }
+        .toc-pane a:hover { background: rgba(0,0,0,.05); }
+        .toc-pane a.lvl-2 { padding-left: 22px; font-size: .85rem; color: var(--muted); }
+        .toc-pane a.lvl-3 { padding-left: 36px; font-size: .82rem; color: var(--muted); }
+        .toc-pane a.active { background: rgba(35,182,165,.15); color: var(--bg-deep); font-weight: 600; }
+
+        .doc-pane {
+            background: var(--bg-elev, #fff);
+            border-radius: var(--radius, 14px);
+            padding: 22px 28px 60px;
+            box-shadow: var(--shadow, 0 4px 16px rgba(0,0,0,.06));
+            min-height: 600px;
+        }
+        .doc-pane h1, .doc-pane h2, .doc-pane h3, .doc-pane h4 {
+            color: var(--bg-deep); margin-top: 24px;
+        }
+        .doc-pane h1 { font-size: 1.5rem; }
+        .doc-pane h2 { font-size: 1.25rem; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,.08); }
+        .doc-pane h3 { font-size: 1.05rem; }
+        .doc-pane p { line-height: 1.7; margin: 10px 0; }
+        .doc-pane ul, .doc-pane ol { line-height: 1.7; padding-left: 24px; }
+        .doc-pane mark.hb-hit {
+            background: #fff2a8; padding: 1px 2px; border-radius: 3px;
+            box-shadow: 0 0 0 2px #fff2a8;
+        }
+        .doc-pane mark.hb-hit-current {
+            background: #f59e0b; color: #fff;
+        }
+
+        .search-bar {
+            position: sticky; top: 64px;
+            display: flex; gap: 8px; align-items: center;
+            margin-bottom: 16px;
+            background: var(--bg-elev, #fff);
+            padding: 10px 12px;
+            border-radius: 12px;
+            box-shadow: var(--shadow, 0 4px 16px rgba(0,0,0,.06));
+            z-index: 5;
+        }
+        .search-bar input {
+            flex: 1; padding: 8px 10px;
+            border: 1px solid rgba(0,0,0,.15); border-radius: 8px;
+            font: inherit;
+        }
+        .search-bar input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+        .search-bar .hits {
+            font-size: .85rem; color: var(--muted); min-width: 70px; text-align: right;
+        }
+        .search-bar button { padding: 6px 10px; }
+
+        .handbook-loading {
+            display: flex; align-items: center; justify-content: center;
+            height: 400px; color: var(--muted); gap: 8px;
+        }
+        .handbook-error {
+            background: #fdebea; border: 1px solid #f3c0bd;
+            color: #8a2522; padding: 14px 16px; border-radius: 10px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <a href="/" class="brand">
+            <img src="bmulogo.png" alt="BMU" />
+            <div>
+                <strong>Dr. Tari</strong>
+                <small>Bayelsa Medical University</small>
+            </div>
+        </a>
+        <nav class="top-actions">
+            <a href="/advisor" class="link-muted"><i class="fa-solid fa-message"></i> Ask Dr. Tari</a>
+            <a id="adminLink" href="/admin" class="link-muted hidden"><i class="fa-solid fa-toolbox"></i> Admin</a>
+            <div id="authSlot"></div>
+        </nav>
+    </header>
+
+    <main class="handbook-shell">
+        <aside class="toc-pane" id="tocPane" aria-label="Handbook contents">
+            <h3><i class="fa-solid fa-list"></i> Contents</h3>
+            <div id="tocBody"><div class="handbook-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div></div>
+        </aside>
+        <section class="doc-pane">
+            <h2 id="docTitle" style="margin-top:0;">Students' Handbook</h2>
+            <div class="search-bar">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input id="searchInput" type="search" placeholder="Search the handbook (e.g. attendance, hostel)" autocomplete="off" />
+                <button id="prevHit" class="btn btn-ghost btn-sm" type="button" title="Previous match">
+                    <i class="fa-solid fa-chevron-up"></i>
+                </button>
+                <button id="nextHit" class="btn btn-ghost btn-sm" type="button" title="Next match">
+                    <i class="fa-solid fa-chevron-down"></i>
+                </button>
+                <span id="hitCount" class="hits">—</span>
+                <button id="clearHits" class="btn btn-ghost btn-sm hidden" type="button">Clear</button>
+            </div>
+            <div id="docContent">
+                <div class="handbook-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading handbook…</div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+    /**
+     * BMU Students' Handbook reader.
+     *
+     * - Auth-gated: redirects to /login if there's no token.
+     * - Loads the canonical handbook id from /api/documents/handbook, then
+     *   pulls the rendered HTML + table-of-contents from
+     *   /api/documents/:id/content.
+     * - Search runs purely on the client (text-content scan over the
+     *   rendered DOM) so it stays instant for typical doc sizes (~1MB).
+     */
+    (() => {
+        const token = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+        if (!token) {
+            const next = encodeURIComponent('/handbook');
+            location.replace(`/login?next=${next}`);
+            return;
+        }
+
+        // Show the admin link if applicable.
+        try {
+            const u = JSON.parse(localStorage.getItem('bmu_user') || 'null');
+            if (u && (u.role === 'admin' || u.role === 'superadmin')) {
+                document.getElementById('adminLink').classList.remove('hidden');
+            }
+            const slot = document.getElementById('authSlot');
+            const name = (u?.firstName || u?.first_name || u?.email || 'You').toString().split(' ')[0];
+            slot.innerHTML = `
+                <span class="link-muted" title="${escapeHtml(u?.email || '')}">
+                    <i class="fa-solid fa-user"></i> ${escapeHtml(name)}
+                </span>
+                <button id="logoutBtn" class="btn btn-ghost"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</button>`;
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                localStorage.removeItem('bmu_token'); localStorage.removeItem('bmu_user');
+                sessionStorage.removeItem('bmu_token');
+                location.replace('/');
+            });
+        } catch (_) { /* noop */ }
+
+        async function api(path) {
+            const r = await fetch(path, { headers: { Authorization: 'Bearer ' + token } });
+            if (r.status === 401 || r.status === 403) {
+                const next = encodeURIComponent('/handbook');
+                location.replace(`/login?next=${next}`);
+                throw new Error('unauthorised');
+            }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }
+
+        const tocBody    = document.getElementById('tocBody');
+        const docContent = document.getElementById('docContent');
+        const docTitle   = document.getElementById('docTitle');
+        const searchInput= document.getElementById('searchInput');
+        const hitCount   = document.getElementById('hitCount');
+        const prevBtn    = document.getElementById('prevHit');
+        const nextBtn    = document.getElementById('nextHit');
+        const clearBtn   = document.getElementById('clearHits');
+
+        let hits = [];      // [{ node, idx }]
+        let currentHit = -1;
+
+        bootstrap();
+
+        async function bootstrap() {
+            try {
+                // 1. resolve handbook id
+                const meta = await api('/api/documents/handbook');
+                docTitle.textContent = meta.title || 'Students\u2019 Handbook';
+                // 2. pull content + TOC
+                const data = await api('/api/documents/' + meta.id + '/content');
+                renderTOC(data.tableOfContents || []);
+                renderContent(data.content || '<p>(empty)</p>');
+                wireSearch();
+                // 3. honour ?q=… deep link
+                const q = new URLSearchParams(location.search).get('q');
+                if (q) {
+                    searchInput.value = q;
+                    runSearch(q);
+                }
+            } catch (err) {
+                docContent.innerHTML = `<div class="handbook-error"><strong>Could not load the handbook.</strong><br>${escapeHtml(err.message || 'Unknown error')}</div>`;
+                tocBody.innerHTML = '';
+            }
+        }
+
+        function renderTOC(toc) {
+            if (!toc.length) {
+                tocBody.innerHTML = '<p class="muted" style="padding:8px;">No table of contents detected.</p>';
+                return;
+            }
+            tocBody.innerHTML = `<ul>${toc.map(item => {
+                const lvl = Math.min(3, Math.max(1, item.level || 1));
+                return `<li><a class="lvl-${lvl}" href="#${escapeHtml(item.id || '')}">${escapeHtml(item.title || '')}</a></li>`;
+            }).join('')}</ul>`;
+
+            // Smooth-scroll on TOC click.
+            tocBody.querySelectorAll('a').forEach(a => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = a.getAttribute('href').slice(1);
+                    const target = document.getElementById(id);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        tocBody.querySelectorAll('a').forEach(x => x.classList.remove('active'));
+                        a.classList.add('active');
+                    }
+                });
+            });
+        }
+
+        function renderContent(html) {
+            docContent.innerHTML = html;
+        }
+
+        // ----------- Client-side search ----------------------------------
+        // Walk text nodes, find matches, wrap them in <mark> tags.
+        function clearHighlights() {
+            hits.forEach(h => {
+                const m = h.mark;
+                if (m && m.parentNode) {
+                    const txt = document.createTextNode(m.textContent);
+                    m.parentNode.replaceChild(txt, m);
+                }
+            });
+            // Merge adjacent text nodes that we've split apart
+            docContent.normalize();
+            hits = [];
+            currentHit = -1;
+            hitCount.textContent = '\u2014';
+            clearBtn.classList.add('hidden');
+        }
+
+        function runSearch(needle) {
+            clearHighlights();
+            needle = (needle || '').trim();
+            if (needle.length < 2) return;
+
+            const re = new RegExp(escapeRegExp(needle), 'gi');
+            const walker = document.createTreeWalker(docContent, NodeFilter.SHOW_TEXT, {
+                acceptNode(n) {
+                    if (!n.nodeValue || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+                    if (n.parentElement && (n.parentElement.tagName === 'SCRIPT' || n.parentElement.tagName === 'STYLE')) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return re.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                }
+            });
+
+            const targets = [];
+            let n;
+            while ((n = walker.nextNode())) targets.push(n);
+
+            for (const node of targets) {
+                const parent = node.parentNode;
+                if (!parent) continue;
+                const text = node.nodeValue;
+                const frag = document.createDocumentFragment();
+                let lastIdx = 0;
+                re.lastIndex = 0;
+                let m;
+                while ((m = re.exec(text))) {
+                    if (m.index > lastIdx) {
+                        frag.appendChild(document.createTextNode(text.slice(lastIdx, m.index)));
+                    }
+                    const mark = document.createElement('mark');
+                    mark.className = 'hb-hit';
+                    mark.textContent = m[0];
+                    frag.appendChild(mark);
+                    hits.push({ mark });
+                    lastIdx = m.index + m[0].length;
+                }
+                if (lastIdx < text.length) {
+                    frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+                }
+                parent.replaceChild(frag, node);
+            }
+
+            if (hits.length) {
+                hitCount.textContent = `1 / ${hits.length}`;
+                clearBtn.classList.remove('hidden');
+                jumpTo(0);
+            } else {
+                hitCount.textContent = '0 matches';
+            }
+        }
+
+        function jumpTo(i) {
+            if (!hits.length) return;
+            if (currentHit >= 0 && hits[currentHit]) hits[currentHit].mark.classList.remove('hb-hit-current');
+            currentHit = (i + hits.length) % hits.length;
+            const m = hits[currentHit].mark;
+            m.classList.add('hb-hit-current');
+            m.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            hitCount.textContent = `${currentHit + 1} / ${hits.length}`;
+        }
+
+        function wireSearch() {
+            let timer = null;
+            searchInput.addEventListener('input', () => {
+                clearTimeout(timer);
+                const q = searchInput.value;
+                timer = setTimeout(() => runSearch(q), 200);
+            });
+            nextBtn.addEventListener('click', () => jumpTo(currentHit + 1));
+            prevBtn.addEventListener('click', () => jumpTo(currentHit - 1));
+            clearBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                clearHighlights();
+                searchInput.focus();
+            });
+            document.addEventListener('keydown', (e) => {
+                if ((e.key === 'f' || e.key === 'F') && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    searchInput.focus();
+                    searchInput.select();
+                }
+                if (document.activeElement === searchInput) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        jumpTo(currentHit + 1);
+                    } else if (e.key === 'Escape') {
+                        clearBtn.click();
+                    }
+                }
+            });
+        }
+
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+        function escapeRegExp(s) {
+            return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+    })();
+    </script>
+    <script src="footer.js" defer></script>
+</body>
+</html>

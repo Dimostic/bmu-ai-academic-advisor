@@ -139,6 +139,15 @@ app.get('/advisor', (req, res) => {
 app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/admin.html'));
 });
+app.get('/handbook', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/handbook.html'));
+});
+app.get('/change-password', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/change-password.html'));
+});
+app.get('/verify-email', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/verify-email.html'));
+});
 app.get(['/legacy', '/legacy/'], (req, res) => {
     res.sendFile(path.join(__dirname, '../client/index.html'));
 });

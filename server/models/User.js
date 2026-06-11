@@ -3,51 +3,74 @@ const crypto = require('crypto');
 const { query } = require('../../config/db');
 
 class User {
-    // Create a new user (email verification ENABLED)
+    // Create a new user (email verification REQUIRED).
+    //
+    // Security note: a previous version auto-approved any email whose string
+    // happened to end with "@bmu.edu.ng" — including obvious fakes like
+    // attacker@bmu.edu.ng for which the registrant did NOT control the inbox.
+    // Now ALL accounts start as is_verified=0, is_approved=0 and require:
+    //   1. Clicking the link emailed to the address  → is_verified=1
+    //   2. After that, BMU-domain emails are auto-approved (since the user
+    //      proved control of a BMU mailbox); other domains still need an
+    //      admin to flip is_approved.
+    // This closes the spoof-the-domain hole without losing the convenience
+    // of fast onboarding for legitimate BMU staff/students.
     static async create(userData) {
         const { email, password, firstName, lastName, phone, department, matricNo, role = 'staff' } = userData;
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Auto-approve accounts whose email belongs to the BMU university
-        // domain. These users skip the email-verification + admin-approval
-        // workflow entirely — they can log in immediately. Anyone with a
-        // non-BMU email still goes through the verify-then-approve queue.
         const universityDomain = (process.env.UNIVERSITY_DOMAIN || 'bmu.edu.ng').toLowerCase();
-        const autoApprove = typeof email === 'string'
+        const isUniversityEmail = typeof email === 'string'
             && email.toLowerCase().endsWith('@' + universityDomain);
 
-        // Generate verification token (still set even when auto-approving,
-        // in case an admin later wants to revoke and re-verify).
         const verificationToken = crypto.randomBytes(32).toString('hex');
         const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-        // Default monthly_prompt_limit is 100 (was 30 in the legacy
-        // assistant); daily_prompt_limit is 10. Admin/superadmin are -1
-        // (unlimited) but accounts are created as 'staff' so this default
-        // applies to all incoming students.
+        // Everyone starts unverified + unapproved. The /verify-email route
+        // promotes verified BMU users straight to is_approved=1; non-BMU
+        // emails go to the admin pending queue after verification.
         const sql = `
             INSERT INTO users (email, password, first_name, last_name, phone, department, matric_no, role,
-                verification_token, verification_token_expires, is_verified, is_approved, is_active,
-                approved_at,
+                verification_token, verification_token_expires,
+                is_verified, is_approved, is_active,
                 monthly_prompt_limit, monthly_prompt_count,
                 daily_prompt_limit,   daily_prompt_count,
                 created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, 100, 0, 10, 0, NOW())
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, TRUE, 100, 0, 10, 0, NOW())
         `;
         const result = await query(sql, [
             email, hashedPassword, firstName, lastName, phone, department,
             matricNo || null,
             role,
-            verificationToken, verificationTokenExpires,
-            autoApprove ? 1 : 0,           // is_verified
-            autoApprove ? 1 : 0,           // is_approved
-            autoApprove ? new Date() : null // approved_at
+            verificationToken, verificationTokenExpires
         ]);
         return {
             userId: result.insertId,
-            verificationToken, // Return token for sending verification email (skipped when autoApprove=true)
-            autoApproved: autoApprove
+            verificationToken,
+            isUniversityEmail
         };
+    }
+
+    // Create a user from an admin form. Skips email verification entirely
+    // (the admin is vouching for the address) and forces a password change
+    // on the next login so the temporary password the admin chose isn't kept.
+    static async adminCreate({ email, password, firstName, lastName, role = 'staff', department = null, phone = null, matricNo = null }) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const sql = `
+            INSERT INTO users (email, password, must_change_password,
+                first_name, last_name, phone, department, matric_no, role,
+                is_verified, is_approved, is_active, approved_at,
+                monthly_prompt_limit, monthly_prompt_count,
+                daily_prompt_limit,   daily_prompt_count,
+                created_at)
+            VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, 1, 1, TRUE, NOW(), 100, 0, 10, 0, NOW())
+        `;
+        const result = await query(sql, [
+            email, hashedPassword,
+            firstName, lastName, phone, department,
+            matricNo || null, role
+        ]);
+        return result.insertId;
     }
 
     // Find user by email (for login - must be verified AND approved)
@@ -71,15 +94,38 @@ class User {
         return results[0] || null;
     }
 
-    // Verify user email
+    // Verify user email. If the email belongs to the BMU university domain,
+    // also auto-approve the account so the holder can log in immediately
+    // (proving control of a BMU mailbox is sufficient evidence of legitimacy).
+    // Non-BMU emails still go through the admin pending-approval queue.
     static async verifyEmail(userId) {
+        const universityDomain = (process.env.UNIVERSITY_DOMAIN || 'bmu.edu.ng').toLowerCase();
         const sql = `
-            UPDATE users 
-            SET is_verified = TRUE, verification_token = NULL, verification_token_expires = NULL, updated_at = NOW() 
+            UPDATE users
+            SET is_verified = TRUE,
+                verification_token = NULL,
+                verification_token_expires = NULL,
+                is_approved = CASE
+                    WHEN LOWER(email) LIKE ? THEN 1
+                    ELSE is_approved
+                END,
+                approved_at = CASE
+                    WHEN LOWER(email) LIKE ? AND approved_at IS NULL THEN NOW()
+                    ELSE approved_at
+                END,
+                updated_at = NOW()
             WHERE id = ?
         `;
-        const result = await query(sql, [userId]);
+        const result = await query(sql, [`%@${universityDomain}`, `%@${universityDomain}`, userId]);
         return result.affectedRows > 0;
+    }
+
+    // Set / clear the must_change_password flag.
+    static async setMustChangePassword(userId, value) {
+        await query(
+            `UPDATE users SET must_change_password = ?, updated_at = NOW() WHERE id = ?`,
+            [value ? 1 : 0, userId]
+        );
     }
 
     // Approve user (admin/superadmin) - requires email to be verified first
@@ -166,6 +212,7 @@ class User {
             // optional columns
             colSet.has('whatsapp_number') ? 'whatsapp_number' : null,
             colSet.has('is_verified') ? 'is_verified' : null,
+            colSet.has('must_change_password') ? 'must_change_password' : null,
             colSet.has('created_at') ? 'created_at' : null,
             colSet.has('last_login') ? 'last_login' : null
         ].filter(Boolean);

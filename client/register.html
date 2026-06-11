@@ -153,7 +153,9 @@
                 }
 
                 if (data.autoApproved) {
-                    // Auto sign-in for BMU emails: use the same credentials.
+                    // Legacy: only fires if the server is still running an
+                    // older build. Modern server always sets autoApproved=false
+                    // because every account must verify their email first.
                     successBox.textContent = 'Account created — signing you in…';
                     successBox.classList.remove('hidden');
                     try {
@@ -172,7 +174,12 @@
                     } catch (_) { /* fall through to message */ }
                     successBox.innerHTML = 'Account created. <a href="/login">Sign in to continue.</a>';
                 } else {
-                    successBox.innerHTML = data.message || 'Account created. Check your email to verify, then wait for admin approval.';
+                    // Standard flow: tell them to check their inbox.
+                    let msg = data.message || 'Account created. Check your email to verify your account.';
+                    if (data.emailSent === false) {
+                        msg += ' (We could not send the verification email automatically — please contact an administrator to activate your account.)';
+                    }
+                    successBox.innerHTML = msg;
                     successBox.classList.remove('hidden');
                     form.reset();
                 }

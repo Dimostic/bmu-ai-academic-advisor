@@ -517,10 +517,80 @@
     }
 
     // -------------------------------------------------------- USERS
+    // -------------------------------------------------------- USERS
+    // Wire up the "Create a user" inline form (super-admin only).
+    function wireCreateUserForm() {
+        const form = document.getElementById('createUserForm');
+        if (!form) return;
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(form);
+            const payload = {
+                firstName: (fd.get('firstName') || '').trim(),
+                lastName:  (fd.get('lastName')  || '').trim(),
+                email:     (fd.get('email')     || '').trim(),
+                password:  fd.get('password')   || '',
+                role:      fd.get('role')       || 'staff',
+                department:(fd.get('department')|| '').trim() || undefined
+            };
+            if (payload.password.length < 8) {
+                toast('Password must be at least 8 characters', 'error');
+                return;
+            }
+            const submit = form.querySelector('button[type="submit"]');
+            submit.disabled = true;
+            submit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
+            try {
+                const r = await api('/api/admin/users', { method: 'POST', body: payload });
+                toast(r.message || 'User created');
+                form.reset();
+                document.getElementById('createUserBlock').open = false;
+                renderUsers();
+            } catch (err) {
+                toast(err.message || 'Could not create user', 'error');
+            } finally {
+                submit.disabled = false;
+                submit.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Create account';
+            }
+        });
+    }
+
     async function renderUsers() {
         main.innerHTML = `
             <h2>Users</h2>
             <p class="lede">Approve pending registrations, change roles, and deactivate accounts.</p>
+            <details class="curate-compose" id="createUserBlock">
+                <summary><i class="fa-solid fa-user-plus"></i> Create a user</summary>
+                <form id="createUserForm" class="curate-edit" style="margin-top:12px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <label>First name <input type="text" name="firstName" required maxlength="50" /></label>
+                        <label>Last name <input type="text" name="lastName" required maxlength="50" /></label>
+                    </div>
+                    <label>Email <input type="email" name="email" required /></label>
+                    <label>
+                        Temporary password
+                        <input type="text" name="password" required minlength="8" placeholder="At least 8 characters" />
+                    </label>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <label>Role
+                            <select name="role">
+                                <option value="staff">Staff / student</option>
+                                <option value="admin">Admin</option>
+                                <option value="superadmin">Super-admin</option>
+                            </select>
+                        </label>
+                        <label>Department <input type="text" name="department" maxlength="100" /></label>
+                    </div>
+                    <p class="muted" style="font-size:.85rem;">
+                        The new user will be forced to change this temporary password the first time they sign in.
+                    </p>
+                    <div class="curate-actions">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="fa-solid fa-floppy-disk"></i> Create account
+                        </button>
+                    </div>
+                </form>
+            </details>
             <div class="admin-actions">
                 <button class="btn btn-ghost" id="filterAll">All</button>
                 <button class="btn btn-ghost" id="filterPending">Pending approval</button>
@@ -528,6 +598,7 @@
             </div>
             <div id="userList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
+        wireCreateUserForm();
         let filter = 'all';
         async function load() {
             try {

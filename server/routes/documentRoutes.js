@@ -70,6 +70,32 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
+// Resolve the canonical Students' Handbook (the page-bound viewer at
+// /handbook calls this so the client doesn't need to hard-code an id).
+router.get('/handbook', authenticateToken, async (req, res) => {
+    try {
+        const { query: dbQuery } = require('../../config/db');
+        // Match against the documents table; titles are e.g.
+        //   "STUDENTS' HANDBOOK 2026 BMU Jan26.pdf"
+        //   "BMU Students Handbook"
+        const rows = await dbQuery(
+            `SELECT id, title FROM documents
+             WHERE is_active = TRUE
+               AND (LOWER(title) LIKE '%student%handbook%'
+                    OR LOWER(title) LIKE '%handbook%bmu%')
+             ORDER BY (LOWER(title) LIKE '%student%handbook%') DESC, id DESC
+             LIMIT 1`
+        );
+        if (!rows.length) {
+            return res.status(404).json({ success: false, error: 'Handbook not found' });
+        }
+        res.json({ success: true, id: rows[0].id, title: rows[0].title });
+    } catch (err) {
+        console.error('Handbook lookup error:', err);
+        res.status(500).json({ success: false, error: 'Could not resolve handbook' });
+    }
+});
+
 // Get document by ID
 router.get('/:id', authenticateToken, async (req, res) => {
     try {
