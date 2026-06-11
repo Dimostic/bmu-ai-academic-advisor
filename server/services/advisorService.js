@@ -169,15 +169,17 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
                 userId: student?.user_id || null,
                 sessionId: conversation.id
             });
-            if (cached?.cachedQA?.answer) {
-                console.log(`[advisorService] FAQ cache hit: cached_qa_id=${cached.cachedQA.id} (${(cached.similarityScore * 100).toFixed(1)}%)`);
-                const cachedAnswer = persona.scrubAll(cached.cachedQA.answer);
+            if (cached?.content) {
+                console.log(`[advisorService] FAQ cache hit: cached_qa_id=${cached.cachedQaId} (${(cached.cacheConfidence * 100).toFixed(1)}%)`);
+                const cachedAnswer = persona.scrubAll(cached.content);
                 const cachedSpeech = persona.scrubAll(
                     (cachedAnswer.split('\n').find(l => l.trim()) || cachedAnswer).slice(0, 600)
                 );
                 let citations = [];
-                try { citations = JSON.parse(cached.cachedQA.answer_sources || '[]'); }
-                catch (_) { citations = []; }
+                if (Array.isArray(cached.sources)) citations = cached.sources;
+                else if (typeof cached.sources === 'string') {
+                    try { citations = JSON.parse(cached.sources || '[]'); } catch (_) { citations = []; }
+                }
                 const parsed = {
                     speech_text: cachedSpeech,
                     display_markdown: cachedAnswer,
@@ -186,14 +188,14 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
                     suggested_actions: [],
                     follow_up_questions: [],
                     needs_escalation: false,
-                    confidence: cached.similarityScore || 0.95
+                    confidence: cached.cacheConfidence || 0.95
                 };
                 const result = await _persistAndPackage({
                     conversation, parsed, llmUsage: null, voiceEnabled, startedAt
                 });
                 result.meta.source = 'faq_cache';
-                result.meta.cached_qa_id = cached.cachedQA.id;
-                result.meta.similarity = cached.similarityScore;
+                result.meta.cached_qa_id = cached.cachedQaId;
+                result.meta.similarity = cached.cacheConfidence;
                 return result;
             }
         } catch (err) {

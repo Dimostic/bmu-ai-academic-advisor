@@ -232,12 +232,12 @@ async function askStream({
                 userId: student?.user_id || null,
                 sessionId: conversation.id
             });
-            if (cached?.cachedQA?.answer) {
-                const cachedAnswer = persona.scrubAll(cached.cachedQA.answer);
+            if (cached?.content) {
+                const cachedAnswer = persona.scrubAll(cached.content);
                 const cachedSpeech = persona.scrubAll(
                     (cachedAnswer.split('\n').find(l => l.trim()) || cachedAnswer).slice(0, 600)
                 );
-                console.log(`[advisorStreamService] FAQ cache hit: cached_qa_id=${cached.cachedQA.id} (${(cached.similarityScore * 100).toFixed(1)}%)`);
+                console.log(`[advisorStreamService] FAQ cache hit: cached_qa_id=${cached.cachedQaId} (${(cached.cacheConfidence * 100).toFixed(1)}%)`);
 
                 // Emit speech, full answer, then audio (cache uses TTS too).
                 send('speech_ready', { speech_text: cachedSpeech });
@@ -273,8 +273,10 @@ async function askStream({
 
                 // Persist advisor turn so transcripts stay coherent.
                 let citations = [];
-                try { citations = JSON.parse(cached.cachedQA.answer_sources || '[]'); }
-                catch (_) { citations = []; }
+                if (Array.isArray(cached.sources)) citations = cached.sources;
+                else if (typeof cached.sources === 'string') {
+                    try { citations = JSON.parse(cached.sources || '[]'); } catch (_) { citations = []; }
+                }
                 let messageId = null;
                 try {
                     messageId = await Advisor.addMessage({
@@ -308,7 +310,7 @@ async function askStream({
                         suggested_actions: [],
                         follow_up_questions: [],
                         needs_escalation: false,
-                        confidence: cached.similarityScore || 0.95
+                        confidence: cached.cacheConfidence || 0.95
                     },
                     audio: {
                         provider:             audio.provider || 'none',
@@ -319,8 +321,8 @@ async function askStream({
                     meta: {
                         latency_ms: Date.now() - startedAt,
                         source: 'faq_cache',
-                        cached_qa_id: cached.cachedQA.id,
-                        similarity: cached.similarityScore
+                        cached_qa_id: cached.cachedQaId,
+                        similarity: cached.cacheConfidence
                     }
                 });
                 return;
