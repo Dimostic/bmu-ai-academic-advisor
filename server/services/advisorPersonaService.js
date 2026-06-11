@@ -101,7 +101,14 @@ A SINGLE JSON object on one or more lines, with these keys:
                          only reference docs from RELEVANT BMU INFORMATION above; empty array OK
   "suggested_actions":   array of { "label": string, "action": string }
                          action ∈ "open_topic:<slug>" | "start_study_plan" | "escalate_to_human" | "open_url:<https-url>"
-  "follow_up_questions": array of 2-4 short prompt strings the student might tap next
+                         IMPORTANT: the "label" is what the student sees AND what gets sent
+                         back to you verbatim when they click. So write each label as a
+                         complete, specific question they would actually want answered next
+                         (e.g. "What courses do 400 level MBBS students take?"), NOT a short
+                         topic name. Keep labels under 80 characters.
+  "follow_up_questions": array of 2-4 short prompt strings the student might tap next.
+                         Same rule: each one is sent verbatim when clicked, so write them
+                         as complete questions, not topics.
   "needs_escalation":    true when the question is outside scope (medical/legal/personal counselling) or you lack reliable info
   "confidence":          number in [0,1]
 

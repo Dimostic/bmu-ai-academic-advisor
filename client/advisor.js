@@ -162,7 +162,12 @@
             const icon = (t.icon || 'fa-circle-question').replace(/^fa[\s-]/, '');
             btn.innerHTML = `<i class="fa-solid ${t.icon || 'fa-circle-question'}"></i> ${escapeHtml(t.title)}`;
             btn.addEventListener('click', () => {
-                questionInput.value = `Tell me about: ${t.title}`;
+                // Send the topic title verbatim — the previous wrapper
+                // ("Tell me about: <title>") meant the model saw a
+                // re-phrased prompt and often answered something
+                // tangentially related instead of the topic the student
+                // actually clicked.
+                questionInput.value = t.title;
                 askNow();
             });
             topicsScroller.appendChild(btn);
@@ -209,7 +214,24 @@
                 const b = document.createElement('button');
                 b.type = 'button';
                 b.textContent = a.label;
-                b.addEventListener('click', () => handleAction(a.action));
+                // Use the button's own label as the question. The previous
+                // implementation routed every `open_topic:<slug>` action
+                // through handleAction(), which then sent a generic
+                // "Tell me more about <Topic Title>" prompt — so a button
+                // labelled "400 level courses" would actually ask
+                // "Tell me more about Programmes, courses & registration".
+                // Special actions (escalate / external URLs) still go via
+                // handleAction; everything else asks the literal label.
+                b.addEventListener('click', () => {
+                    if (a.action === 'escalate_to_human' ||
+                        a.action === 'start_study_plan' ||
+                        (typeof a.action === 'string' && a.action.startsWith('open_url:'))) {
+                        handleAction(a.action);
+                    } else {
+                        questionInput.value = a.label;
+                        askNow();
+                    }
+                });
                 bubble.actions.appendChild(b);
             }
         } else {
@@ -250,10 +272,14 @@
         } else if (action === 'start_study_plan') {
             toast('Study plans coming soon.');
         } else if (action.startsWith('open_topic:')) {
+            // Send the topic title literally so the LLM (or FAQ cache)
+            // answers about that topic specifically. We no longer wrap
+            // it as "Tell me more about ..." — the wrapper led the model
+            // away from the precise topic the student selected.
             const slug = action.slice('open_topic:'.length);
             const topic = state.topics.find(t => t.slug === slug);
             if (topic) {
-                questionInput.value = `Tell me more about ${topic.title}`;
+                questionInput.value = topic.title;
                 askNow();
             }
         } else if (action.startsWith('open_url:')) {
