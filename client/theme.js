@@ -48,6 +48,18 @@
     function wire() {
         const btn = document.getElementById('themeToggleBtn');
         if (!btn) return;
+        // Idempotency guard. Without this, every wire() call attaches a
+        // fresh click listener — and wire() runs both on DOMContentLoaded
+        // and from the MutationObserver below. On pages that ship a static
+        // <button id="themeToggleBtn">, that meant TWO listeners fired per
+        // click → toggle then immediately toggle back, so the theme looked
+        // stuck. The advisor page only injects its button later, so it
+        // happened to work; every other page appeared broken.
+        if (btn._bmuWired) {
+            applyTheme(preferredTheme()); // still refresh icon
+            return;
+        }
+        btn._bmuWired = true;
         applyTheme(preferredTheme()); // refresh icon now that the button exists
         btn.addEventListener('click', () => {
             const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -63,13 +75,11 @@
     }
 
     // If the toggle button is added dynamically (e.g. authSlot rendered after
-    // login), re-wire on the next animation frame.
+    // login), wire it up. The idempotency guard inside wire() means this is
+    // safe to call as often as the observer fires.
     const observer = new MutationObserver(() => {
         const btn = document.getElementById('themeToggleBtn');
-        if (btn && !btn._bmuWired) {
-            btn._bmuWired = true;
-            wire();
-        }
+        if (btn && !btn._bmuWired) wire();
     });
     if (document.body) observer.observe(document.body, { childList: true, subtree: true });
     else document.addEventListener('DOMContentLoaded', () => observer.observe(document.body, { childList: true, subtree: true }), { once: true });
