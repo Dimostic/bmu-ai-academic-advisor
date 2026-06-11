@@ -294,7 +294,9 @@
                     ? '<span class="badge badge-ok"><i class="fa-solid fa-check"></i> in cache</span>'
                     : '<span class="badge">not cached</span>';
                 const when = new Date(it.created_at).toLocaleString();
-                const ans = (it.display_markdown || it.advisor_text || '').slice(0, 800);
+                const fullAnswer = it.display_markdown || it.advisor_text || '';
+                const preview = fullAnswer.slice(0, 800);
+                const promoteLabel = it.existing_cache_id ? 'Refresh in cache' : 'Promote to cache';
                 return `
                 <article class="curate-card" data-id="${it.advisor_message_id}">
                     <div class="curate-meta">
@@ -303,17 +305,40 @@
                     </div>
                     <div class="curate-q"><strong>Q:</strong> ${escapeHtml(it.question_text || '')}</div>
                     <details class="curate-a">
-                        <summary>Show advisor reply (${ans.length} chars)</summary>
-                        <pre>${escapeHtml(ans)}</pre>
+                        <summary>Show advisor reply (${preview.length} chars)</summary>
+                        <pre>${escapeHtml(preview)}</pre>
                     </details>
                     <div class="curate-actions">
                         <button class="btn btn-primary btn-sm promote-btn" type="button">
-                            <i class="fa-solid fa-star"></i> ${it.existing_cache_id ? 'Refresh in cache' : 'Promote to cache'}
+                            <i class="fa-solid fa-star"></i> ${promoteLabel}
+                        </button>
+                        <button class="btn btn-ghost btn-sm edit-btn" type="button">
+                            <i class="fa-solid fa-pen"></i> Edit &amp; promote
                         </button>
                     </div>
+                    <form class="curate-edit hidden">
+                        <label>
+                            Question (canonical phrasing)
+                            <input type="text" name="question" maxlength="500" required />
+                        </label>
+                        <label>
+                            Answer (this is what students will see)
+                            <textarea name="answer" rows="8" required></textarea>
+                        </label>
+                        <p class="muted" style="font-size:.85rem; margin: 4px 0 8px;">
+                            Tip: keep it concise &mdash; the spoken summary is auto-generated from the first non-empty line, so put the headline answer up front.
+                        </p>
+                        <div class="curate-actions">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="fa-solid fa-floppy-disk"></i> Save &amp; promote
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-sm cancel-edit-btn">Cancel</button>
+                        </div>
+                    </form>
                 </article>`;
             }).join('');
 
+            // Quick promote (use as-is)
             listEl.querySelectorAll('.promote-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const card = btn.closest('.curate-card');
@@ -328,6 +353,65 @@
                         toast(err.message || 'Could not promote', 'error');
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fa-solid fa-star"></i> Promote to cache';
+                    }
+                });
+            });
+
+            // Edit & promote — open inline form, pre-filled from the row
+            listEl.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const card = btn.closest('.curate-card');
+                    const id   = card.dataset.id;
+                    const item = items.find(x => String(x.advisor_message_id) === String(id));
+                    if (!item) return;
+                    const form = card.querySelector('.curate-edit');
+                    form.querySelector('input[name="question"]').value = item.question_text || '';
+                    // Use the cleaner display_markdown — that one is already
+                    // scrubbed of markdown symbols and vocatives.
+                    form.querySelector('textarea[name="answer"]').value =
+                        item.display_markdown || item.advisor_text || '';
+                    form.classList.remove('hidden');
+                    // Hide the row's quick-action buttons while editing.
+                    card.querySelectorAll('.curate-actions').forEach((row, idx) => {
+                        if (idx === 0) row.classList.add('hidden'); // top row of buttons
+                    });
+                    form.querySelector('input[name="question"]').focus();
+                });
+            });
+
+            listEl.querySelectorAll('.cancel-edit-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const card = btn.closest('.curate-card');
+                    card.querySelector('.curate-edit').classList.add('hidden');
+                    card.querySelectorAll('.curate-actions')[0].classList.remove('hidden');
+                });
+            });
+
+            listEl.querySelectorAll('.curate-edit').forEach(form => {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const card = form.closest('.curate-card');
+                    const id   = card.dataset.id;
+                    const question = form.querySelector('input[name="question"]').value.trim();
+                    const answer   = form.querySelector('textarea[name="answer"]').value.trim();
+                    if (!question || answer.length < 8) {
+                        toast('Question and answer are both required', 'error');
+                        return;
+                    }
+                    const submit = form.querySelector('button[type="submit"]');
+                    submit.disabled = true;
+                    submit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+                    try {
+                        const r = await api('/api/admin/advisor/promote/' + id, {
+                            method: 'POST',
+                            body: { question, answer }
+                        });
+                        toast(r.mode === 'created' ? 'Saved to FAQ cache' : 'Refreshed in FAQ cache');
+                        renderCurate();
+                    } catch (err) {
+                        toast(err.message || 'Could not save', 'error');
+                        submit.disabled = false;
+                        submit.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save &amp; promote';
                     }
                 });
             });

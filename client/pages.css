@@ -287,3 +287,33 @@
     color: var(--muted);
 }
 .badge.badge-ok { background: #dff5e3; color: #1f7a3a; }
+
+/* Inline edit-and-promote form inside a Curate card */
+.curate-edit {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-top: 12px; padding: 12px; border-radius: 10px;
+    background: rgba(35,182,165,.06);
+    border: 1px solid rgba(35,182,165,.25);
+}
+.curate-edit label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: .9rem; font-weight: 600; color: var(--bg-deep);
+}
+.curate-edit input[type="text"],
+.curate-edit textarea {
+    font: inherit; padding: 8px 10px;
+    border: 1px solid rgba(0,0,0,.15); border-radius: 8px;
+    background: #fff; color: var(--bg-deep);
+    width: 100%;
+}
+.curate-edit textarea {
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    min-height: 140px; resize: vertical;
+}
+.curate-edit input:focus,
+.curate-edit textarea:focus {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+/* Generic visibility helper */
+.hidden { display: none !important; }
