@@ -191,6 +191,12 @@ button, input, textarea, select { font: inherit; color: inherit; }
     display: grid; place-items: center; flex-shrink: 0;
 }
 .mic-btn { background: #f0f7f4; color: var(--bg-deep); }
+.mic-btn--disabled,
+.mic-btn[disabled] {
+    opacity: .45; cursor: not-allowed; background: var(--bg-elev);
+}
+.mic-btn--disabled:hover,
+.mic-btn[disabled]:hover { background: var(--bg-elev); }
 .mic-btn[aria-pressed="true"] { background: var(--danger); color: #fff; animation: pulse-bg 1s ease-in-out infinite; }
 @keyframes pulse-bg { 50% { box-shadow: 0 0 0 8px rgba(198,66,66,.2); } }
 .send-btn { background: var(--accent); color: #fff; }

@@ -530,9 +530,45 @@
         return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
     }
 
+    // Server-side STT capability is only known after /api/advisor/health
+    // resolves at boot. Until we know, assume it's available (avoids
+    // hiding the mic on the very first frame for the common case).
+    let serverSttAvailable = true;
+
+    /** Update the mic button to reflect what speech-to-text actually works
+     *  in this browser. If neither browser Web Speech API nor server
+     *  Whisper is reachable, the button is disabled with a tooltip that
+     *  tells the user to type or switch browsers — far friendlier than the
+     *  "Server-side STT not configured" raw error students were getting on
+     *  Firefox today. */
+    function updateMicAvailability() {
+        if (!micBtn) return;
+        const browserOk = hasWebSpeech();
+        const canVoice  = browserOk || serverSttAvailable;
+        if (canVoice) {
+            micBtn.disabled = false;
+            micBtn.classList.remove('mic-btn--disabled');
+            micBtn.title = browserOk
+                ? 'Speak your question'
+                : 'Speak your question (server transcription)';
+        } else {
+            micBtn.disabled = true;
+            micBtn.classList.add('mic-btn--disabled');
+            micBtn.title = 'Voice input is not supported in this browser. Please type your question, or switch to Chrome / Edge.';
+            micBtn.setAttribute('aria-label', micBtn.title);
+        }
+    }
+
     let recognition = null;
     function startListening() {
         if (state.recording) return;
+        // Hard-stop the early misleading error: if neither path can work,
+        // bail out with a friendly toast rather than starting a recording
+        // we know will fail at upload time.
+        if (!hasWebSpeech() && !serverSttAvailable) {
+            toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
+            return;
+        }
         setAvatarState('listening', 'Listening');
         if (hasWebSpeech()) {
             const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -583,6 +619,14 @@
                     if (data?.success && data.text) {
                         questionInput.value = data.text;
                         askNow();
+                    } else if (res.status === 503 || /not configured/i.test(data?.error || '')) {
+                        // The server told us its Whisper credential is
+                        // missing. Translate into a human message and
+                        // disable the mic so we don't loop the user.
+                        serverSttAvailable = false;
+                        updateMicAvailability();
+                        toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
+                        setAvatarState('idle', 'Ready');
                     } else {
                         toast(data?.error || 'Could not transcribe audio.', 'error');
                         setAvatarState('idle', 'Ready');
@@ -824,11 +868,21 @@
 
     // ---------- Boot ----------
     (async () => {
-        // Health check (non-blocking)
+        // Establish provider availability before wiring the mic, so Firefox
+        // users (no Web Speech API) and any deployment without a Whisper
+        // key get a disabled mic + a clear tooltip instead of a confusing
+        // raw server error after recording.
         try {
             const h = await api('/api/advisor/health');
             console.info('[advisor] providers:', h.providers);
-        } catch (_) {}
+            serverSttAvailable = Boolean(h?.providers?.stt);
+        } catch (_) {
+            // Health check failed; assume server STT is unavailable so we
+            // err on the side of clearly-disabled UI rather than a hopeful
+            // mic that returns 503 mid-record.
+            serverSttAvailable = false;
+        }
+        updateMicAvailability();
         loadTopics();
 
         // Fetch persona name (optional — server doesn't yet expose it; use defaults)
