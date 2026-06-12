@@ -483,7 +483,7 @@
         }
         if (bubble.playBtn) {
             bubble.playBtn.addEventListener('click', () => {
-                if (audio_url) playWithLipSync(audio_url);
+                if (audio_url) playWithLipSync(audio_url, speech_text || '');
                 else if (speech_text) speakWithBrowser(speech_text);
             });
         }
@@ -529,11 +529,86 @@
     }
 
     // ---------- Typewriter + lip-sync ----------
+    function visemeFromChar(ch) {
+        const c = String(ch || '').toLowerCase();
+        if (!c) return 0;
+        if ('ao'.includes(c)) return 0.95;
+        if ('e'.includes(c)) return 0.85;
+        if ('iuy'.includes(c)) return 0.62;
+        if ('mbp'.includes(c)) return 0.14; // lips closed
+        if ('fv'.includes(c)) return 0.32;
+        if ('w'.includes(c)) return 0.42;
+        if ('lr'.includes(c)) return 0.52;
+        if ('tdnsz'.includes(c)) return 0.45;
+        if ('kgcqxjh'.includes(c)) return 0.56;
+        if (/\d/.test(c)) return 0.58;
+        return 0.5;
+    }
+
+    function estimateSyllables(word) {
+        const w = String(word || '').toLowerCase().replace(/[^a-z]/g, '');
+        if (!w) return 1;
+        const groups = w.match(/[aeiouy]+/g);
+        return Math.max(1, groups ? groups.length : 1);
+    }
+
+    function createVisemeTimeline(text, durationSec) {
+        const src = String(text || '').trim();
+        if (!src || !Number.isFinite(durationSec) || durationSec <= 0) {
+            return () => 0;
+        }
+
+        const tokens = src.match(/[A-Za-z0-9']+|[.,!?;:]/g) || [];
+        if (!tokens.length) return () => 0;
+
+        const weighted = tokens.map((tok) => {
+            if (/^[.,!?;:]$/.test(tok)) {
+                return {
+                    type: 'pause',
+                    token: tok,
+                    chars: [],
+                    weight: /[.!?]/.test(tok) ? 1.3 : 0.75
+                };
+            }
+            const syll = estimateSyllables(tok);
+            const chars = tok.toLowerCase().split('');
+            return {
+                type: 'word',
+                token: tok,
+                chars,
+                weight: Math.max(1, syll) + Math.min(0.6, tok.length * 0.03)
+            };
+        });
+
+        const totalWeight = weighted.reduce((a, b) => a + b.weight, 0) || 1;
+        let cursor = 0;
+        for (const item of weighted) {
+            const span = (item.weight / totalWeight) * durationSec;
+            item.start = cursor;
+            item.end = cursor + span;
+            cursor += span;
+        }
+
+        return (t) => {
+            const now = Math.max(0, Math.min(durationSec, t));
+            const item = weighted.find(it => now >= it.start && now <= it.end) || weighted[weighted.length - 1];
+            if (!item || item.type === 'pause' || !item.chars.length) return 0;
+
+            const span = Math.max(0.001, item.end - item.start);
+            const p = Math.max(0, Math.min(0.999, (now - item.start) / span));
+            const idx = Math.min(item.chars.length - 1, Math.floor(p * item.chars.length));
+            const base = visemeFromChar(item.chars[idx]);
+            // Open in the middle of each word, close near boundaries.
+            const envelope = Math.pow(Math.sin(Math.PI * p), 0.75);
+            return Math.max(0, Math.min(1, base * (0.25 + envelope * 0.95)));
+        };
+    }
+
     /**
      * Play audioUrl while updating mouth from amplitude.
      * Returns the actual duration in ms when finished, or 0 if aborted.
      */
-    async function playWithLipSync(audioUrl) {
+    async function playWithLipSync(audioUrl, spokenText = '') {
         return new Promise((resolve) => {
             try {
                 stopCurrentAudio();
@@ -547,26 +622,40 @@
                 analyser.fftSize = 256;
                 src.connect(analyser); analyser.connect(state.audioCtx.destination);
                 const data = new Uint8Array(analyser.frequencyBinCount);
+                let visemeAtTime = () => 0;
+
+                audio.addEventListener('loadedmetadata', () => {
+                    const dur = Number(audio.duration);
+                    if (Number.isFinite(dur) && dur > 0) {
+                        visemeAtTime = createVisemeTimeline(spokenText, dur);
+                    }
+                });
 
                 let raf;
-                // Smoothed lip-sync level. Without smoothing the mouth
-                // jitters at frame-rate; without amplification the FFT
-                // sum from typical TTS rarely exceeds ~0.4 of the [0,1]
-                // range so the mouth barely moves. We boost AND smooth
-                // for a more obviously articulated motion.
                 let smoothLevel = 0;
                 const tick = () => {
                     analyser.getByteFrequencyData(data);
-                    let sum = 0; const len = Math.min(64, data.length);
-                    for (let i = 4; i < len; i++) sum += data[i];
-                    // Raw is roughly 0..0.6 for TTS. Multiply by 2.2 then
-                    // clamp so a loud word maps to fully-open and quiet
-                    // periods clearly close.
-                    const raw = Math.min(1, (sum / (len * 110)) * 2.2);
-                    // EMA smoothing — opens fast (0.45), closes slower (0.18)
-                    // so the mouth doesn't snap shut between vowels.
-                    const alpha = raw > smoothLevel ? 0.45 : 0.18;
-                    smoothLevel = smoothLevel + (raw - smoothLevel) * alpha;
+                    let low = 0;
+                    let high = 0;
+                    const len = Math.min(96, data.length);
+                    for (let i = 3; i < len; i++) {
+                        if (i < 20) low += data[i];
+                        else high += data[i];
+                    }
+
+                    // Audio envelope: broad energy + consonant edge energy.
+                    const lowNorm = low / (20 * 255);
+                    const highNorm = high / (Math.max(1, len - 20) * 255);
+                    const audioLevel = Math.min(1, Math.max(0, lowNorm * 1.9 + highNorm * 0.9));
+
+                    // Text-driven viseme at current playback time.
+                    const visemeLevel = visemeAtTime(audio.currentTime || 0);
+
+                    // Blend: audio keeps rhythm honest, viseme gives clear
+                    // articulation shape so the mouth reads as real speech.
+                    const target = Math.min(1, Math.max(0, audioLevel * 0.58 + visemeLevel * 0.62));
+                    const alpha = target > smoothLevel ? 0.52 : 0.24;
+                    smoothLevel = smoothLevel + (target - smoothLevel) * alpha;
                     setMouthOpenness(smoothLevel);
                     raf = requestAnimationFrame(tick);
                 };
@@ -691,32 +780,27 @@
                 u.volume = 1;
                 console.info('[advisor] browser TTS voice:', v ? `${v.name} (${v.lang})` : 'default', '| gender wanted:', gender);
 
-                // Drive lip-sync during speaking. We can't FFT the browser
-                // TTS audio (it doesn't expose an audio stream), so we
-                // synthesise a fake amplitude envelope: a sine wave at
-                // syllable-rate (~5 Hz) multiplied by random vowel
-                // intensity, hard-reset to full open on each word
-                // boundary the engine reports. This gives much more
-                // obvious mouth motion than the previous binary toggle.
+                // Drive lip-sync during browser TTS. Since we cannot read
+                // browser TTS audio samples directly, combine a text-timed
+                // viseme timeline with boundary pulses from the engine.
                 let pulseRaf = null;
                 let pulseTimer = null;
                 let stopped = false;
                 let lastOpen = 0;
                 let boundaryBoost = 0;       // bumped on every onboundary
                 const startedAt = performance.now();
+                const estDurationSec = Math.max(1.4, (cleaned.length * 0.065) / Math.max(0.6, u.rate || 1));
+                const visemeAtTime = createVisemeTimeline(cleaned, estDurationSec);
 
                 const animate = () => {
                     if (stopped) return;
                     const t = (performance.now() - startedAt) / 1000;
-                    // 5 Hz "syllable" oscillation + small jitter so adjacent
-                    // beats aren't identical.
-                    const wave = 0.5 + 0.45 * Math.sin(t * 2 * Math.PI * 5);
-                    const jitter = 0.05 * Math.sin(t * 2 * Math.PI * 13);
+                    const viseme = visemeAtTime(t);
+                    const syllWave = 0.18 + 0.2 * (0.5 + 0.5 * Math.sin(t * 2 * Math.PI * 4.7));
                     // boundaryBoost decays back to 0 over ~250 ms.
-                    boundaryBoost = Math.max(0, boundaryBoost - 0.06);
-                    const target = Math.min(1, wave + jitter + boundaryBoost);
-                    // Light smoothing so motion isn't twitchy.
-                    lastOpen = lastOpen + (target - lastOpen) * 0.35;
+                    boundaryBoost = Math.max(0, boundaryBoost - 0.065);
+                    const target = Math.min(1, Math.max(0, viseme * 0.82 + syllWave + boundaryBoost));
+                    lastOpen = lastOpen + (target - lastOpen) * 0.38;
                     setMouthOpenness(lastOpen);
                     pulseRaf = requestAnimationFrame(animate);
                 };
@@ -737,7 +821,11 @@
                 // Each word boundary briefly opens the mouth wider so the
                 // motion correlates with actual speech rather than just
                 // running on a metronome.
-                u.onboundary = () => { if (!stopped) boundaryBoost = 0.6; };
+                u.onboundary = (ev) => {
+                    if (stopped) return;
+                    const ch = cleaned[(ev && Number.isFinite(ev.charIndex)) ? ev.charIndex : 0] || '';
+                    boundaryBoost = Math.max(boundaryBoost, 0.22 + visemeFromChar(ch) * 0.58);
+                };
                 u.onend = () => {
                     stopPulse();
                     setAvatarState('idle', 'Ready');
@@ -854,7 +942,7 @@
                             // Start playback immediately — runs in parallel with continued typing.
                             if (!audioStarted) {
                                 audioStarted = true;
-                                playWithLipSync(audioUrl);
+                                playWithLipSync(audioUrl, speechText || '');
                             }
                         } else if (data.use_browser_fallback && speechText && !audioStarted) {
                             audioStarted = true;
