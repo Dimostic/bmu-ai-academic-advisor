@@ -1534,6 +1534,9 @@
             const re = new RegExp('\\b' + a + '\\b', 'g');
             s = s.replace(re, a.split('').join(' '));
         }
+        // Hyphenated acronym compounds (e.g. "N U C-approved") should be
+        // spoken as separate letters followed by a normal word.
+        s = s.replace(/\b([A-Z](?:\s+[A-Z]){1,7})\s*-\s*(?=[A-Za-z])/g, '$1 ');
 
         // Collapse whitespace.
         return s.replace(/\s+/g, ' ').trim();

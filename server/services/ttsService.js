@@ -22,6 +22,24 @@ const PROVIDER      = (process.env.TTS_PROVIDER || 'ttsmaker').toLowerCase();
 const ENABLED       = process.env.ENABLE_VOICE_RESPONSES !== 'false';
 const CACHE_SAFETY_MS = 5 * 60 * 1000; // treat URLs that expire in <5 min as miss
 
+function normalizeTextForTts(input) {
+    let s = String(input || '').trim();
+    if (!s) return s;
+
+    // Force common BMU abbreviations to be spoken as letters.
+    const ACRONYMS = ['BMU', 'MBBS', 'BNSC', 'BMLS', 'CCMAS', 'GPA', 'MDCN', 'CGPA', 'NYSC', 'HOD', 'NUC'];
+    for (const a of ACRONYMS) {
+        const re = new RegExp(`\\b${a}\\b`, 'gi');
+        s = s.replace(re, a.split('').join(' '));
+    }
+
+    // If an acronym is hyphenated to a word (e.g. "N U C-approved"),
+    // remove the hyphen so TTS reads "N U C approved".
+    s = s.replace(/\b([A-Z](?:\s+[A-Z]){1,7})\s*-\s*(?=[A-Za-z])/g, '$1 ');
+
+    return s.replace(/\s+/g, ' ').trim();
+}
+
 function isTtsmakerConfigured() {
     return Boolean(process.env.TTSMAKER_TTS_API_KEY) &&
            process.env.TTSMAKER_TTS_ENABLED !== '0';
@@ -115,6 +133,8 @@ async function synthesise(text, opts = {}) {
         return { provider: 'none', useBrowserFallback: true };
     }
 
+    const normalizedText = normalizeTextForTts(text);
+
     const gender = (opts && opts.gender === 'male') ? 'male' : 'female';
 
     // Edge TTS path — Microsoft's free neural voices. Preferred over
@@ -124,7 +144,7 @@ async function synthesise(text, opts = {}) {
         try {
             const edge = require('./edgeTtsService');
             if (edge.isConfigured()) {
-                const r = await edge.synthesiseToFile(text, { gender });
+                const r = await edge.synthesiseToFile(normalizedText, { gender });
                 return {
                     provider: 'edge',
                     audioUrl: r.audioUrl,
@@ -147,7 +167,7 @@ async function synthesise(text, opts = {}) {
     const speed = getSpeed();
 
     // 1. Cache lookup
-    const cached = await _readCache(text, voiceId, speed);
+    const cached = await _readCache(normalizedText, voiceId, speed);
     if (cached?.audio_url) {
         return {
             provider: cached.provider || 'ttsmaker',
@@ -161,7 +181,7 @@ async function synthesise(text, opts = {}) {
     try {
         const body = {
             api_key:                  process.env.TTSMAKER_TTS_API_KEY,
-            text:                     text.trim().slice(0, 19_500),
+            text:                     normalizedText.trim().slice(0, 19_500),
             voice_id:                 voiceId,
             audio_format:             'mp3',
             audio_speed:              speed,
@@ -184,7 +204,9 @@ async function synthesise(text, opts = {}) {
 
         if (data?.error_code === 0 && data?.audio_download_url) {
             await _writeCache({
-                text, voiceId, speed,
+                text: normalizedText,
+                voiceId,
+                speed,
                 audioUrl: data.audio_download_url,
                 backupUrl: data.audio_download_backup_url || null,
                 provider: 'ttsmaker',
