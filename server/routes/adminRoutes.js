@@ -5,6 +5,10 @@ const Document = require('../models/Document');
 const ChatMessage = require('../models/ChatMessage');
 const User = require('../models/User');
 const Advisor = require('../models/Advisor');
+const emailService = (() => {
+    try { return require('../services/emailService'); }
+    catch (_) { return null; }
+})();
 const { authenticateToken, requireAdmin, requireSuperAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -24,6 +28,38 @@ function _invalidateFAQCache() {
     } catch (err) {
         console.warn('[adminRoutes] invalidateEmbeddingsCache failed:', err.message);
     }
+}
+
+function _normalizeEscalationEmail(raw) {
+    let e = String(raw || '').trim().toLowerCase();
+    e = e.replace(/,\s*ng$/i, '.ng').replace(/\s+/g, '');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return null;
+    return e;
+}
+
+async function _resolveAdvisorEscalationEmail() {
+    const fromEnv = _normalizeEscalationEmail(process.env.ADVISOR_ESCALATION_EMAIL || '');
+    if (fromEnv) return fromEnv;
+    try {
+        const rows = await query(
+            `SELECT email
+             FROM human_advisors
+             WHERE is_active = TRUE
+               AND is_available = TRUE
+               AND email IS NOT NULL
+             ORDER BY id ASC
+             LIMIT 1`
+        );
+        const fromTable = _normalizeEscalationEmail(rows?.[0]?.email || '');
+        if (fromTable) return fromTable;
+    } catch (_) { /* ignore */ }
+    return 'advisor@bmu.edu.ng';
+}
+
+function _csvEscape(v) {
+    const s = String(v ?? '');
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
 }
 
 // Get dashboard statistics
@@ -181,7 +217,7 @@ router.get('/audit-trail', authenticateToken, requireAdmin, async (req, res) => 
 // Get escalations with email delivery visibility for admin follow-up
 router.get('/escalations', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { page = 1, limit = 100, search = '' } = req.query;
+        const { page = 1, limit = 100, search = '', status = '', emailStatus = '' } = req.query;
         const pageNum = Math.max(1, parseInt(page, 10) || 1);
         const limitNum = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
         const offset = (pageNum - 1) * limitNum;
@@ -189,7 +225,9 @@ router.get('/escalations', authenticateToken, requireAdmin, async (req, res) => 
         const result = await Advisor.listEscalations({
             limit: limitNum,
             offset,
-            search: String(search || '').trim()
+            search: String(search || '').trim(),
+            status: String(status || '').trim(),
+            emailStatus: String(emailStatus || '').trim()
         });
 
         const items = (result.rows || []).map(r => {
@@ -235,6 +273,153 @@ router.get('/escalations', authenticateToken, requireAdmin, async (req, res) => 
             success: false,
             error: 'Failed to fetch escalations'
         });
+    }
+});
+
+// Export escalations as CSV for audit/compliance follow-up
+router.get('/escalations/export.csv', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { search = '', status = '', emailStatus = '' } = req.query;
+        const result = await Advisor.listEscalations({
+            limit: 5000,
+            offset: 0,
+            search: String(search || '').trim(),
+            status: String(status || '').trim(),
+            emailStatus: String(emailStatus || '').trim()
+        });
+
+        const headers = [
+            'id', 'created_at', 'student_name', 'matric_no', 'contact_email',
+            'subject', 'message', 'status', 'priority', 'assigned_email',
+            'email_sent_at', 'email_status', 'email_error'
+        ];
+
+        const lines = [headers.join(',')];
+        for (const r of result.rows || []) {
+            const deliveryError = typeof r.response_message === 'string' && r.response_message.startsWith('[EMAIL_ERROR]')
+                ? r.response_message.replace(/^\[EMAIL_ERROR\]\s*/i, '')
+                : '';
+            const emailStatusValue = r.email_sent_at ? 'sent' : (deliveryError ? 'failed' : 'pending');
+            const row = [
+                r.id,
+                r.created_at,
+                r.student_name || '',
+                r.matric_no || '',
+                r.contact_email || '',
+                r.subject || '',
+                r.message || '',
+                r.status || '',
+                r.priority || '',
+                r.assigned_email || '',
+                r.email_sent_at || '',
+                emailStatusValue,
+                deliveryError
+            ].map(_csvEscape).join(',');
+            lines.push(row);
+        }
+
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="escalations-${stamp}.csv"`);
+        res.send(lines.join('\n'));
+    } catch (error) {
+        console.error('Escalation CSV export error:', error);
+        res.status(500).json({ success: false, error: 'Failed to export escalations' });
+    }
+});
+
+// Retry email delivery for a specific escalation
+router.post('/escalations/:id/retry-email', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json({ success: false, error: 'Invalid escalation id' });
+
+        const rows = await query(
+            `SELECT e.*, s.full_name AS student_name, s.matric_no
+             FROM escalations e
+             LEFT JOIN students s ON s.id = e.student_id
+             WHERE e.id = ?
+             LIMIT 1`,
+            [id]
+        );
+        const esc = rows[0];
+        if (!esc) return res.status(404).json({ success: false, error: 'Escalation not found' });
+
+        const advisorEmail = await _resolveAdvisorEscalationEmail();
+        if (!emailService || process.env.EMAIL_ENABLED !== 'true') {
+            await Advisor.markEscalationEmailFailed(id, advisorEmail, process.env.EMAIL_ENABLED === 'true' ? 'email service unavailable' : 'EMAIL_ENABLED is false');
+            return res.status(400).json({ success: false, error: 'Email service is not enabled' });
+        }
+
+        await emailService.sendMail({
+            to: advisorEmail,
+            subject: `[BMU Advisor] Escalation: ${esc.subject}`,
+            text: `A student has escalated a question.\n\nFrom: ${esc.student_name || 'Anonymous'} (${esc.contact_email || 'no email'})\nMatric: ${esc.matric_no || 'n/a'}\nPriority: ${esc.priority || 'normal'}\nSubmitted at: ${esc.created_at || new Date().toISOString()}\n\nSubject:\n${esc.subject}\n\nMessage:\n${esc.message}\n\nReply to: ${esc.contact_email || 'unknown'}`
+        });
+
+        await Advisor.markEscalationEmailed(id, advisorEmail);
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'ESCALATION_EMAIL_RETRIED',
+            entityType: 'escalation',
+            entityId: id,
+            details: { to: advisorEmail },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.json({ success: true, message: `Escalation email sent to ${advisorEmail}` });
+    } catch (error) {
+        console.error('Retry escalation email error:', error);
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (id) {
+                const to = await _resolveAdvisorEscalationEmail();
+                await Advisor.markEscalationEmailFailed(id, to, error.message || 'retry failed');
+            }
+        } catch (_) { /* ignore */ }
+        res.status(500).json({ success: false, error: `Could not resend escalation email: ${error.message || 'unknown error'}` });
+    }
+});
+
+// Update escalation workflow status (open -> in_progress -> resolved -> closed)
+router.put('/escalations/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        const nextStatus = String(req.body?.status || '').trim();
+        const responseMessage = String(req.body?.responseMessage || '').trim();
+        if (!id) return res.status(400).json({ success: false, error: 'Invalid escalation id' });
+        if (!['open', 'in_progress', 'resolved', 'closed'].includes(nextStatus)) {
+            return res.status(400).json({ success: false, error: 'Invalid escalation status' });
+        }
+
+        const rows = await query(`SELECT id, status FROM escalations WHERE id = ? LIMIT 1`, [id]);
+        const current = rows[0];
+        if (!current) return res.status(404).json({ success: false, error: 'Escalation not found' });
+
+        await query(
+            `UPDATE escalations
+             SET status = ?,
+                 response_message = CASE WHEN ? <> '' THEN ? ELSE response_message END,
+                 resolved_at = CASE WHEN ? IN ('resolved','closed') THEN CURRENT_TIMESTAMP ELSE resolved_at END
+             WHERE id = ?`,
+            [nextStatus, responseMessage, responseMessage, nextStatus, id]
+        );
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'ESCALATION_STATUS_UPDATED',
+            entityType: 'escalation',
+            entityId: id,
+            details: { from: current.status, to: nextStatus },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.json({ success: true, message: 'Escalation status updated' });
+    } catch (error) {
+        console.error('Escalation status update error:', error);
+        res.status(500).json({ success: false, error: 'Failed to update escalation status' });
     }
 });
 

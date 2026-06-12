@@ -752,15 +752,33 @@
             <p class="lede">Track student escalation emails: who sent them, when, what was sent, and delivery status.</p>
             <div class="admin-actions">
                 <input id="escSearch" class="admin-search" type="search" placeholder="Search by subject, student, email, or message…" />
+                <select id="escStatus" class="btn btn-ghost" style="padding:8px 10px;">
+                    <option value="">All workflow statuses</option>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                </select>
+                <select id="escEmailStatus" class="btn btn-ghost" style="padding:8px 10px;">
+                    <option value="">All email statuses</option>
+                    <option value="sent">Email sent</option>
+                    <option value="pending">Email pending</option>
+                    <option value="failed">Email failed</option>
+                </select>
+                <button id="escExportCsv" class="btn btn-ghost"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
             </div>
             <div id="escList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
 
         let searchText = '';
+        let workflowStatus = '';
+        let emailStatus = '';
         async function loadEsc() {
             try {
                 const q = new URLSearchParams({ limit: '200' });
                 if (searchText) q.set('search', searchText);
+                if (workflowStatus) q.set('status', workflowStatus);
+                if (emailStatus) q.set('emailStatus', emailStatus);
                 const r = await api('/api/admin/escalations?' + q.toString());
                 const items = r.escalations || [];
                 if (!items.length) {
@@ -772,25 +790,78 @@
                     const statusCls = it.emailStatus === 'sent'
                         ? 'badge-success'
                         : (it.emailStatus === 'failed' ? 'badge-danger' : 'badge-warn');
+                    const flowCls = it.status === 'resolved' || it.status === 'closed'
+                        ? 'badge-success'
+                        : (it.status === 'in_progress' ? 'badge-info' : 'badge-warn');
                     const who = it.student?.name || 'Anonymous';
                     const whoDetail = it.student?.matricNo || it.contactEmail || '—';
-                    const msgPreview = (it.message || '').slice(0, 180);
+                    const msgPreview = (it.message || '').slice(0, 240);
                     const sentAt = it.emailSentAt ? formatDate(it.emailSentAt) : '—';
                     const error = it.emailError ? `<div style="color:#8a2522;font-size:.8rem;">${escapeHtml(it.emailError)}</div>` : '';
+                    const canRetry = it.emailStatus !== 'sent';
                     return [
-                        `<div><strong>${escapeHtml(it.subject || 'No subject')}</strong><div style="color:var(--muted); font-size:.82rem;">${escapeHtml(msgPreview)}${(it.message || '').length > 180 ? '…' : ''}</div></div>`,
+                        `<div>
+                            <strong>${escapeHtml(it.subject || 'No subject')}</strong>
+                            <div style="color:var(--muted); font-size:.82rem;">${escapeHtml(msgPreview)}${(it.message || '').length > 240 ? '…' : ''}</div>
+                            <details style="margin-top:6px;"><summary>Show full message</summary><pre style="white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.03);padding:8px;border-radius:8px;">${escapeHtml(it.message || '')}</pre></details>
+                        </div>`,
                         `<div><strong>${escapeHtml(who)}</strong><div style="color:var(--muted); font-size:.82rem;">${escapeHtml(whoDetail)}</div></div>`,
                         `<span class="badge ${statusCls}">${escapeHtml(it.emailStatus || 'pending')}</span>${error}`,
                         `<div>${escapeHtml(it.assignedEmail || '—')}</div><div style="color:var(--muted); font-size:.82rem;">Sent: ${escapeHtml(sentAt)}</div>`,
                         escapeHtml(formatDate(it.createdAt)),
-                        escapeHtml(it.priority || 'normal')
+                        `<div>
+                            <span class="badge ${flowCls}">${escapeHtml(it.status || 'open')}</span>
+                            <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+                                <select data-act="set-status" data-id="${it.id}" class="btn btn-ghost" style="padding:5px 8px;">
+                                    <option value="open" ${it.status === 'open' ? 'selected' : ''}>open</option>
+                                    <option value="in_progress" ${it.status === 'in_progress' ? 'selected' : ''}>in_progress</option>
+                                    <option value="resolved" ${it.status === 'resolved' ? 'selected' : ''}>resolved</option>
+                                    <option value="closed" ${it.status === 'closed' ? 'selected' : ''}>closed</option>
+                                </select>
+                                <button type="button" class="btn btn-ghost" data-act="save-status" data-id="${it.id}"><i class="fa-solid fa-floppy-disk"></i></button>
+                                ${canRetry ? `<button type="button" class="btn btn-ghost" data-act="retry-email" data-id="${it.id}"><i class="fa-solid fa-paper-plane"></i></button>` : ''}
+                            </div>
+                        </div>`
                     ];
                 });
 
                 document.getElementById('escList').innerHTML = table(
-                    ['Escalation', 'From', 'Email status', 'To', 'When', 'Priority'],
+                    ['Escalation', 'From', 'Email status', 'To', 'When', 'Workflow'],
                     rows
                 );
+
+                const escList = document.getElementById('escList');
+                escList.onclick = async (e) => {
+                    const btn = e.target.closest('button[data-act]');
+                    if (!btn) return;
+                    const id = btn.dataset.id;
+                    const act = btn.dataset.act;
+                    try {
+                        if (act === 'retry-email') {
+                            btn.disabled = true;
+                            await api('/api/admin/escalations/' + id + '/retry-email', { method: 'POST' });
+                            toast('Escalation email retried');
+                            loadEsc();
+                            return;
+                        }
+                        if (act === 'save-status') {
+                            const sel = escList.querySelector(`select[data-act="set-status"][data-id="${id}"]`);
+                            const status = sel?.value;
+                            if (!status) return;
+                            btn.disabled = true;
+                            await api('/api/admin/escalations/' + id + '/status', {
+                                method: 'PUT',
+                                body: { status }
+                            });
+                            toast('Escalation status updated');
+                            loadEsc();
+                        }
+                    } catch (err) {
+                        toast(err.message || 'Action failed', 'error');
+                    } finally {
+                        btn.disabled = false;
+                    }
+                };
             } catch (err) {
                 document.getElementById('escList').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
             }
@@ -799,6 +870,37 @@
         document.getElementById('escSearch')?.addEventListener('input', (e) => {
             searchText = (e.target.value || '').trim();
             loadEsc();
+        });
+        document.getElementById('escStatus')?.addEventListener('change', (e) => {
+            workflowStatus = (e.target.value || '').trim();
+            loadEsc();
+        });
+        document.getElementById('escEmailStatus')?.addEventListener('change', (e) => {
+            emailStatus = (e.target.value || '').trim();
+            loadEsc();
+        });
+        document.getElementById('escExportCsv')?.addEventListener('click', async () => {
+            const q = new URLSearchParams();
+            if (searchText) q.set('search', searchText);
+            if (workflowStatus) q.set('status', workflowStatus);
+            if (emailStatus) q.set('emailStatus', emailStatus);
+            try {
+                const res = await fetch('/api/admin/escalations/export.csv?' + q.toString(), {
+                    headers: authHeaders()
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `escalations-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                toast(err.message || 'Could not export CSV', 'error');
+            }
         });
         loadEsc();
     }

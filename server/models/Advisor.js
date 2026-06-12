@@ -278,13 +278,26 @@ const Advisor = {
         );
     },
 
-    async listEscalations({ limit = 100, offset = 0, search = '' } = {}) {
+    async listEscalations({ limit = 100, offset = 0, search = '', status = '', emailStatus = '' } = {}) {
         const safeLimit = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
         const safeOffset = Math.max(0, parseInt(offset, 10) || 0);
         const q = String(search || '').trim();
+        const statusFilter = String(status || '').trim().toLowerCase();
+        const emailStatusFilter = String(emailStatus || '').trim().toLowerCase();
 
         const where = [];
         const params = [];
+        if (statusFilter && ['open', 'in_progress', 'resolved', 'closed'].includes(statusFilter)) {
+            where.push(`e.status = ?`);
+            params.push(statusFilter);
+        }
+        if (emailStatusFilter === 'sent') {
+            where.push(`e.email_sent_at IS NOT NULL`);
+        } else if (emailStatusFilter === 'failed') {
+            where.push(`e.email_sent_at IS NULL AND e.response_message LIKE '[EMAIL_ERROR]%'`);
+        } else if (emailStatusFilter === 'pending') {
+            where.push(`e.email_sent_at IS NULL AND (e.response_message IS NULL OR e.response_message NOT LIKE '[EMAIL_ERROR]%')`);
+        }
         if (q) {
             where.push(`(
                 e.subject LIKE ? OR
