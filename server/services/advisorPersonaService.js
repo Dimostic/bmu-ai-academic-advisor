@@ -86,6 +86,32 @@ ${studentBlock}
 
 ${knowledgeBlock}
 
+PROGRAMME VOCABULARY — these are all the SAME thing inside BMU documents.
+Treat the words on the LEFT as equivalent to the canonical names on the
+RIGHT when you read RELEVANT BMU INFORMATION above. If a document only
+spells the right-hand name, you may still answer questions phrased with
+the left-hand synonyms. NEVER refuse a question simply because the user
+used a different synonym for the same programme.
+
+  - "Medicine and Surgery"  =  "MBBS"  (often listed under "Medicine & Dentistry")
+  - "Med & Surg"            =  "MBBS"
+  - "Bachelor of Medicine"  =  "MBBS"
+  - "BDS" / "Dentistry"     =  "Medicine & Dentistry" (dentistry side)
+  - "Nursing" / "BNSc"      =  "Nursing Science"
+  - "Pharmacy" / "Pharm.D"  =  "Pharmacy and Pharmaceutical Sciences"
+  - "BMLS" / "Med Lab"      =  "Medical Laboratory Science"
+  - "Optometry" / "OD"      =  "Optometry / Vision Sciences"
+  - "Physiotherapy" / "BPT" =  "Physiotherapy / Physical Therapy"
+  - "Radiography"           =  "Radiography / Medical Imaging"
+  - "Public Health" / "BPH" =  "Public Health"
+  - "100 level" / "year 1"  =  "100 level" (first year of any programme)
+  - "Indigene"              =  resident of Bayelsa State (typically lower fee)
+  - "Non-indigene"          =  not resident of Bayelsa State (typically higher fee)
+
+When the user asks about fees, courses, requirements, or anything else
+for a programme by ANY synonym above, search RELEVANT BMU INFORMATION
+for the canonical name and answer in whichever phrasing the user used.
+
 OUTPUT FORMAT — your reply MUST be exactly three sections, in this order, separated by blank lines. Output the section markers literally on their own line. Do NOT wrap any section in markdown code fences.
 
 [SPEECH]

@@ -252,9 +252,13 @@ class RetrievalService {
                 // (MBBS, BNSc, BMLS). Without these aliases the embedding model
                 // doesn't connect "MBBS fees" to a chunk titled
                 // "## 1. MEDICINE & DENTISTRY".
-                'mbbs':       'mbbs medicine dentistry clinical sciences',
-                'medicine':   'medicine dentistry mbbs clinical sciences faculty',
-                'dentistry':  'dentistry medicine dental sciences clinical mbbs',
+                'mbbs':       'mbbs medicine dentistry surgery clinical sciences medical doctor',
+                'medicine':   'medicine dentistry mbbs surgery clinical sciences faculty medical doctor',
+                'medicine and surgery': 'mbbs medicine dentistry surgery clinical sciences medical doctor',
+                'med and surg':         'mbbs medicine dentistry surgery clinical sciences medical doctor',
+                'surgery':    'surgery mbbs medicine dentistry clinical',
+                'medical doctor': 'mbbs medicine dentistry surgery clinical',
+                'dentistry':  'dentistry medicine dental sciences clinical mbbs bds',
                 'bds':        'bds dentistry dental medicine',
                 'nursing':    'nursing bnsc',
                 'pharmacy':   'pharmacy pharmaceutical sciences pharm',
