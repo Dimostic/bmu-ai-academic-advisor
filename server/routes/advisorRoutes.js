@@ -217,6 +217,36 @@ router.get('/health', (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/advisor/tts
+// Body: { text, advisorGender? }
+// Regenerate audio for replay using the caller's CURRENT voice preference.
+// ---------------------------------------------------------------------------
+router.post('/tts', authenticateToken, async (req, res) => {
+    try {
+        const text = String(req.body?.text || '').trim();
+        const advisorGender = req.body?.advisorGender === 'male' ? 'male' : 'female';
+
+        if (!text) {
+            return res.status(400).json({ success: false, error: 'text is required' });
+        }
+
+        const audio = await ttsService.synthesise(text, { gender: advisorGender });
+        return res.json({
+            success: true,
+            speech_text: text,
+            audio: {
+                provider: audio.provider || 'none',
+                audio_url: audio.audioUrl || null,
+                use_browser_fallback: Boolean(audio.useBrowserFallback)
+            }
+        });
+    } catch (err) {
+        console.error('[advisorRoutes] tts:', err.message);
+        return res.status(500).json({ success: false, error: 'Could not generate speech audio' });
+    }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/advisor/sse-test  — minimal SSE for diagnosing flush issues
 // ---------------------------------------------------------------------------
 router.get('/sse-test', (req, res) => {

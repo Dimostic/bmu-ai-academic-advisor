@@ -650,10 +650,8 @@
             bubble.footer.classList.remove('hidden');
         }
         if (bubble.playBtn) {
-            bubble.playBtn.addEventListener('click', () => {
-                setActiveResponseBubble(bubble.el);
-                if (audio_url) playWithLipSync(audio_url, speech_text || '', bubble.el);
-                else if (speech_text) speakWithBrowser(speech_text, bubble.el);
+            bubble.playBtn.addEventListener('click', async () => {
+                await replayAdvisorSpeech(bubble, speech_text || '');
             });
         }
     }
@@ -669,6 +667,42 @@
         } catch (err) {
             toast(err.message || 'Could not save feedback', 'error');
             return false;
+        }
+    }
+
+    async function replayAdvisorSpeech(bubble, speechText) {
+        const spoken = String(speechText || '').trim();
+        if (!spoken) return;
+
+        if (bubble?.playBtn) {
+            bubble.playBtn.disabled = true;
+            bubble.playBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparing voice';
+        }
+
+        try {
+            setActiveResponseBubble(bubble?.el || null);
+            const data = await api('/api/advisor/tts', {
+                method: 'POST',
+                body: {
+                    text: spoken,
+                    advisorGender: getAdvisorGender()
+                }
+            });
+
+            const freshAudioUrl = data?.audio?.audio_url || null;
+            if (freshAudioUrl) {
+                await playWithLipSync(freshAudioUrl, spoken, bubble?.el || null);
+            } else {
+                await speakWithBrowser(spoken, bubble?.el || null);
+            }
+        } catch (err) {
+            console.warn('[advisor] replay tts failed:', err.message);
+            await speakWithBrowser(spoken, bubble?.el || null);
+        } finally {
+            if (bubble?.playBtn) {
+                bubble.playBtn.disabled = false;
+                bubble.playBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i> Listen again';
+            }
         }
     }
 
