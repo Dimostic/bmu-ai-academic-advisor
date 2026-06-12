@@ -97,6 +97,11 @@ CRITICAL ANTI-HALLUCINATION RULES — read carefully:
   4. If you cannot find a number for the EXACT level + indigene/non-indigene
      combination the user asked about, give the closest one you can find
      and clearly say which level/category it applies to.
+  5. Do NOT invent BMU faculties or departments. Use faculty/department
+      names exactly as written in RELEVANT BMU INFORMATION.
+  6. Important BMU naming guardrail: do NOT claim there is a "Faculty of
+      Nursing Science" unless the retrieved context explicitly states that.
+      In BMU materials, Nursing Science is typically presented as a programme.
 
 ${studentBlock}
 
@@ -158,9 +163,13 @@ A SINGLE JSON object on one or more lines, with these keys:
                          complete, specific question they would actually want answered next
                          (e.g. "What courses do 400 level MBBS students take?"), NOT a short
                          topic name. Keep labels under 80 characters.
+                         Only include a suggested action if you can answer that label
+                         from RELEVANT BMU INFORMATION right now.
   "follow_up_questions": array of 2-4 short prompt strings the student might tap next.
                          Same rule: each one is sent verbatim when clicked, so write them
                          as complete questions, not topics.
+                         Only include follow-ups that are answerable from the same
+                         retrieved BMU context. If unsure, return fewer follow-ups.
   "needs_escalation":    true when the question is outside scope (medical/legal/personal counselling) or you lack reliable info
   "confidence":          number in [0,1]
 

@@ -26,12 +26,114 @@ const RAG_TIMEOUT_MS = parseInt(process.env.ADVISOR_RAG_TIMEOUT_MS || '4000', 10
 const KEYWORD_FALLBACK_LIMIT = parseInt(process.env.ADVISOR_KEYWORD_FALLBACK_LIMIT || '4', 10);
 const PRIMARY_SOURCE_PATTERN = (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || 'quick facts').toLowerCase();
 const PRIMARY_SOURCE_BOOST   = parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.20');
+const SUGGESTION_MIN_CONFIDENCE = parseFloat(process.env.ADVISOR_SUGGESTION_MIN_CONFIDENCE || '0.30');
 
 let retrievalService = null;
 try { retrievalService = require('./retrievalService'); }
 catch (err) { console.warn('[advisorService] retrievalService unavailable:', err.message); }
 
 const { query } = require('../../config/db');
+
+async function _resolvePriorityDocumentIds(question) {
+    try {
+        const q = String(question || '').toLowerCase();
+        const patterns = [];
+
+        // Fees should anchor to BMU fee structure.
+        if (/(fee|fees|tuition|cost|payment|indigene|non[-\s]?indigene)/i.test(q)) {
+            patterns.push('%fee structure%');
+            patterns.push('%fees%');
+        }
+        // Courses/faculties/departments should anchor to Student Courses doc.
+        if (/(course|courses|curriculum|department|departments|faculty|faculties)/i.test(q)) {
+            patterns.push('%student courses%');
+            patterns.push('%course%');
+        }
+        // Programmes/about-BMU questions should include the BMU profile doc.
+        if (/(programme|programmes|program|profile|about bmu|bmu profile)/i.test(q)) {
+            patterns.push('%brief profile%');
+            patterns.push('%profile%');
+        }
+
+        const unique = [...new Set(patterns)];
+        if (!unique.length) return [];
+
+        const where = unique.map(() => 'LOWER(title) LIKE ?').join(' OR ');
+        const rows = await query(
+            `SELECT id, title
+             FROM documents
+             WHERE is_active = TRUE
+               AND (${where})
+             ORDER BY id DESC
+             LIMIT 12`,
+            unique
+        );
+
+        return rows.map(r => r.id).filter(Boolean);
+    } catch (err) {
+        console.warn('[advisorService] priority document lookup failed:', err.message);
+        return [];
+    }
+}
+
+function _mergeContexts(parts) {
+    const seen = new Set();
+    const out = [];
+    for (const part of parts) {
+        if (!part || typeof part !== 'string') continue;
+        for (const block of part.split(/\n\n+/g)) {
+            const b = block.trim();
+            if (b.length < 20) continue;
+            if (seen.has(b)) continue;
+            seen.add(b);
+            out.push(b);
+        }
+    }
+    return out.join('\n\n').slice(0, 12000);
+}
+
+function _isAlwaysAllowedAction(action) {
+    return action === 'escalate_to_human'
+        || action === 'start_study_plan'
+        || (typeof action === 'string' && action.startsWith('open_url:'));
+}
+
+async function _isRetrievableQuestion(text) {
+    if (!retrievalService) return true;
+    const q = String(text || '').trim();
+    if (!q || q.length < 5) return false;
+    try {
+        const r = await retrievalService.retrieve(q, { limit: 1, skipCache: true });
+        return Boolean(r?.context) && Number(r?.confidence || 0) >= SUGGESTION_MIN_CONFIDENCE;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function _sanitizeInteractiveSuggestions(parsed) {
+    if (!parsed) return parsed;
+
+    const actions = Array.isArray(parsed.suggested_actions) ? parsed.suggested_actions : [];
+    const followups = Array.isArray(parsed.follow_up_questions) ? parsed.follow_up_questions : [];
+
+    const actionChecks = await Promise.all(actions.map(async (a) => {
+        if (!a || typeof a.label !== 'string') return null;
+        if (_isAlwaysAllowedAction(a.action)) return a;
+        const ok = await _isRetrievableQuestion(a.label);
+        return ok ? a : null;
+    }));
+
+    const followChecks = await Promise.all(followups.map(async (q) => {
+        const ok = await _isRetrievableQuestion(q);
+        return ok ? q : null;
+    }));
+
+    return {
+        ...parsed,
+        suggested_actions: actionChecks.filter(Boolean).slice(0, 6),
+        follow_up_questions: followChecks.filter(Boolean).slice(0, 4)
+    };
+}
 
 async function _keywordFallback(question) {
     try {
@@ -100,16 +202,38 @@ async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
  */
 async function _fetchRagContext(question) {
     if (!RAG_ENABLED || !question || question.length < 3) return '';
-    const fullSearch = retrievalService
-        ? retrievalService.retrieve(question, { limit: 5 })
-            .then(r => r?.context || '')
-            .catch(err => { console.warn('[advisorService] RAG retrieve failed:', err.message); return ''; })
-        : Promise.resolve('');
-    const winner = await Promise.race([
-        fullSearch.then(ctx => ({ kind: 'full', ctx })),
-        new Promise(resolve => setTimeout(() => resolve({ kind: 'timeout' }), RAG_TIMEOUT_MS))
+    if (!retrievalService) return await _keywordFallback(question);
+
+    const priorityDocIds = await _resolvePriorityDocumentIds(question);
+    const timed = (promise) => Promise.race([
+        promise,
+        new Promise(resolve => setTimeout(() => resolve(''), RAG_TIMEOUT_MS))
     ]);
-    if (winner.kind === 'full' && winner.ctx) return winner.ctx;
+
+    const [generalCtx, priorityCtx] = await Promise.all([
+        timed(
+            retrievalService.retrieve(question, { limit: 5 })
+                .then(r => r?.context || '')
+                .catch(err => {
+                    console.warn('[advisorService] general RAG retrieve failed:', err.message);
+                    return '';
+                })
+        ),
+        priorityDocIds.length
+            ? timed(
+                retrievalService.retrieve(question, { limit: 5, documentIds: priorityDocIds, skipCache: true })
+                    .then(r => r?.context || '')
+                    .catch(err => {
+                        console.warn('[advisorService] priority RAG retrieve failed:', err.message);
+                        return '';
+                    })
+            )
+            : Promise.resolve('')
+    ]);
+
+    const merged = _mergeContexts([priorityCtx, generalCtx]);
+    if (merged) return merged;
+
     return await _keywordFallback(question);
 }
 
@@ -235,7 +359,8 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     }
 
     // 5. Parse + persist + TTS
-    const parsed = persona.parseAdvisorReply(llmResult.content, trimmed);
+    const parsedRaw = persona.parseAdvisorReply(llmResult.content, trimmed);
+    const parsed = await _sanitizeInteractiveSuggestions(parsedRaw);
     return await _persistAndPackage({
         conversation, parsed, llmUsage: llmResult.usage, voiceEnabled, startedAt, advisorGender
     });
