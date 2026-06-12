@@ -186,7 +186,11 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     const m = text.match(re);
     if (!m || !m[1]) return null;
 
-    const candidate = String(m[1]).replace(/\s+/g, ' ').trim().replace(/[,.:;]+$/, '').trim();
+    // Truncate at double-space (field separator), tab, or next "Label:" pattern
+    let candidate = String(m[1]);
+    candidate = candidate.split(/\t|  +/)[0]; // stop at tab or 2+ spaces
+    candidate = candidate.split(/\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?\s*:/)[0]; // stop at next field label like "Chair:"
+    candidate = candidate.replace(/\s+/g, ' ').trim().replace(/[,;]+$/, '').trim();
     if (candidate.length < 4) return null;
     if (!/[a-z]/i.test(candidate)) return null;
     if (/\b(tbd|unknown|vacant|n\/a|not available|to be appointed)\b/i.test(candidate)) return null;
