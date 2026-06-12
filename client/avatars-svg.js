@@ -38,7 +38,7 @@
         <svg id="avatarSvg" viewBox="0 0 220 280" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <defs>
                 <radialGradient id="bgGlowF" cx="50%" cy="40%" r="60%">
-                    <stop offset="0%"  stop-color="#7bdcb5" stop-opacity="0.55"/>
+                    <stop offset="0%"  stop-color="#7bdcb5" stop-opacity="0.18"/>
                     <stop offset="100%" stop-color="#0f3d3e" stop-opacity="0"/>
                 </radialGradient>
                 <linearGradient id="skinF" x1="0" y1="0" x2="0" y2="1">
@@ -169,7 +169,7 @@
         <svg id="avatarSvg" viewBox="0 0 220 280" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <defs>
                 <radialGradient id="bgGlowM" cx="50%" cy="40%" r="60%">
-                    <stop offset="0%"  stop-color="#7bdcb5" stop-opacity="0.55"/>
+                    <stop offset="0%"  stop-color="#7bdcb5" stop-opacity="0.18"/>
                     <stop offset="100%" stop-color="#0f3d3e" stop-opacity="0"/>
                 </radialGradient>
                 <linearGradient id="skinM" x1="0" y1="0" x2="0" y2="1">

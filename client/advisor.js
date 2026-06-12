@@ -487,20 +487,80 @@
         try { window.speechSynthesis?.cancel(); } catch (_) {}
     }
 
-    /** Fallback TTS using the browser's SpeechSynthesis API. Returns duration estimate. */
+    /** Pick a browser SpeechSynthesis voice that matches the user's
+     *  chosen advisor gender. We can't fully trust the .gender field
+     *  (it's missing on most platforms) so we score by voice name first
+     *  and fall back to language-only matching.
+     *
+     *  Returns null when no acceptable voice is loaded yet — caller
+     *  should let the engine pick its default.
+     */
+    function pickBrowserVoice(gender) {
+        if (!window.speechSynthesis) return null;
+        const voices = speechSynthesis.getVoices() || [];
+        if (!voices.length) return null;
+
+        // Names that strongly suggest a given gender across Windows/macOS/iOS/Android.
+        const FEMALE_HINTS = /\b(samantha|karen|moira|tessa|fiona|vicki|allison|ava|susan|fiona|zira|hazel|catherine|libby|aria|jenny|sonia|natasha|joanna|salli|kendra|kimberly|amy|emma|nicole|raveena|google\s+uk\s+english\s+female|google\s+us\s+english.*female|female)\b/i;
+        const MALE_HINTS   = /\b(daniel|alex|fred|tom|david|mark|ryan|james|guy|matthew|brian|joey|justin|aaron|google\s+uk\s+english\s+male|male)\b/i;
+
+        const wantFemale = gender !== 'male';
+        const enVoices = voices.filter(v => /^en[-_]/i.test(v.lang) || v.lang === 'en');
+
+        // 1. Prefer en-NG / en-GB / en-US matching the wanted gender by name.
+        const score = (v) => {
+            let s = 0;
+            const name = (v.name || '').toLowerCase();
+            const lang = (v.lang || '').toLowerCase();
+            if (wantFemale && FEMALE_HINTS.test(name)) s += 100;
+            if (!wantFemale && MALE_HINTS.test(name)) s += 100;
+            if (wantFemale && MALE_HINTS.test(name)) s -= 50;
+            if (!wantFemale && FEMALE_HINTS.test(name)) s -= 50;
+            // Also try the voice's own .gender field if the platform reports it.
+            const g = (v.gender || '').toLowerCase();
+            if (wantFemale && g === 'female') s += 30;
+            if (!wantFemale && g === 'male') s += 30;
+            // Locale preference: en-NG > en-GB > en-US > anything en
+            if (lang.startsWith('en-ng')) s += 8;
+            else if (lang.startsWith('en-gb')) s += 6;
+            else if (lang.startsWith('en-us')) s += 4;
+            else if (lang.startsWith('en'))    s += 2;
+            // Local voices (no remote lookup) tend to be lower-latency.
+            if (v.localService) s += 1;
+            return s;
+        };
+
+        const ranked = enVoices.slice().sort((a, b) => score(b) - score(a));
+        return ranked[0] || null;
+    }
+
+    /** Fallback TTS using the browser's SpeechSynthesis API. Returns duration estimate.
+     *
+     *  As of 2026 this is also the PRIMARY path on production (TTSMaker
+     *  is opt-in via TTS_PROVIDER=ttsmaker). Browser TTS is free, runs
+     *  on-device, and ships with clearly-gendered voices on all major
+     *  platforms — solving both the cost concern at student scale and
+     *  the wrong-gender voice problem from the previous TTSMaker setup.
+     */
     function speakWithBrowser(text) {
         return new Promise(resolve => {
             if (!window.speechSynthesis) return resolve(0);
             try {
                 const u = new SpeechSynthesisUtterance(text);
-                u.lang = 'en-NG';
+                const gender = (typeof getAdvisorGender === 'function') ? getAdvisorGender() : 'female';
+                const v = pickBrowserVoice(gender);
+                if (v) u.voice = v;
+                u.lang = (v && v.lang) || 'en-NG';
                 u.rate = 1.02;
-                u.pitch = 1.0;
+                u.pitch = gender === 'male' ? 0.95 : 1.05;  // mild pitch nudge as backup signal
+                u.volume = 1;
+                console.info('[advisor] browser TTS voice:', v ? `${v.name} (${v.lang})` : 'default');
+
                 // Roughly drive the mouth from amplitude proxy (word boundaries)
                 let opening = 0;
                 let raf;
                 u.onstart = () => {
-                    setAvatarState('talking', 'Speaking');
+                    setAvatarState('speaking', 'Speaking');
                     const pulse = () => {
                         opening = opening > 0.05 ? 0 : 0.7;
                         setMouthOpenness(opening);
@@ -516,6 +576,14 @@
                 };
                 window.speechSynthesis.speak(u);
             } catch (_) { resolve(0); }
+        });
+    }
+
+    // Preload voices: most browsers populate getVoices() asynchronously.
+    if (window.speechSynthesis) {
+        try { speechSynthesis.getVoices(); } catch (_) { /* ignore */ }
+        speechSynthesis.addEventListener?.('voiceschanged', () => {
+            try { speechSynthesis.getVoices(); } catch (_) {}
         });
     }
 

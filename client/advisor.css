@@ -91,9 +91,20 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .avatar-stage {
     position: relative; width: 240px; height: 280px;
     border-radius: var(--radius);
-    background: radial-gradient(120% 70% at 50% 30%, #d9f1e7, #f4f7f8 70%);
+    /* Softer, dimmer background so the cartoon reads as the focal point.
+       Was a bright #d9f1e7 → #f4f7f8 mint gradient that washed everything
+       out; now a deep teal vignette that frames the figure. */
+    background:
+        radial-gradient(140% 90% at 50% 25%, rgba(35,182,165,.10), rgba(15,61,62,.55) 70%),
+        linear-gradient(180deg, #143638 0%, #0a2528 100%);
     overflow: hidden;
     display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(255,255,255,.06);
+}
+html[data-theme="dark"] .avatar-stage {
+    background:
+        radial-gradient(140% 90% at 50% 25%, rgba(47,191,158,.12), rgba(0,0,0,.55) 70%),
+        linear-gradient(180deg, #0d1518 0%, #060c0e 100%);
 }
 .avatar-stage svg, .avatar-stage > .lottie-host { width: 100%; height: 100%; }
 
