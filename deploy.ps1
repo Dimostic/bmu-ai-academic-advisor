@@ -1,10 +1,10 @@
 # Deploy BMU AI Academic Advisor to VPS (PowerShell equivalent of deploy.sh)
 # Usage: .\deploy.ps1
-# Requires: OpenSSH client on Windows and an SSH config entry named "bmu-vps"
+# Requires: OpenSSH client on Windows and an SSH config entry such as "bmu-server"
 
 $ErrorActionPreference = 'Stop'
 
-$VpsHost  = 'bmu-vps'
+$VpsHost  = if ($env:BMU_VPS_HOST) { $env:BMU_VPS_HOST } else { 'bmu-server' }
 $AppDir   = '/var/www/bmu-ai-academic-advisor'
 $AppName  = 'bmu-ai-academic-advisor'
 $AppEntry = 'server/app.js'
