@@ -33,6 +33,9 @@
             <button id="historyToggleBtn" class="icon-btn hidden" title="Conversation history" aria-label="History">
                 <i class="fa-solid fa-clock-rotate-left"></i>
             </button>
+            <button id="avatarToggleBtn" class="icon-btn" title="Switch advisor (male/female)" aria-label="Switch advisor">
+                <i class="fa-solid fa-user-gear"></i>
+            </button>
             <a id="adminLink" href="/admin" class="link-muted hidden" title="Admin portal">
                 <i class="fa-solid fa-toolbox"></i> Admin
             </a>
@@ -49,6 +52,9 @@
         <!-- Avatar pane -->
         <section class="avatar-pane" aria-label="Academic advisor">
             <div class="avatar-stage" id="avatarStage">
+                <!-- Photo avatar (chosen by the user). Falls back to the SVG
+                     below when `data-avatar-mode="svg"` is set on the stage. -->
+                <img id="avatarPhoto" class="avatar-photo hidden" alt="Advisor avatar" />
                 <!-- SVG avatar — replaced by Lottie if loadLottieCharacter() is called -->
                 <svg id="avatarSvg" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <defs>

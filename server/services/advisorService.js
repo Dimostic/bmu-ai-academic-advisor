@@ -138,7 +138,7 @@ async function _buildHistory(conversationId) {
  * @param {boolean}[params.voiceEnabled=true] generate TTS?
  * @returns {Promise<object>}
  */
-async function ask({ question, inputMode = 'text', sessionToken, student = null, voiceEnabled = true }) {
+async function ask({ question, inputMode = 'text', sessionToken, student = null, voiceEnabled = true, advisorGender = 'female' }) {
     const startedAt = Date.now();
     if (!question || typeof question !== 'string' || !question.trim()) {
         throw new Error('question is required');
@@ -191,7 +191,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
                     confidence: cached.cacheConfidence || 0.95
                 };
                 const result = await _persistAndPackage({
-                    conversation, parsed, llmUsage: null, voiceEnabled, startedAt
+                    conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender
                 });
                 result.meta.source = 'faq_cache';
                 result.meta.cached_qa_id = cached.cachedQaId;
@@ -230,18 +230,18 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         };
         return await _persistAndPackage({
             conversation, parsed: fallback, llmUsage: null, voiceEnabled,
-            startedAt, errorMsg: err.message
+            startedAt, errorMsg: err.message, advisorGender
         });
     }
 
     // 5. Parse + persist + TTS
     const parsed = persona.parseAdvisorReply(llmResult.content, trimmed);
     return await _persistAndPackage({
-        conversation, parsed, llmUsage: llmResult.usage, voiceEnabled, startedAt
+        conversation, parsed, llmUsage: llmResult.usage, voiceEnabled, startedAt, advisorGender
     });
 }
 
-async function _persistAndPackage({ conversation, parsed, llmUsage, voiceEnabled, startedAt, errorMsg = null }) {
+async function _persistAndPackage({ conversation, parsed, llmUsage, voiceEnabled, startedAt, errorMsg = null, advisorGender = 'female' }) {
     // Resolve topic id for tagging
     let topicId = null;
     if (parsed.topic_slug) {
@@ -252,7 +252,7 @@ async function _persistAndPackage({ conversation, parsed, llmUsage, voiceEnabled
     // TTS
     let audio = { provider: 'none', useBrowserFallback: true };
     if (voiceEnabled !== false && conversation.voice_enabled) {
-        audio = await tts.synthesise(parsed.speech_text);
+        audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender });
     }
 
     // Persist advisor turn

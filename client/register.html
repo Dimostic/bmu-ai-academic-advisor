@@ -84,6 +84,21 @@
                     Confirm password
                     <input type="password" name="confirmPassword" required autocomplete="new-password" minlength="8" placeholder="Repeat your password" />
                 </label>
+
+                <fieldset class="advisor-pick" aria-label="Choose your advisor">
+                    <legend>Choose your advisor</legend>
+                    <label class="advisor-pick-card">
+                        <input type="radio" name="advisorGender" value="female" checked />
+                        <img src="/avatars/female-advisor.png" alt="Female advisor" />
+                        <span>Female</span>
+                    </label>
+                    <label class="advisor-pick-card">
+                        <input type="radio" name="advisorGender" value="male" />
+                        <img src="/avatars/male-advisor.png" alt="Male advisor" />
+                        <span>Male</span>
+                    </label>
+                </fieldset>
+
                 <button type="submit" class="btn btn-primary" id="submitBtn">
                     <i class="fa-solid fa-user-plus"></i> Create account
                 </button>
@@ -144,6 +159,12 @@
                 matricNo:  (fd.get('matricNo') || '').trim() || undefined,
                 password
             };
+
+            // Save the chosen advisor avatar locally so the very first
+            // post-login render uses it; the server-side preference is set
+            // on the next sign-in or via the in-app toggle.
+            const advisorGender = (fd.get('advisorGender') === 'male') ? 'male' : 'female';
+            localStorage.setItem('bmu_advisor_gender', advisorGender);
 
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating account…';

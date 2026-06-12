@@ -55,6 +55,8 @@
     const advisorName   = $('advisorName');
     const welcomeName   = $('welcomeName');
     const toastHost     = $('toastHost');
+    const avatarPhoto   = $('avatarPhoto');
+    const avatarToggleBtn = $('avatarToggleBtn');
 
     // Handbook (FAQ) browser
     const handbookBtn       = $('handbookBtn');
@@ -95,7 +97,69 @@
         advisorStatus.dataset.state = stateName;
         advisorStatus.querySelector('.label').textContent = label || stateName;
         advisorSvg.classList.toggle('listening', stateName === 'listening');
+        // Drive the photo avatar's CSS animation classes too. We only need
+        // a single 'speaking' state for the breathing/pulse effect; the
+        // SVG keeps its more granular states for finer mouth movement.
+        if (avatarPhoto) {
+            avatarPhoto.classList.toggle('avatar-photo--speaking', stateName === 'speaking' || stateName === 'talking');
+            avatarPhoto.classList.toggle('avatar-photo--listening', stateName === 'listening');
+            avatarPhoto.classList.toggle('avatar-photo--thinking', stateName === 'thinking');
+        }
     }
+
+    // ---------- Avatar gender / image ----------
+    // Read the user's preference (from localStorage cache OR the user
+    // record returned by /api/users/me). Defaults to 'female' so the
+    // existing Dr. Tari persona keeps working unchanged.
+    function getAdvisorGender() {
+        const cached = localStorage.getItem('bmu_advisor_gender');
+        if (cached === 'male' || cached === 'female') return cached;
+        try {
+            const u = JSON.parse(localStorage.getItem('bmu_user') || 'null');
+            if (u?.advisorGender === 'male' || u?.advisorGender === 'female') return u.advisorGender;
+        } catch (_) { /* ignore */ }
+        return 'female';
+    }
+
+    function applyAvatar(gender) {
+        const g = gender === 'male' ? 'male' : 'female';
+        const stage = document.getElementById('avatarStage');
+        if (!avatarPhoto || !stage) return;
+        avatarPhoto.src = `/avatars/${g}-advisor.png`;
+        avatarPhoto.alt = g === 'male' ? 'Male academic advisor' : 'Female academic advisor';
+        avatarPhoto.classList.remove('hidden');
+        // Hide the SVG fallback when the photo is in use.
+        if (advisorSvg) advisorSvg.classList.add('hidden');
+        stage.dataset.avatarMode = 'photo';
+        stage.dataset.advisorGender = g;
+        // Update the persona name shown beneath the avatar.
+        const nameForGender = g === 'male' ? 'Dr. Tari (Male)' : 'Dr. Tari';
+        if (advisorName) advisorName.textContent = nameForGender;
+        if (welcomeName) welcomeName.textContent = 'Dr. Tari';
+    }
+
+    /** Save the chosen avatar both locally and on the server. The server
+     *  copy makes it stick across devices; the local copy lets us render
+     *  immediately on the next page load without waiting for /me. */
+    async function saveAdvisorGender(gender) {
+        const g = gender === 'male' ? 'male' : 'female';
+        localStorage.setItem('bmu_advisor_gender', g);
+        try {
+            const u = JSON.parse(localStorage.getItem('bmu_user') || 'null');
+            if (u) { u.advisorGender = g; localStorage.setItem('bmu_user', JSON.stringify(u)); }
+        } catch (_) { /* ignore */ }
+        applyAvatar(g);
+        try {
+            await fetch('/api/users/advisor-preference', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ gender: g })
+            });
+        } catch (_) { /* non-fatal — local storage already persisted */ }
+    }
+
+    // Initial paint with whatever we know locally.
+    applyAvatar(getAdvisorGender());
     function blink() {
         advisorSvg.classList.add('blink');
         setTimeout(() => advisorSvg.classList.remove('blink'), 140);
@@ -397,7 +461,8 @@
                     question: q,
                     sessionToken: state.sessionToken,
                     voiceEnabled: true,
-                    inputMode: 'text'
+                    inputMode: 'text',
+                    advisorGender: getAdvisorGender()
                 })
             });
             if (!res.ok || !res.body) {
@@ -659,6 +724,15 @@
     micBtn.addEventListener('click', () => {
         if (state.recording) stopListening(); else startListening();
     });
+
+    // ---------- Avatar quick-toggle ----------
+    if (avatarToggleBtn) {
+        avatarToggleBtn.addEventListener('click', async () => {
+            const next = getAdvisorGender() === 'male' ? 'female' : 'male';
+            await saveAdvisorGender(next);
+            toast(`Switched to ${next === 'male' ? 'male' : 'female'} advisor`);
+        });
+    }
 
     // ---------- Escalation ----------
     function openEscalation() {

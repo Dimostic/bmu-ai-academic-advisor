@@ -183,11 +183,12 @@ async function _buildHistory(conversationId) {
  * @param {string} [params.sessionToken]
  * @param {object} [params.student]
  * @param {boolean}[params.voiceEnabled]
+ * @param {'male'|'female'} [params.advisorGender]   drives TTS voice selection
  * @param {(event:string, data:object) => void} params.send  emits an SSE event
  */
 async function askStream({
     question, inputMode = 'text', sessionToken, student = null,
-    voiceEnabled = true, send
+    voiceEnabled = true, advisorGender = 'female', send
 }) {
     const startedAt = Date.now();
     if (!question || typeof question !== 'string' || !question.trim()) {
@@ -246,7 +247,7 @@ async function askStream({
                 let audio = { provider: 'none' };
                 if (voiceEnabled !== false && conversation.voice_enabled) {
                     try {
-                        audio = await tts.synthesise(cachedSpeech);
+                        audio = await tts.synthesise(cachedSpeech, { gender: advisorGender });
                         if (audio.audioUrl) {
                             send('audio', {
                                 provider: audio.provider,
@@ -369,7 +370,7 @@ async function askStream({
             ttsPromise = Promise.resolve({ provider: 'none' });
             return;
         }
-        ttsPromise = tts.synthesise(speech).then(audio => {
+        ttsPromise = tts.synthesise(speech, { gender: advisorGender }).then(audio => {
             if (audio.audioUrl) {
                 send('audio', {
                     provider: audio.provider,

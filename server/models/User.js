@@ -128,6 +128,17 @@ class User {
         );
     }
 
+    // Update the user's advisor avatar/voice gender preference.
+    // Accepts 'female' or 'male'; anything else is ignored.
+    static async setAdvisorGender(userId, gender) {
+        const g = gender === 'male' ? 'male' : 'female';
+        await query(
+            `UPDATE users SET advisor_gender = ?, updated_at = NOW() WHERE id = ?`,
+            [g, userId]
+        );
+        return g;
+    }
+
     // Approve user (admin/superadmin) - requires email to be verified first
     static async approveUser(userId, approvedById) {
         const sql = `
@@ -213,6 +224,7 @@ class User {
             colSet.has('whatsapp_number') ? 'whatsapp_number' : null,
             colSet.has('is_verified') ? 'is_verified' : null,
             colSet.has('must_change_password') ? 'must_change_password' : null,
+            colSet.has('advisor_gender') ? 'advisor_gender' : null,
             colSet.has('created_at') ? 'created_at' : null,
             colSet.has('last_login') ? 'last_login' : null
         ].filter(Boolean);

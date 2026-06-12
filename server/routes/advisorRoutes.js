@@ -117,7 +117,8 @@ router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
             inputMode: inputMode === 'voice' ? 'voice' : 'text',
             sessionToken,
             student,
-            voiceEnabled: voiceEnabled !== false
+            voiceEnabled: voiceEnabled !== false,
+            advisorGender: (req.body?.advisorGender === 'male' || req.user?.advisor_gender === 'male') ? 'male' : 'female'
         });
         // Increment quota counters AFTER a successful reply so failed calls
         // don't burn quota.
@@ -191,6 +192,7 @@ router.post('/ask/stream', optionalAuth, enforceLimits, async (req, res) => {
             sessionToken,
             student,
             voiceEnabled: voiceEnabled !== false,
+            advisorGender: (req.body?.advisorGender === 'male' || req.user?.advisor_gender === 'male') ? 'male' : 'female',
             send
         });
         // Quota credit for streamed conversations as well

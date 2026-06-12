@@ -96,6 +96,49 @@ button, input, textarea, select { font: inherit; color: inherit; }
     display: flex; align-items: center; justify-content: center;
 }
 .avatar-stage svg, .avatar-stage > .lottie-host { width: 100%; height: 100%; }
+
+/* Photo avatar (the male/female PNGs the user uploaded). The image fills
+   the stage and uses object-fit:cover so any aspect ratio looks decent.
+   When the user picks a photo avatar the SVG fallback is hidden via the
+   .hidden class (set in advisor.js applyAvatar()). */
+.avatar-photo {
+    width: 100%; height: 100%;
+    object-fit: cover; object-position: center top;
+    display: block;
+    transition: transform .35s ease, filter .35s ease;
+    will-change: transform, filter;
+}
+/* Subtle "alive" idle breathing so the still PNG doesn't feel flat. */
+@keyframes avatar-breath {
+    0%, 100% { transform: scale(1.00); }
+    50%      { transform: scale(1.012); }
+}
+.avatar-photo { animation: avatar-breath 4.5s ease-in-out infinite; }
+
+/* Speaking — gentle vertical bob + warm glow ring. We can't lip-sync a
+   single still frame, but a rhythmic motion + halo is enough to read as
+   "is talking" alongside the audio. */
+@keyframes avatar-speak {
+    0%   { transform: translateY(0)    scale(1.00); }
+    25%  { transform: translateY(-2px) scale(1.02); }
+    50%  { transform: translateY(0)    scale(1.00); }
+    75%  { transform: translateY(-1px) scale(1.015); }
+    100% { transform: translateY(0)    scale(1.00); }
+}
+.avatar-photo--speaking {
+    animation: avatar-speak .55s ease-in-out infinite;
+    filter: drop-shadow(0 0 14px rgba(123, 220, 181, .55));
+}
+/* Listening — warm orange halo to mirror the listening dot. */
+.avatar-photo--listening {
+    filter: drop-shadow(0 0 14px rgba(255, 122, 89, .55));
+}
+/* Thinking — slow soft pulse. */
+@keyframes avatar-think {
+    0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 214, 110, .25)); }
+    50%      { filter: drop-shadow(0 0 16px rgba(255, 214, 110, .65)); }
+}
+.avatar-photo--thinking { animation: avatar-think 1.6s ease-in-out infinite; }
 .avatar-status {
     position: absolute; left: 12px; bottom: 12px;
     background: rgba(15, 61, 62, .85); color: #fff;

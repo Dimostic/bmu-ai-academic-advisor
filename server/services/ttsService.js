@@ -27,8 +27,17 @@ function isTtsmakerConfigured() {
            process.env.TTSMAKER_TTS_ENABLED !== '0';
 }
 
-function getVoiceId() {
-    return parseInt(process.env.TTSMAKER_TTS_VOICE_ID || '2522', 10);
+function getVoiceId(gender) {
+    // Per-gender overrides:
+    //   TTSMAKER_TTS_VOICE_ID_FEMALE  (defaults to TTSMAKER_TTS_VOICE_ID or 2522)
+    //   TTSMAKER_TTS_VOICE_ID_MALE    (defaults to 2528)
+    // If only the legacy TTSMAKER_TTS_VOICE_ID is set, female keeps it and
+    // male falls back to a different sensible TTSMaker English-male voice.
+    const legacy = process.env.TTSMAKER_TTS_VOICE_ID || '2522';
+    const female = process.env.TTSMAKER_TTS_VOICE_ID_FEMALE || legacy;
+    const male   = process.env.TTSMAKER_TTS_VOICE_ID_MALE   || '2528';
+    const id = gender === 'male' ? male : female;
+    return parseInt(id, 10);
 }
 
 function getSpeed() {
@@ -98,10 +107,10 @@ async function _writeCache({ text, voiceId, speed, audioUrl, backupUrl, provider
  * Synthesise speech for `text`.
  * @param {string} text
  * @param {object} [opts]
+ * @param {'male'|'female'} [opts.gender]   per-user voice preference
  * @returns {Promise<{provider:string, audioUrl?:string, audioBackupUrl?:string, useBrowserFallback?:boolean, error?:string, fromCache?:boolean, quota?:object}>}
  */
 async function synthesise(text, opts = {}) {
-    void opts;
     if (!ENABLED || !text || !text.trim()) {
         return { provider: 'none', useBrowserFallback: true };
     }
@@ -110,7 +119,8 @@ async function synthesise(text, opts = {}) {
         return { provider: 'browser', useBrowserFallback: true };
     }
 
-    const voiceId = getVoiceId();
+    const gender = (opts && opts.gender === 'male') ? 'male' : 'female';
+    const voiceId = getVoiceId(gender);
     const speed = getSpeed();
 
     // 1. Cache lookup

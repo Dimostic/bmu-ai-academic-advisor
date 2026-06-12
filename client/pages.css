@@ -467,3 +467,50 @@ html[data-theme="dark"] .stat-row .stat strong { color: var(--accent-soft); }
 
 /* Loading spinners */
 html[data-theme="dark"] .loading { color: var(--muted); }
+
+/* ========================================================================
+   Advisor avatar picker (login + register pages)
+   ===================================================================== */
+.advisor-pick {
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin: 6px 0;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    background: var(--bg-elev);
+}
+.advisor-pick legend {
+    grid-column: 1 / -1;
+    font-size: .85rem; color: var(--muted); padding: 0 4px;
+    margin-bottom: 4px;
+}
+.advisor-pick-card {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 10px; border-radius: 10px; cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .15s, transform .15s, box-shadow .15s;
+    background: rgba(35,182,165,.04);
+}
+.advisor-pick-card img {
+    width: 100%; max-width: 110px; aspect-ratio: 1 / 1;
+    object-fit: cover; object-position: center top;
+    border-radius: 50%;
+    box-shadow: 0 2px 10px rgba(15,61,62,.18);
+}
+.advisor-pick-card span {
+    font-size: .9rem; font-weight: 600; color: var(--text);
+}
+.advisor-pick-card input[type="radio"] {
+    position: absolute; opacity: 0; pointer-events: none;
+}
+.advisor-pick-card:has(input:checked) {
+    border-color: var(--accent);
+    background: rgba(35,182,165,.10);
+    box-shadow: 0 4px 16px rgba(35,182,165,.18);
+}
+.advisor-pick-card:hover { transform: translateY(-1px); }
+
+html[data-theme="dark"] .advisor-pick { background: var(--bg-elev); }
+html[data-theme="dark"] .advisor-pick-card { background: rgba(47,191,158,.06); }
+html[data-theme="dark"] .advisor-pick-card:has(input:checked) {
+    background: rgba(47,191,158,.14); border-color: var(--accent);
+}

@@ -289,6 +289,7 @@ router.post('/login', loginValidation, async (req, res) => {
                 lastName: user.last_name,
                 role: user.role,
                 department: user.department,
+                advisorGender: user.advisor_gender || 'female',
                 mustChangePassword: !!user.must_change_password
             }
         });
@@ -323,6 +324,7 @@ router.get('/me', authenticateToken, async (req, res) => {
                 phone: user.phone,
                 department: user.department,
                 role: user.role,
+                advisorGender: user.advisor_gender || 'female',
                 whatsappNumber: user.whatsapp_number,
                 isVerified: user.is_verified,
                 createdAt: user.created_at,
@@ -409,6 +411,22 @@ router.post('/change-password', authenticateToken, passwordChangeValidation, asy
             success: false, 
             error: 'Failed to change password' 
         });
+    }
+});
+
+// Save the user's advisor avatar/voice preference. Drives both the on-screen
+// image (male-advisor.png vs female-advisor.png) and the TTSMaker voice id.
+router.post('/advisor-preference', authenticateToken, async (req, res) => {
+    try {
+        const gender = req.body?.gender;
+        if (gender !== 'male' && gender !== 'female') {
+            return res.status(400).json({ success: false, error: 'gender must be "male" or "female"' });
+        }
+        const saved = await User.setAdvisorGender(req.user.id, gender);
+        res.json({ success: true, advisorGender: saved });
+    } catch (error) {
+        console.error('Advisor preference error:', error);
+        res.status(500).json({ success: false, error: 'Could not save preference' });
     }
 });
 
