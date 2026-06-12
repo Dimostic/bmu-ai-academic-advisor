@@ -197,11 +197,106 @@ async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
 }
 
 /**
+ * Force retrieval of fee/financial documents for fee-related questions.
+ * Searches by content keywords to guarantee financial information is included.
+ */
+async function _getFeeDocumentContext(question) {
+    try {
+        // Search for documents containing financial keywords
+        const financialKeywords = ['fee', 'fees', 'tuition', 'payment', 'scholarship', 
+                                   'bursary', 'bursar', 'finance', 'cost', 'charge', 
+                                   'levy', 'tariff', 'financial', 'indigene', 'non-indigene',
+                                   'programme fee', 'course fee', 'acceptance fee'];
+        
+        // Build a FULLTEXT search that looks for any financial keyword
+        const searchQuery = financialKeywords.join(' ');
+        
+        const docs = await query(
+            `SELECT id, title, category, content_text
+             FROM documents
+             WHERE is_active = TRUE
+               AND content_text IS NOT NULL
+               AND (
+                   MATCH(content_text) AGAINST(? IN BOOLEAN MODE)
+                   OR MATCH(title) AGAINST(? IN BOOLEAN MODE)
+                   OR MATCH(description) AGAINST(? IN BOOLEAN MODE)
+               )
+             ORDER BY 
+               CASE 
+                 WHEN LOWER(title) LIKE '%fee%' THEN 0
+                 WHEN LOWER(title) LIKE '%tuition%' THEN 1
+                 WHEN LOWER(description) LIKE '%fee%' THEN 2
+                 ELSE 3
+               END,
+               LENGTH(content_text) DESC
+             LIMIT 6`,
+            [searchQuery, searchQuery, searchQuery]
+        );
+        
+        if (!docs.length) {
+            console.warn('[advisorService] No fee documents found in database for fee question');
+            return '';
+        }
+        
+        console.log(`[advisorService] Found ${docs.length} fee documents`);
+        
+        // Extract relevant snippets from fee documents
+        const context = docs.map(doc => {
+            // Get the first 2000 chars of content, prioritizing sections with fee info
+            let snippet = doc.content_text || '';
+            
+            // Try to find sections about specific programmes or fee tables
+            const lines = snippet.split('\n');
+            let result = [];
+            let foundFeeSection = false;
+            
+            for (const line of lines) {
+                if (/(fee|tuition|cost|programme|level|indigene|non[\s-]?indigene|table|medicine|nursing|pharmacy|bmbs)/i.test(line)) {
+                    foundFeeSection = true;
+                }
+                if (foundFeeSection) {
+                    result.push(line);
+                    if (result.join('\n').length > 2500) break;
+                }
+            }
+            
+            const extractedSnippet = result.length > 0 
+                ? result.join('\n') 
+                : snippet.slice(0, 2000);
+            
+            return `--- ${doc.title || 'Financial Information'} (${doc.category || 'financial'}) ---\n${extractedSnippet.trim()}`;
+        }).join('\n\n');
+        
+        return context.slice(0, 8000); // Limit total context size
+    } catch (err) {
+        console.warn('[advisorService] _getFeeDocumentContext error:', err.message);
+        return '';
+    }
+}
+
+/**
  * Fetch supporting BMU document context via the existing retrievalService.
  * Returns "" when RAG is disabled or no relevant chunks were found.
  */
 async function _fetchRagContext(question) {
     if (!RAG_ENABLED || !question || question.length < 3) return '';
+
+    // For fee-related questions, force a direct database search to guarantee
+    // fee documents are included even if title patterns don't match exactly.
+    const isFeeQuestion = /(fee|fees|tuition|cost|payment|scholarship|financial|bursar|indigene|non[\s-]?indigene)/i.test(question);
+    if (isFeeQuestion) {
+        try {
+            const feeContext = await _getFeeDocumentContext(question);
+            if (feeContext) {
+                console.log(`[advisorService] Fee question detected: using forced financial document retrieval (${feeContext.length} chars)`);
+                return feeContext;
+            }
+        } catch (err) {
+            console.warn('[advisorService] Forced fee document search failed:', err.message);
+            // Continue to normal RAG flow if forced search fails
+        }
+    }
+
     if (!retrievalService) return await _keywordFallback(question);
 
     const priorityDocIds = await _resolvePriorityDocumentIds(question);
