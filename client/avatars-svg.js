@@ -142,7 +142,7 @@
                      visible: dark cavity at the back, off-white teeth
                      strip in front of it, then upper-lip + lower-lip
                      paths on top. The driver code in advisor.js
-                     re-computes all four `d=` attributes each frame; at
+                     re-computes all four d= attributes each frame; at
                      rest it forms a closed smile, while speaking the
                      upper lip lifts and the lower lip drops to expose
                      the cavity. -->
