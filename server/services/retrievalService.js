@@ -302,6 +302,7 @@ class RetrievalService {
                 'dean': 'dean head director faculty leadership',
                 'registrar': 'registrar registry administration records office',
                 'bursar': 'bursar bursary finance accounts payment',
+                'librarian': 'librarian university librarian library director information resources',
                 'vice chancellor': 'vice chancellor vice-chancellor vc',
                 'vice-chancellor': 'vice chancellor vice-chancellor vc',
                 

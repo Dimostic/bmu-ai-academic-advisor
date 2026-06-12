@@ -80,7 +80,7 @@ ${ragContext.trim()}`
 
     const q = String(question || '').toLowerCase();
     const isOfficeHolderIdentityQuestion = /(who\s+is|name\s+of|current)/i.test(q)
-        && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor)/i.test(q);
+        && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|librarian|university\s+librarian)/i.test(q);
     const officeHolderGuardrail = isOfficeHolderIdentityQuestion
         ? `
 

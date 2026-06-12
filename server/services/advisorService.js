@@ -88,7 +88,7 @@ async function _resolvePriorityDocumentIds(question) {
 function _isOfficeHolderIdentityQuestion(question) {
     const q = String(question || '').toLowerCase();
     return /(who\s+is|name\s+of|current)/i.test(q)
-        && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor)/i.test(q);
+    && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|librarian|university\s+librarian)/i.test(q);
 }
 
 async function _getOfficeHolderDocumentContext(question) {
@@ -100,6 +100,7 @@ async function _getOfficeHolderDocumentContext(question) {
         if (/bursar/.test(q)) roleTerms.push('bursar', 'bursary');
         if (/dean/.test(q)) roleTerms.push('dean');
         if (/chancellor/.test(q)) roleTerms.push('chancellor');
+        if (/librarian|university\s+librarian/.test(q)) roleTerms.push('university librarian', 'librarian', 'library');
 
         const docs = await query(
             `SELECT id, title, category, content_text
@@ -117,6 +118,8 @@ async function _getOfficeHolderDocumentContext(question) {
                    OR LOWER(content_text) LIKE '%bursar%'
                    OR LOWER(content_text) LIKE '%dean%'
                    OR LOWER(content_text) LIKE '%chancellor%'
+                   OR LOWER(content_text) LIKE '%librarian%'
+                   OR LOWER(content_text) LIKE '%library%'
                )
              ORDER BY
                CASE WHEN LOWER(title) LIKE '%profile of bmu%' THEN 0
@@ -152,6 +155,80 @@ async function _getOfficeHolderDocumentContext(question) {
         console.warn('[advisorService] _getOfficeHolderDocumentContext error:', err.message);
         return '';
     }
+}
+
+function _detectOfficeRoleLabel(question) {
+    const q = String(question || '').toLowerCase();
+    if (/vice[-\s]?chancellor|\bvc\b/.test(q)) return 'Vice-Chancellor';
+    if (/registrar/.test(q)) return 'Registrar';
+    if (/bursar/.test(q)) return 'Bursar';
+    if (/dean/.test(q)) return 'Dean';
+    if (/chancellor/.test(q)) return 'Chancellor';
+    if (/librarian|university\s+librarian/.test(q)) return 'Librarian';
+    return 'office holder';
+}
+
+function _extractRoleNameFromContext(roleLabel, ragContext) {
+    const text = String(ragContext || '');
+    if (!text.trim()) return null;
+
+    const patterns = {
+        'Vice-Chancellor': /\b(?:current\s+)?vice[-\s]?chancellor\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Registrar': /\bregistrar\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Bursar': /\bbursar\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Dean': /\bdean\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Chancellor': /\bchancellor\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Librarian': /\b(?:university\s+)?librarian\b\s*[:\-]\s*([^\n\r.;]{3,120})/i
+    };
+
+    const re = patterns[roleLabel];
+    if (!re) return null;
+    const m = text.match(re);
+    if (!m || !m[1]) return null;
+
+    const candidate = String(m[1]).replace(/\s+/g, ' ').trim();
+    if (!/[a-z]/i.test(candidate)) return null;
+    if (/\b(tbd|unknown|vacant|n\/a|not available|to be appointed)\b/i.test(candidate)) return null;
+    return candidate;
+}
+
+function _extractCitationsFromContext(ragContext) {
+    const text = String(ragContext || '');
+    const titles = [...text.matchAll(/---\s*(.+?)\s*\([^\)]*\)\s*---/g)]
+        .map(m => String(m[1] || '').trim())
+        .filter(Boolean);
+    return [...new Set(titles)].slice(0, 3).map(title => ({ title, source: 'BMU document context' }));
+}
+
+function _buildOfficeHolderSafeReply(question, ragContext) {
+    const roleLabel = _detectOfficeRoleLabel(question);
+    const extractedName = _extractRoleNameFromContext(roleLabel, ragContext);
+    const citations = _extractCitationsFromContext(ragContext);
+
+    if (extractedName) {
+        const answer = `${roleLabel}: ${extractedName}.`;
+        return {
+            speech_text: answer,
+            display_markdown: answer,
+            topic_slug: null,
+            citations,
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.92
+        };
+    }
+
+    return {
+        speech_text: `I do not have a verified BMU document line naming the current ${roleLabel.toLowerCase()} right now. I can connect you to a human advisor for confirmation.`,
+        display_markdown: `I do not have a verified BMU document line naming the current ${roleLabel.toLowerCase()} right now.\n\nI can connect you to a human advisor for confirmation.`,
+        topic_slug: null,
+        citations,
+        suggested_actions: [{ label: 'Connect me to a human advisor', action: 'escalate_to_human' }],
+        follow_up_questions: [],
+        needs_escalation: true,
+        confidence: 0.35
+    };
 }
 
 function _mergeContexts(parts) {
@@ -453,6 +530,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         throw new Error('question is required');
     }
     const trimmed = question.trim().slice(0, 4000);
+    const isOfficeHolderIdentity = _isOfficeHolderIdentityQuestion(trimmed);
 
     // 1. Conversation
     const conversation = await _resolveConversation({
@@ -472,7 +550,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     // 2b. FAQ-cache short-circuit. If we already have a curated/auto-
     // generated answer for a semantically equivalent question, serve it
     // without paying the LLM round-trip.
-    if (faqService) {
+    if (faqService && !isOfficeHolderIdentity) {
         try {
             const cached = await faqService.getCachedResponse(trimmed, {
                 userId: student?.user_id || null,
@@ -517,6 +595,13 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         _buildHistory(conversation.id),
         _fetchRagContext(trimmed)
     ]);
+
+    if (isOfficeHolderIdentity) {
+        const parsed = _buildOfficeHolderSafeReply(trimmed, ragContext);
+        return await _persistAndPackage({
+            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender
+        });
+    }
 
     // 4. LLM call
     const messages = [

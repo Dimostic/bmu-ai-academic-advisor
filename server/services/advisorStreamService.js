@@ -91,7 +91,7 @@ async function _resolvePriorityDocumentIds(question) {
 function _isOfficeHolderIdentityQuestion(question) {
     const q = String(question || '').toLowerCase();
     return /(who\s+is|name\s+of|current)/i.test(q)
-        && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor)/i.test(q);
+    && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|librarian|university\s+librarian)/i.test(q);
 }
 
 async function _getOfficeHolderDocumentContext(question) {
@@ -103,6 +103,7 @@ async function _getOfficeHolderDocumentContext(question) {
         if (/bursar/.test(q)) roleTerms.push('bursar', 'bursary');
         if (/dean/.test(q)) roleTerms.push('dean');
         if (/chancellor/.test(q)) roleTerms.push('chancellor');
+        if (/librarian|university\s+librarian/.test(q)) roleTerms.push('university librarian', 'librarian', 'library');
 
         const docs = await query(
             `SELECT id, title, category, content_text
@@ -120,6 +121,8 @@ async function _getOfficeHolderDocumentContext(question) {
                    OR LOWER(content_text) LIKE '%bursar%'
                    OR LOWER(content_text) LIKE '%dean%'
                    OR LOWER(content_text) LIKE '%chancellor%'
+                   OR LOWER(content_text) LIKE '%librarian%'
+                   OR LOWER(content_text) LIKE '%library%'
                )
              ORDER BY
                CASE WHEN LOWER(title) LIKE '%profile of bmu%' THEN 0
@@ -153,6 +156,80 @@ async function _getOfficeHolderDocumentContext(question) {
         console.warn('[advisorStreamService] _getOfficeHolderDocumentContext error:', err.message);
         return '';
     }
+}
+
+function _detectOfficeRoleLabel(question) {
+    const q = String(question || '').toLowerCase();
+    if (/vice[-\s]?chancellor|\bvc\b/.test(q)) return 'Vice-Chancellor';
+    if (/registrar/.test(q)) return 'Registrar';
+    if (/bursar/.test(q)) return 'Bursar';
+    if (/dean/.test(q)) return 'Dean';
+    if (/chancellor/.test(q)) return 'Chancellor';
+    if (/librarian|university\s+librarian/.test(q)) return 'Librarian';
+    return 'office holder';
+}
+
+function _extractRoleNameFromContext(roleLabel, ragContext) {
+    const text = String(ragContext || '');
+    if (!text.trim()) return null;
+
+    const patterns = {
+        'Vice-Chancellor': /\b(?:current\s+)?vice[-\s]?chancellor\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Registrar': /\bregistrar\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Bursar': /\bbursar\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Dean': /\bdean\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Chancellor': /\bchancellor\b\s*[:\-]\s*([^\n\r.;]{3,120})/i,
+        'Librarian': /\b(?:university\s+)?librarian\b\s*[:\-]\s*([^\n\r.;]{3,120})/i
+    };
+
+    const re = patterns[roleLabel];
+    if (!re) return null;
+    const m = text.match(re);
+    if (!m || !m[1]) return null;
+
+    const candidate = String(m[1]).replace(/\s+/g, ' ').trim();
+    if (!/[a-z]/i.test(candidate)) return null;
+    if (/\b(tbd|unknown|vacant|n\/a|not available|to be appointed)\b/i.test(candidate)) return null;
+    return candidate;
+}
+
+function _extractCitationsFromContext(ragContext) {
+    const text = String(ragContext || '');
+    const titles = [...text.matchAll(/---\s*(.+?)\s*\([^\)]*\)\s*---/g)]
+        .map(m => String(m[1] || '').trim())
+        .filter(Boolean);
+    return [...new Set(titles)].slice(0, 3).map(title => ({ title, source: 'BMU document context' }));
+}
+
+function _buildOfficeHolderSafeReply(question, ragContext) {
+    const roleLabel = _detectOfficeRoleLabel(question);
+    const extractedName = _extractRoleNameFromContext(roleLabel, ragContext);
+    const citations = _extractCitationsFromContext(ragContext);
+
+    if (extractedName) {
+        const answer = `${roleLabel}: ${extractedName}.`;
+        return {
+            speech_text: answer,
+            display_markdown: answer,
+            topic_slug: null,
+            citations,
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.92
+        };
+    }
+
+    return {
+        speech_text: `I do not have a verified BMU document line naming the current ${roleLabel.toLowerCase()} right now. I can connect you to a human advisor for confirmation.`,
+        display_markdown: `I do not have a verified BMU document line naming the current ${roleLabel.toLowerCase()} right now.\n\nI can connect you to a human advisor for confirmation.`,
+        topic_slug: null,
+        citations,
+        suggested_actions: [{ label: 'Connect me to a human advisor', action: 'escalate_to_human' }],
+        follow_up_questions: [],
+        needs_escalation: true,
+        confidence: 0.35
+    };
 }
 
 function _mergeContexts(parts) {
@@ -481,6 +558,7 @@ async function askStream({
         return;
     }
     const trimmed = question.trim().slice(0, 4000);
+    const isOfficeHolderIdentity = _isOfficeHolderIdentityQuestion(trimmed);
 
     let conversation;
     try {
@@ -512,7 +590,7 @@ async function askStream({
     // for a semantically equivalent question, serve it without paying the
     // LLM round-trip. Falls through silently on any error.
     // ------------------------------------------------------------------
-    if (faqService) {
+    if (faqService && !isOfficeHolderIdentity) {
         try {
             const cached = await faqService.getCachedResponse(trimmed, {
                 userId: student?.user_id || null,
@@ -632,6 +710,83 @@ async function askStream({
         console.log(`[advisorStreamService] RAG context: ${ragContext.length} chars`);
     } else {
         console.log('[advisorStreamService] RAG context: EMPTY (model will answer from training data)');
+    }
+
+    if (isOfficeHolderIdentity) {
+        const parsed = _buildOfficeHolderSafeReply(trimmed, ragContext);
+        send('speech_ready', { speech_text: parsed.speech_text });
+        if (parsed.display_markdown) send('token', { text: parsed.display_markdown });
+
+        let audio = { provider: 'none' };
+        if (voiceEnabled !== false && conversation.voice_enabled) {
+            try {
+                audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender });
+                if (audio.audioUrl) {
+                    send('audio', {
+                        provider: audio.provider,
+                        audio_url: audio.audioUrl,
+                        from_cache: Boolean(audio.fromCache),
+                        speech_text: parsed.speech_text
+                    });
+                } else {
+                    send('audio', { provider: 'browser', use_browser_fallback: true, speech_text: parsed.speech_text });
+                }
+            } catch (err) {
+                send('audio', { provider: 'browser', use_browser_fallback: true, speech_text: parsed.speech_text, error: err.message });
+            }
+        } else {
+            send('audio', { provider: 'none', use_browser_fallback: false, speech_text: parsed.speech_text });
+        }
+
+        let messageId = null;
+        try {
+            messageId = await Advisor.addMessage({
+                conversationId: conversation.id,
+                role: 'advisor',
+                inputMode: 'text',
+                text: parsed.display_markdown || parsed.speech_text,
+                speechText: parsed.speech_text,
+                displayMarkdown: parsed.display_markdown,
+                audioUrl: audio.audioUrl || null,
+                citationsJson: JSON.stringify(parsed.citations || []),
+                suggestedActionsJson: JSON.stringify(parsed.suggested_actions || []),
+                followUpsJson: JSON.stringify(parsed.follow_up_questions || []),
+                latencyMs: Date.now() - startedAt
+            });
+            await Advisor.touchConversation(conversation.id, null);
+        } catch (err) {
+            console.warn('[advisorStreamService] persist office-holder advisor turn failed:', err.message);
+        }
+
+        send('done', {
+            success: true,
+            sessionToken: conversation.session_token,
+            conversationId: conversation.id,
+            messageId,
+            reply: {
+                speech_text: parsed.speech_text,
+                display_markdown: parsed.display_markdown,
+                topic_slug: parsed.topic_slug,
+                citations: parsed.citations,
+                suggested_actions: parsed.suggested_actions,
+                follow_up_questions: parsed.follow_up_questions,
+                needs_escalation: parsed.needs_escalation,
+                confidence: parsed.confidence
+            },
+            audio: {
+                provider: audio.provider || 'none',
+                audio_url: audio.audioUrl || null,
+                from_cache: Boolean(audio.fromCache),
+                use_browser_fallback: Boolean(audio.useBrowserFallback)
+            },
+            meta: {
+                latency_ms: Date.now() - startedAt,
+                tokens_in: null,
+                tokens_out: null,
+                source: 'office_holder_guard'
+            }
+        });
+        return;
     }
 
     const messages = [
