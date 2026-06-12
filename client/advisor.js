@@ -1529,7 +1529,7 @@
         // Acronyms: spell them out so the voice doesn't try to pronounce
         // them as words. Restrict to the BMU vocabulary so we don't break
         // ordinary capitalised words.
-        const ACRONYMS = ['BMU', 'MBBS', 'BNSc', 'BMLS', 'CCMAS', 'GPA', 'MDCN', 'CGPA', 'NYSC', 'HOD'];
+        const ACRONYMS = ['BMU', 'MBBS', 'BNSc', 'BMLS', 'CCMAS', 'GPA', 'MDCN', 'CGPA', 'NYSC', 'HOD', 'NUC'];
         for (const a of ACRONYMS) {
             const re = new RegExp('\\b' + a + '\\b', 'g');
             s = s.replace(re, a.split('').join(' '));
