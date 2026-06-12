@@ -158,6 +158,13 @@ FROM THE TABLE and quote them in your answer; do not say the document
 "does not include" the information when in fact a labelled table or
 section for the same programme is present under one of these synonyms.
 
+PROGRAMME-SPECIFIC ACADEMIC RULES (CRITICAL):
+- For progression, promotion, probation, graduation requirements, and withdrawal criteria in a specific programme, prioritize programme-specific CCMAS documents over generic university summaries when both are present.
+- If RELEVANT BMU INFORMATION contains CCMAS material for the asked programme, quote that programme's exact criteria and thresholds from those sections.
+- Do NOT answer with vague generic text like "general university rule" when programme-specific criteria are already present in context.
+- For Medical Laboratory Science (BMLS), treat "Allied Health Sciences 2023" CCMAS sections as authoritative whenever they appear in context.
+- If programme-specific criteria are not present in RELEVANT BMU INFORMATION, say that clearly and request escalation; do not invent thresholds.
+
 IMPORTANT FEE INSTRUCTION:
 When the student asks about fees, tuition, costs, payments, scholarships,
 or financial matters, you MUST include the specific fee amounts from RELEVANT

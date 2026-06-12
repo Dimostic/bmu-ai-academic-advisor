@@ -77,7 +77,15 @@ class RetrievalService {
             // `primarySourceBoost`, so when the handbook is relevant at all
             // it surfaces ahead of more specialised documents.
             primarySourcePattern: (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || 'quick facts').toLowerCase(),
-            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.20')
+            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.20'),
+
+            // Programme-policy boosts: CCMAS documents are authoritative for
+            // progression / graduation / withdrawal criteria in specific
+            // programmes and should outrank generic handbook summaries.
+            ccmasPattern: (process.env.ADVISOR_CCMAS_PATTERN || 'ccmas').toLowerCase(),
+            ccmasBoost: parseFloat(process.env.ADVISOR_CCMAS_BOOST || '1.35'),
+            alliedHealthPattern: (process.env.ADVISOR_ALLIED_HEALTH_PATTERN || 'allied health sciences').toLowerCase(),
+            alliedHealthBoost: parseFloat(process.env.ADVISOR_ALLIED_HEALTH_BOOST || '1.45')
         };
         
         // Multi-level caches
@@ -142,13 +150,15 @@ class RetrievalService {
                 ? await this._reRankResults(processedQuery.normalized, searchResults)
                 : searchResults;
 
+            const policyBoosted = this._applyProgrammePolicyBoost(reRankedResults, processedQuery);
+
             // 5b. Re-apply primary-source boost after re-ranking. The
             // re-ranker rebuilds `score` from scratch (only ~40% of it comes
             // from the original boosted score), so without this step the
             // handbook would lose its lead to other documents with strong
             // term coverage. We re-sort afterwards so the boosted order is
             // what feeds the context compressor.
-            const boosted = this._applyPrimarySourceBoost(reRankedResults)
+            const boosted = this._applyPrimarySourceBoost(policyBoosted, processedQuery)
                 .sort((a, b) => b.score - a.score);
 
             // 6. Select top results and compress context
@@ -352,7 +362,8 @@ class RetrievalService {
             eligibility: /(eligible|qualify|requirement|criteria|can i|am i)/i,
             quantitative: /(how (many|much|long)|number of|amount|duration|deadline|date)/i,
             comparison: /(difference between|compare|vs|versus|better)/i,
-            policy: /(policy|rule|regulation|guideline|law|act)/i
+            policy: /(policy|rule|regulation|guideline|law|act)/i,
+            programmePolicy: /(progress|promotion|advance|carry[\s-]?over|repeat|probation|withdraw|graduat|cgpa|gpa|academic standard|minimum grade|criteria|requirement)/i
         };
         
         for (const [intent, pattern] of Object.entries(intents)) {
@@ -487,11 +498,62 @@ class RetrievalService {
             }
         }
         
+        // Apply policy-specific source boosts before generic primary-source
+        // bias so programme rules are sourced from CCMAS documents.
+        const policyBoosted = this._applyProgrammePolicyBoost(mergedResults, processedQuery);
+
         // Sort by combined score and filter by minimum relevance
-        return this._applyPrimarySourceBoost(mergedResults)
+        return this._applyPrimarySourceBoost(policyBoosted, processedQuery)
             .filter(r => r.score >= this.config.minRelevanceScore)
             .sort((a, b) => b.score - a.score)
             .slice(0, topK);
+    }
+
+    _isProgrammePolicyQuery(processedQuery) {
+        const q = String(processedQuery?.normalized || '').toLowerCase();
+        const intent = String(processedQuery?.intent || '').toLowerCase();
+
+        const asksPolicy = intent === 'programmepolicy'
+            || /(progress|promotion|advance|carry[\s-]?over|repeat|probation|withdraw|graduat|cgpa|gpa|academic standard|minimum grade|criteria|requirement)/i.test(q);
+        const hasProgramme = /(mbbs|medicine|dentistry|bnsc|nursing|bmls|medical laboratory science|medical lab|allied health|pharmacy|physiotherapy|radiography|optometry|public health|biochemistry|anatomy|physiology)/i.test(q);
+
+        return asksPolicy && hasProgramme;
+    }
+
+    _applyProgrammePolicyBoost(results, processedQuery) {
+        if (!this._isProgrammePolicyQuery(processedQuery)) return results;
+
+        const ccmasPattern = this.config.ccmasPattern;
+        const ccmasBoost = this.config.ccmasBoost;
+        const alliedHealthPattern = this.config.alliedHealthPattern;
+        const alliedHealthBoost = this.config.alliedHealthBoost;
+        const q = String(processedQuery?.normalized || '').toLowerCase();
+        const asksMedLab = /(bmls|medical laboratory science|medical lab)/i.test(q);
+
+        let boosted = 0;
+        for (const r of results) {
+            const title = String(r.documentTitle || '').toLowerCase();
+            const content = String(r.content || '').toLowerCase();
+            let factor = 1;
+
+            if (ccmasPattern && (title.includes(ccmasPattern) || content.includes('ccmas'))) {
+                factor = Math.max(factor, ccmasBoost);
+            }
+            if (asksMedLab && alliedHealthPattern && title.includes(alliedHealthPattern)) {
+                factor = Math.max(factor, alliedHealthBoost);
+            }
+
+            if (factor > 1) {
+                r.programmePolicyBoosted = true;
+                r.score = r.score * factor;
+                boosted++;
+            }
+        }
+
+        if (boosted > 0) {
+            console.log(`[RetrievalService] Programme-policy boost applied to ${boosted} chunk(s)`);
+        }
+        return results;
     }
     
     /**
@@ -504,7 +566,11 @@ class RetrievalService {
      * compares scores ordinally, so values >1 are fine and preserve the
      * relative ranking between two boosted handbook chunks.
      */
-    _applyPrimarySourceBoost(results) {
+    _applyPrimarySourceBoost(results, processedQuery = null) {
+        // For programme-specific progression/withdrawal questions, the
+        // curriculum (CCMAS) documents are the primary source.
+        if (this._isProgrammePolicyQuery(processedQuery)) return results;
+
         const pattern = this.config.primarySourcePattern;
         const boost   = this.config.primarySourceBoost;
         if (!pattern || !(boost > 1)) return results;
