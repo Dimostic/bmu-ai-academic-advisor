@@ -186,11 +186,12 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     const m = text.match(re);
     if (!m || !m[1]) return null;
 
-    // Truncate at double-space (field separator), tab, or next "Label:" pattern
-    let candidate = String(m[1]);
-    candidate = candidate.split(/\t|  +/)[0]; // stop at tab or 2+ spaces
-    candidate = candidate.split(/\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?\s*:/)[0]; // stop at next field label like "Chair:"
-    candidate = candidate.replace(/\s+/g, ' ').trim().replace(/[,;]+$/, '').trim();
+    // Extract only the name portion: optional honorific titles followed by capitalised name words
+    const raw = String(m[1]).replace(/\s+/g, ' ').trim();
+    const nameMatch = raw.match(
+        /^((?:(?:Dr|Prof|Mr|Mrs|Ms|Engr|Rev|Chief|Barr|Hon|Alhaji|Arc|Pharm)\.?\s+)*(?:[A-Z][a-z'\-]+\.?\s*){1,6})/
+    );
+    const candidate = nameMatch ? nameMatch[1].trim().replace(/[,;.]+$/, '').trim() : '';
     if (candidate.length < 4) return null;
     if (!/[a-z]/i.test(candidate)) return null;
     if (/\b(tbd|unknown|vacant|n\/a|not available|to be appointed)\b/i.test(candidate)) return null;
@@ -211,7 +212,7 @@ function _buildOfficeHolderSafeReply(question, ragContext) {
     const citations = _extractCitationsFromContext(ragContext);
 
     if (extractedName) {
-        const answer = `${roleLabel}: ${extractedName}.`;
+        const answer = `The ${roleLabel} of Bayelsa Medical University (BMU) is ${extractedName}.`;
         return {
             speech_text: answer,
             display_markdown: answer,
