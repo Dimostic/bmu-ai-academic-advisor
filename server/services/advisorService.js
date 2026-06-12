@@ -189,9 +189,15 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     // Extract only the name portion: optional honorific titles followed by capitalised name words
     const raw = String(m[1]).replace(/\s+/g, ' ').trim();
     const nameMatch = raw.match(
-        /^((?:(?:Dr|Prof|Mr|Mrs|Ms|Engr|Rev|Chief|Barr|Hon|Alhaji|Arc|Pharm)\.?\s+)*(?:[A-Z][a-z'\-]+\.?\s*){1,6})/
+        /^((?:(?:Dr|Prof|Mr|Mrs|Ms|Engr|Rev|Chief|Barr|Hon|Alhaji|Arc|Pharm)\.?\s+)*(?:[A-Z][a-z'\-]*\.?\s*){1,4})/
     );
-    const candidate = nameMatch ? nameMatch[1].trim().replace(/[,;.]+$/, '').trim() : '';
+    if (!nameMatch) return null;
+    // Stop at the first role/governance word that is not a personal name component
+    const ROLE_STOP = /\b(Governing|Council|Chair|Director|Senate|Committee|Board|Office|Faculty|Department|Division|Unit|Head|Deputy|Acting|Former|Emeritus|Principal|Officer|Administrator|Meetings|Schedule|Principal|Off\b)/;
+    let candidate = nameMatch[1].trim();
+    const stopMatch = ROLE_STOP.exec(candidate);
+    if (stopMatch) candidate = candidate.slice(0, stopMatch.index).trim();
+    candidate = candidate.replace(/[,;.]+$/, '').trim();
     if (candidate.length < 4) return null;
     if (!/[a-z]/i.test(candidate)) return null;
     if (/\b(tbd|unknown|vacant|n\/a|not available|to be appointed)\b/i.test(candidate)) return null;
