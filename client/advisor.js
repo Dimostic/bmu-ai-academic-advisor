@@ -50,12 +50,14 @@
     const historyClose  = $('historyCloseBtn');
     const historyList   = $('historyList');
     const advisorStatus = $('avatarStatus');
-    const advisorSvg    = $('avatarSvg');
-    const mouthShape    = $('mouthShape');
+    // The SVG element is rendered inside #avatarSvgHost by applyAvatar().
+    // We re-resolve advisorSvg / mouthShape / brow / hand handles every
+    // time we render so they always point at the live nodes.
+    const avatarSvgHost = $('avatarSvgHost');
+    let advisorSvg, mouthShape, mouthInner, browL, browR, lidL, lidR, pupilL, pupilR, headG, handL, handR;
     const advisorName   = $('advisorName');
     const welcomeName   = $('welcomeName');
     const toastHost     = $('toastHost');
-    const avatarPhoto   = $('avatarPhoto');
     const avatarToggleBtn = $('avatarToggleBtn');
 
     // Handbook (FAQ) browser
@@ -93,24 +95,28 @@
     }
 
     // ---------- Avatar state machine ----------
+    // The "expression" is a high-level mood the advisor wears; the
+    // "state" is what it's doing right now (idle / listening / thinking /
+    // speaking). Both are driven independently so a smile can survive a
+    // blink, and a "thinking" furrow can co-exist with the speaking bob.
+    let currentState = 'idle';
+    let currentExpression = 'neutral';
+
     function setAvatarState(stateName, label) {
+        currentState = stateName;
         advisorStatus.dataset.state = stateName;
         advisorStatus.querySelector('.label').textContent = label || stateName;
-        advisorSvg.classList.toggle('listening', stateName === 'listening');
-        // Drive the photo avatar's CSS animation classes too. We only need
-        // a single 'speaking' state for the breathing/pulse effect; the
-        // SVG keeps its more granular states for finer mouth movement.
-        if (avatarPhoto) {
-            avatarPhoto.classList.toggle('avatar-photo--speaking', stateName === 'speaking' || stateName === 'talking');
-            avatarPhoto.classList.toggle('avatar-photo--listening', stateName === 'listening');
-            avatarPhoto.classList.toggle('avatar-photo--thinking', stateName === 'thinking');
+        if (advisorSvg) {
+            advisorSvg.classList.toggle('av-listening', stateName === 'listening');
+            advisorSvg.classList.toggle('av-thinking',  stateName === 'thinking');
+            advisorSvg.classList.toggle('av-speaking',  stateName === 'speaking' || stateName === 'talking');
         }
     }
 
-    // ---------- Avatar gender / image ----------
-    // Read the user's preference (from localStorage cache OR the user
-    // record returned by /api/users/me). Defaults to 'female' so the
-    // existing Dr. Tari persona keeps working unchanged.
+    // ---------- Avatar gender ----------
+    // Read the user's preference (localStorage cache OR the cached user
+    // record). Defaults to 'female' so unchanged accounts keep the same
+    // Dr. Tari they're used to.
     function getAdvisorGender() {
         const cached = localStorage.getItem('bmu_advisor_gender');
         if (cached === 'male' || cached === 'female') return cached;
@@ -121,26 +127,44 @@
         return 'female';
     }
 
+    /** Render the SVG for the chosen gender into the host div, then
+     *  re-resolve all the named handles so every helper below points at
+     *  the live nodes (the previous SVG, if any, is replaced wholesale). */
     function applyAvatar(gender) {
         const g = gender === 'male' ? 'male' : 'female';
+        if (!avatarSvgHost || !window.BMUAvatars) return;
+
+        avatarSvgHost.innerHTML = window.BMUAvatars.svg(g);
+
+        // Re-resolve handles
+        advisorSvg = avatarSvgHost.querySelector('#avatarSvg');
+        mouthShape = avatarSvgHost.querySelector('#avMouth');
+        mouthInner = avatarSvgHost.querySelector('#avMouthInner');
+        browL      = avatarSvgHost.querySelector('#avBrowL');
+        browR      = avatarSvgHost.querySelector('#avBrowR');
+        lidL       = avatarSvgHost.querySelector('#avLidL');
+        lidR       = avatarSvgHost.querySelector('#avLidR');
+        pupilL     = avatarSvgHost.querySelector('#avPupilL');
+        pupilR     = avatarSvgHost.querySelector('#avPupilR');
+        headG      = avatarSvgHost.querySelector('#avHead');
+        handL      = avatarSvgHost.querySelector('#avHandL');
+        handR      = avatarSvgHost.querySelector('#avHandR');
+
         const stage = document.getElementById('avatarStage');
-        if (!avatarPhoto || !stage) return;
-        avatarPhoto.src = `/avatars/${g}-advisor.png`;
-        avatarPhoto.alt = g === 'male' ? 'Male academic advisor' : 'Female academic advisor';
-        avatarPhoto.classList.remove('hidden');
-        // Hide the SVG fallback when the photo is in use.
-        if (advisorSvg) advisorSvg.classList.add('hidden');
-        stage.dataset.avatarMode = 'photo';
-        stage.dataset.advisorGender = g;
-        // Update the persona name shown beneath the avatar.
-        const nameForGender = g === 'male' ? 'Dr. Tari (Male)' : 'Dr. Tari';
-        if (advisorName) advisorName.textContent = nameForGender;
+        if (stage) {
+            stage.dataset.avatarMode = 'svg';
+            stage.dataset.advisorGender = g;
+        }
+        if (advisorName) advisorName.textContent = 'Dr. Tari';
         if (welcomeName) welcomeName.textContent = 'Dr. Tari';
+
+        // Reset everything to neutral / idle
+        setMouthOpenness(0);
+        setExpression('neutral');
+        setAvatarState(currentState || 'idle', advisorStatus.querySelector('.label')?.textContent || 'Ready');
     }
 
-    /** Save the chosen avatar both locally and on the server. The server
-     *  copy makes it stick across devices; the local copy lets us render
-     *  immediately on the next page load without waiting for /me. */
+    /** Save the chosen avatar both locally and on the server. */
     async function saveAdvisorGender(gender) {
         const g = gender === 'male' ? 'male' : 'female';
         localStorage.setItem('bmu_advisor_gender', g);
@@ -155,42 +179,100 @@
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({ gender: g })
             });
-        } catch (_) { /* non-fatal — local storage already persisted */ }
+        } catch (_) { /* non-fatal */ }
     }
 
-    // Initial paint with whatever we know locally.
+    // Initial paint
     applyAvatar(getAdvisorGender());
+
+    // ---------- Blinks ----------
+    // Animate the eyelids by stretching their height from 0 -> full -> 0
+    // over ~140ms. Using width/height instead of a CSS class because the
+    // lid rectangles are inside the SVG and don't get a transform origin
+    // that survives re-render.
     function blink() {
-        advisorSvg.classList.add('blink');
-        setTimeout(() => advisorSvg.classList.remove('blink'), 140);
+        if (!lidL || !lidR) return;
+        const grow = (h) => {
+            lidL.setAttribute('height', h);
+            lidR.setAttribute('height', h);
+        };
+        const FULL = 16;
+        let t = 0;
+        const start = performance.now();
+        const step = (now) => {
+            t = (now - start) / 140;
+            if (t < 0.5) grow(FULL * (t * 2));
+            else if (t < 1) grow(FULL * (2 - t * 2));
+            else { grow(0); return; }
+            requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
     }
-    setInterval(blink, 4200);
+    setInterval(() => { if (Math.random() < 0.85) blink(); }, 4200);
 
-    function setMouthOpenness(level) {
-        // level: 0..1
-        const ry = 2 + Math.max(0, Math.min(1, level)) * 11;
-        const rx = 14 - Math.max(0, Math.min(1, level)) * 3;
-        mouthShape.setAttribute('ry', ry.toFixed(1));
-        mouthShape.setAttribute('rx', rx.toFixed(1));
-    }
-    setMouthOpenness(0);
-
-    // ---------- Optional Lottie ----------
-    window.loadLottieCharacter = function (url, opts = {}) {
-        if (typeof lottie === 'undefined') {
-            console.warn('[advisor] lottie-web not loaded yet');
-            return;
+    // ---------- Subtle gaze drift ----------
+    // Move the pupils a couple of pixels every few seconds so the eyes
+    // feel alive instead of staring through the user.
+    setInterval(() => {
+        if (!pupilL || !pupilR) return;
+        const dx = (Math.random() - 0.5) * 4;
+        const dy = (Math.random() - 0.5) * 2;
+        for (const p of [pupilL, pupilR]) {
+            p.setAttribute('transform', `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`);
         }
-        const host = document.createElement('div');
-        host.className = 'lottie-host';
-        const stage = document.getElementById('avatarStage');
-        advisorSvg.style.display = 'none';
-        stage.appendChild(host);
-        state.currentLottie = lottie.loadAnimation({
-            container: host, renderer: 'svg', loop: true, autoplay: true, path: url, ...opts
-        });
-        toast('Lottie avatar loaded.');
-    };
+    }, 3500);
+
+    // ---------- Mouth shape ----------
+    // Build a quadratic Bezier between (-W, 0) and (W, 0) with a control
+    // point that's `open` units below for an open mouth, or `smile`
+    // units above for a smile. Mixing the two gives natural "speaking
+    // while smiling" curves.
+    function setMouthOpenness(level) {
+        if (!mouthShape) return;
+        const W = 14;
+        const open  = Math.max(0, Math.min(1, level)) * 9;     // px below baseline
+        const smile = currentExpression === 'smile' ? 6
+                    : currentExpression === 'concerned' ? -3
+                    : 0;
+        const cy = open - smile;                                 // control-point y
+        const d = `M ${-W} 0 Q 0 ${cy.toFixed(1)} ${W} 0`;
+        mouthShape.setAttribute('d', d);
+        if (mouthInner) {
+            const innerOpen = Math.max(0, Math.min(1, level));
+            mouthInner.setAttribute('opacity', (innerOpen * 0.85).toFixed(2));
+            mouthInner.setAttribute('d', `M ${-W+4} 0 Q 0 ${(open*0.7).toFixed(1)} ${W-4} 0 Q 0 ${(open*0.4).toFixed(1)} ${-W+4} 0 Z`);
+        }
+    }
+
+    // ---------- Brow + expression API ----------
+    // Maps a high-level mood to brow + mouth shape. The chat layer calls
+    // setExpression('smile') after a successful answer, 'thinking' while
+    // the LLM is generating, 'concerned' for escalations, etc.
+    function setExpression(mood) {
+        currentExpression = ['neutral','smile','concerned','thinking','surprised'].includes(mood)
+            ? mood : 'neutral';
+        if (!browL || !browR) return;
+        // The avatar SVGs draw the brows roughly at y=116-118; we rewrite
+        // the path d= to bend up (raise) or down (furrow) by a few pixels.
+        const browPaths = {
+            neutral:    [['M82 118 Q92 113 102 118'], ['M118 118 Q128 113 138 118']],
+            smile:      [['M82 116 Q92 110 102 116'], ['M118 116 Q128 110 138 116']],
+            concerned:  [['M82 122 Q92 117 102 122'], ['M118 122 Q128 117 138 122']],
+            thinking:   [['M82 117 Q92 112 102 117'], ['M120 119 Q130 113 138 121']], // asymmetric
+            surprised:  [['M82 110 Q92 104 102 110'], ['M118 110 Q128 104 138 110']]
+        };
+        // For male portraits the brows sit a touch lower; the male SVG
+        // happens to use the same y-range so we can share the same paths.
+        const [ld, rd] = browPaths[currentExpression];
+        browL.setAttribute('d', ld[0]);
+        browR.setAttribute('d', rd[0]);
+        // Re-render the mouth so the smile/frown curve picks up.
+        setMouthOpenness(0);
+    }
+    setExpression('neutral');
+
+    // Expose for any future caller (auto-mood from chat replies):
+    window.advisorAvatar = { setExpression, applyAvatar, getAdvisorGender };
 
     // ---------- API ----------
     async function api(path, opts = {}) {
@@ -446,6 +528,7 @@
         followups.innerHTML = '';
         addStudentBubble(q);
         setAvatarState('thinking', 'Thinking');
+        setExpression('thinking');
 
         const bubble = addAdvisorBubble();
         let speechText = '';
@@ -558,6 +641,19 @@
                 });
                 renderFollowups(final.reply?.follow_up_questions);
                 if (final.reply?.needs_escalation) addEscalationHint();
+
+                // Pick a mood for the avatar based on the reply content.
+                // Heuristic-only (no extra tokens needed): escalation =>
+                // concerned; otherwise look at the speech text for cues.
+                const mood = pickMood({
+                    needsEscalation: !!final.reply?.needs_escalation,
+                    speech: final.reply?.speech_text || ''
+                });
+                setExpression(mood);
+                // Drop back to neutral after a few seconds so the avatar
+                // doesn't keep grinning forever.
+                clearTimeout(window._avMoodTimer);
+                window._avMoodTimer = setTimeout(() => setExpression('neutral'), 6000);
             }
         } catch (err) {
             console.error('[advisor] stream error:', err);
@@ -939,6 +1035,22 @@
     // ---------- Helpers ----------
     function scrollToBottom() { transcript.scrollTop = transcript.scrollHeight; }
     function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    /** Pick a face mood from a finished reply.
+     *
+     *  Keep this purely heuristic — we don't want a separate LLM call
+     *  just for facial expressions. We look at the speech text for
+     *  positive/negative cues; escalations always read as "concerned".
+     */
+    function pickMood({ needsEscalation, speech }) {
+        if (needsEscalation) return 'concerned';
+        const s = String(speech || '').toLowerCase();
+        if (/\b(congratulations|well done|great|excellent|nice|welcome|happy|good (job|news))\b/.test(s)) return 'smile';
+        if (/\b(sorry|unfortunately|cannot|can't|trouble|problem|fail(ed)?)\b/.test(s)) return 'concerned';
+        if (/\?\s*$/.test(s.trim())) return 'thinking';   // counter-question
+        if (/\b(here|sure|certainly|absolutely)\b/.test(s)) return 'smile';
+        return 'neutral';
+    }
 
     // ---------- Boot ----------
     (async () => {

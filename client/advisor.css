@@ -97,48 +97,71 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .avatar-stage svg, .avatar-stage > .lottie-host { width: 100%; height: 100%; }
 
-/* Photo avatar (the male/female PNGs the user uploaded). The image fills
-   the stage and uses object-fit:cover so any aspect ratio looks decent.
-   When the user picks a photo avatar the SVG fallback is hidden via the
-   .hidden class (set in advisor.js applyAvatar()). */
-.avatar-photo {
+/* Animatable SVG avatar — the entire SVG fills the stage, individual
+   pieces (#avHead, #avHandL, #avHandR) are animated via SVG transforms
+   from advisor.js or via the CSS classes below. */
+.avatar-svg-host {
     width: 100%; height: 100%;
-    object-fit: cover; object-position: center top;
+    display: flex; align-items: center; justify-content: center;
+}
+.avatar-svg-host svg {
+    width: 100%; height: 100%;
     display: block;
-    transition: transform .35s ease, filter .35s ease;
     will-change: transform, filter;
 }
-/* Subtle "alive" idle breathing so the still PNG doesn't feel flat. */
-@keyframes avatar-breath {
-    0%, 100% { transform: scale(1.00); }
-    50%      { transform: scale(1.012); }
-}
-.avatar-photo { animation: avatar-breath 4.5s ease-in-out infinite; }
 
-/* Speaking — gentle vertical bob + warm glow ring. We can't lip-sync a
-   single still frame, but a rhythmic motion + halo is enough to read as
-   "is talking" alongside the audio. */
-@keyframes avatar-speak {
-    0%   { transform: translateY(0)    scale(1.00); }
-    25%  { transform: translateY(-2px) scale(1.02); }
-    50%  { transform: translateY(0)    scale(1.00); }
-    75%  { transform: translateY(-1px) scale(1.015); }
-    100% { transform: translateY(0)    scale(1.00); }
+/* Idle: gentle breath on the torso so a still cartoon doesn't feel like
+   a paused video. */
+@keyframes av-breath {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-1px) scale(1.005); }
 }
-.avatar-photo--speaking {
-    animation: avatar-speak .55s ease-in-out infinite;
-    filter: drop-shadow(0 0 14px rgba(123, 220, 181, .55));
+.avatar-svg-host #avTorso { transform-origin: 50% 100%; animation: av-breath 4.5s ease-in-out infinite; }
+
+/* Listening: orange halo + a pulsed ring. */
+.avatar-svg-host svg.av-listening { filter: drop-shadow(0 0 14px rgba(255, 122, 89, .55)); }
+.avatar-svg-host svg.av-listening #listenRing {
+    opacity: .8; animation: ring-spin 4s linear infinite;
 }
-/* Listening — warm orange halo to mirror the listening dot. */
-.avatar-photo--listening {
-    filter: drop-shadow(0 0 14px rgba(255, 122, 89, .55));
-}
-/* Thinking — slow soft pulse. */
-@keyframes avatar-think {
+@keyframes ring-spin { to { transform: rotate(360deg); } }
+
+/* Thinking: warm yellow halo + a slow head tilt. */
+@keyframes av-think-glow {
     0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 214, 110, .25)); }
-    50%      { filter: drop-shadow(0 0 16px rgba(255, 214, 110, .65)); }
+    50%      { filter: drop-shadow(0 0 18px rgba(255, 214, 110, .65)); }
 }
-.avatar-photo--thinking { animation: avatar-think 1.6s ease-in-out infinite; }
+@keyframes av-think-tilt {
+    0%, 100% { transform: rotate(0deg);   transform-origin: 110px 200px; }
+    50%      { transform: rotate(-3deg);  transform-origin: 110px 200px; }
+}
+.avatar-svg-host svg.av-thinking { animation: av-think-glow 1.6s ease-in-out infinite; }
+.avatar-svg-host svg.av-thinking #avHead { animation: av-think-tilt 3.2s ease-in-out infinite; }
+
+/* Speaking: green halo + head bob + hand emphasis. We rotate each hand
+   from its own SVG-coordinate origin so the hand appears to wave. */
+@keyframes av-speak-bob {
+    0%, 100% { transform: translateY(0); }
+    25%      { transform: translateY(-1.5px); }
+    75%      { transform: translateY(-0.5px); }
+}
+@keyframes av-speak-glow {
+    0%, 100% { filter: drop-shadow(0 0 12px rgba(123, 220, 181, .35)); }
+    50%      { filter: drop-shadow(0 0 18px rgba(123, 220, 181, .65)); }
+}
+@keyframes av-hand-l-emph {
+    0%, 100% { transform: translate(50px, 268px) rotate(0deg); }
+    40%      { transform: translate(50px, 264px) rotate(-12deg); }
+    60%      { transform: translate(50px, 268px) rotate(0deg); }
+}
+@keyframes av-hand-r-emph {
+    0%, 100% { transform: translate(170px, 268px) rotate(0deg); }
+    50%      { transform: translate(170px, 264px) rotate(10deg); }
+}
+
+.avatar-svg-host svg.av-speaking { animation: av-speak-glow .8s ease-in-out infinite; }
+.avatar-svg-host svg.av-speaking #avHead   { animation: av-speak-bob .55s ease-in-out infinite; transform-origin: 110px 200px; }
+.avatar-svg-host svg.av-speaking #avHandL  { animation: av-hand-l-emph 2.4s ease-in-out infinite; }
+.avatar-svg-host svg.av-speaking #avHandR  { animation: av-hand-r-emph 2.0s ease-in-out infinite; }
 .avatar-status {
     position: absolute; left: 12px; bottom: 12px;
     background: rgba(15, 61, 62, .85); color: #fff;
