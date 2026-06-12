@@ -1529,13 +1529,17 @@
         // Acronyms: spell them out so the voice doesn't try to pronounce
         // them as words. Restrict to the BMU vocabulary so we don't break
         // ordinary capitalised words.
-        const ACRONYMS = ['BMU', 'MBBS', 'BNSc', 'BMLS', 'CCMAS', 'GPA', 'MDCN', 'CGPA', 'NYSC', 'HOD', 'NUC'];
+        // NUC is handled separately as "N.U.C" so it is read continuously
+        // as letters without long inter-letter silence.
+        s = s.replace(/\bNUC\b/g, 'N.U.C');
+
+        const ACRONYMS = ['BMU', 'MBBS', 'BNSc', 'BMLS', 'CCMAS', 'GPA', 'MDCN', 'CGPA', 'NYSC', 'HOD'];
         for (const a of ACRONYMS) {
             const re = new RegExp('\\b' + a + '\\b', 'g');
             s = s.replace(re, a.split('').join(' '));
         }
-        // Hyphenated acronym compounds (e.g. "N U C-approved") should be
-        // spoken as separate letters followed by a normal word.
+        // Hyphenated acronym compounds should be spoken cleanly.
+        s = s.replace(/\bN\.U\.C\s*-\s*(?=[A-Za-z])/g, 'N.U.C ');
         s = s.replace(/\b([A-Z](?:\s+[A-Z]){1,7})\s*-\s*(?=[A-Za-z])/g, '$1 ');
 
         // Collapse whitespace.

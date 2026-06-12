@@ -26,8 +26,11 @@ function normalizeTextForTts(input) {
     let s = String(input || '').trim();
     if (!s) return s;
 
+    // Force NUC to be spoken as one continuous letter-sequence.
+    s = s.replace(/\bNUC\b/gi, 'N.U.C');
+
     // Force common BMU abbreviations to be spoken as letters.
-    const ACRONYMS = ['BMU', 'MBBS', 'BNSC', 'BMLS', 'CCMAS', 'GPA', 'MDCN', 'CGPA', 'NYSC', 'HOD', 'NUC'];
+    const ACRONYMS = ['BMU', 'MBBS', 'BNSC', 'BMLS', 'CCMAS', 'GPA', 'MDCN', 'CGPA', 'NYSC', 'HOD'];
     for (const a of ACRONYMS) {
         const re = new RegExp(`\\b${a}\\b`, 'gi');
         s = s.replace(re, a.split('').join(' '));
@@ -35,6 +38,7 @@ function normalizeTextForTts(input) {
 
     // If an acronym is hyphenated to a word (e.g. "N U C-approved"),
     // remove the hyphen so TTS reads "N U C approved".
+    s = s.replace(/\bN\.U\.C\s*-\s*(?=[A-Za-z])/g, 'N.U.C ');
     s = s.replace(/\b([A-Z](?:\s+[A-Z]){1,7})\s*-\s*(?=[A-Za-z])/g, '$1 ');
 
     return s.replace(/\s+/g, ' ').trim();
