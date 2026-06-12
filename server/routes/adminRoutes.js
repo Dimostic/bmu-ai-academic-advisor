@@ -8,6 +8,23 @@ const { authenticateToken, requireAdmin, requireSuperAdmin } = require('../middl
 
 const router = express.Router();
 
+/** Tell the FAQ service to re-read the cached_qa table on the next
+ *  question. Without this, newly-promoted Q&As don't appear in the
+ *  in-memory embeddings index until the existing 5-minute TTL expires.
+ *  Called from every endpoint that creates, updates, or deletes a
+ *  cached_qa row. Fail-safe: if the FAQ service isn't loaded for any
+ *  reason, swallow the error rather than blocking the admin action. */
+function _invalidateFAQCache() {
+    try {
+        const faqService = require('../services/faqService');
+        if (typeof faqService.invalidateEmbeddingsCache === 'function') {
+            faqService.invalidateEmbeddingsCache();
+        }
+    } catch (err) {
+        console.warn('[adminRoutes] invalidateEmbeddingsCache failed:', err.message);
+    }
+}
+
 // Get dashboard statistics
 router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -1560,6 +1577,7 @@ router.post('/advisor/promote/:id', authenticateToken, requireAdmin, async (req,
                 ipAddress: req.ip,
                 userAgent: req.headers['user-agent']
             });
+            _invalidateFAQCache();
             return res.json({ success: true, mode: 'refreshed', cachedQaId: id });
         }
 
@@ -1593,6 +1611,7 @@ router.post('/advisor/promote/:id', authenticateToken, requireAdmin, async (req,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent']
         });
+        _invalidateFAQCache();
 
         res.json({ success: true, mode: 'created', cachedQaId: newId });
     } catch (err) {
@@ -1608,6 +1627,7 @@ router.delete('/cached-qa/:id', authenticateToken, requireAdmin, async (req, res
         if (!id) return res.status(400).json({ success: false, error: 'Invalid id' });
         const CachedQA = require('../models/CachedQA');
         await CachedQA.deactivate(id);
+        _invalidateFAQCache();
 
         await AuditTrail.log({
             userId: req.user.id,
@@ -1772,6 +1792,7 @@ router.post('/cached-qa', authenticateToken, requireAdmin, async (req, res) => {
                 ipAddress: req.ip,
                 userAgent: req.headers['user-agent']
             });
+            _invalidateFAQCache();
             return res.json({ success: true, mode: 'refreshed', cachedQaId: id });
         }
 
@@ -1804,6 +1825,7 @@ router.post('/cached-qa', authenticateToken, requireAdmin, async (req, res) => {
             ipAddress: req.ip,
             userAgent: req.headers['user-agent']
         });
+        _invalidateFAQCache();
 
         res.status(201).json({ success: true, mode: 'created', cachedQaId: newId });
     } catch (err) {
