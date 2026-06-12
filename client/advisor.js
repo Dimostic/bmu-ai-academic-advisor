@@ -50,6 +50,7 @@
     const historyClose  = $('historyCloseBtn');
     const historyList   = $('historyList');
     const advisorStatus = $('avatarStatus');
+    const avatarPane    = document.querySelector('.avatar-pane');
     // The SVG element is rendered inside #avatarSvgHost by applyAvatar().
     // We re-resolve advisorSvg / mouthShape / brow / hand handles every
     // time we render so they always point at the live nodes.
@@ -78,8 +79,47 @@
         mediaRecorder: null,
         audioCtx: null,
         currentAudio: null,
-        currentLottie: null
+        currentLottie: null,
+        activeResponseBubble: null,
+        speakingFocusTimer: null,
+        lastSpeakingFocusAt: 0
     };
+
+    function isMobileLayout() {
+        return window.matchMedia('(max-width: 1024px)').matches;
+    }
+
+    function syncMobileLayoutVars() {
+        const topBar = document.querySelector('.top-bar');
+        const topH = topBar ? Math.ceil(topBar.getBoundingClientRect().height) : 64;
+        const avatarH = avatarPane ? Math.ceil(avatarPane.getBoundingClientRect().height) : 160;
+        document.documentElement.style.setProperty('--mobile-topbar-h', `${topH}px`);
+        document.documentElement.style.setProperty('--mobile-avatar-h', `${avatarH}px`);
+    }
+
+    function setActiveResponseBubble(el) {
+        if (state.activeResponseBubble && state.activeResponseBubble !== el) {
+            state.activeResponseBubble.classList.remove('is-speaking-focus');
+        }
+        state.activeResponseBubble = el || null;
+        if (state.activeResponseBubble && document.body.classList.contains('is-speaking')) {
+            state.activeResponseBubble.classList.add('is-speaking-focus');
+        }
+    }
+
+    function focusActiveResponseBubble(force = false) {
+        if (!isMobileLayout()) return;
+        if (!document.body.classList.contains('is-speaking')) return;
+        const el = state.activeResponseBubble;
+        if (!el) return;
+
+        const now = Date.now();
+        if (!force && now - state.lastSpeakingFocusAt < 900) return;
+        state.lastSpeakingFocusAt = now;
+
+        el.classList.add('is-speaking-focus');
+        el.scrollIntoView({ behavior: force ? 'smooth' : 'auto', block: 'start', inline: 'nearest' });
+    }
 
     function authHeaders() {
         return state.token ? { Authorization: `Bearer ${state.token}` } : {};
@@ -107,10 +147,24 @@
         currentState = stateName;
         advisorStatus.dataset.state = stateName;
         advisorStatus.querySelector('.label').textContent = label || stateName;
+        const speaking = stateName === 'speaking' || stateName === 'talking';
+        document.body.classList.toggle('is-speaking', speaking);
+
+        if (state.speakingFocusTimer) {
+            clearInterval(state.speakingFocusTimer);
+            state.speakingFocusTimer = null;
+        }
+        if (speaking) {
+            focusActiveResponseBubble(true);
+            state.speakingFocusTimer = setInterval(() => focusActiveResponseBubble(false), 1200);
+        } else if (state.activeResponseBubble) {
+            state.activeResponseBubble.classList.remove('is-speaking-focus');
+        }
+
         if (advisorSvg) {
             advisorSvg.classList.toggle('av-listening', stateName === 'listening');
             advisorSvg.classList.toggle('av-thinking',  stateName === 'thinking');
-            advisorSvg.classList.toggle('av-speaking',  stateName === 'speaking' || stateName === 'talking');
+            advisorSvg.classList.toggle('av-speaking',  speaking);
         }
     }
 
@@ -168,6 +222,7 @@
         setMouthOpenness(0);
         setExpression('neutral');
         setAvatarState(currentState || 'idle', advisorStatus.querySelector('.label')?.textContent || 'Ready');
+        syncMobileLayoutVars();
     }
 
     /** Save the chosen avatar both locally and on the server. */
@@ -483,8 +538,9 @@
         }
         if (bubble.playBtn) {
             bubble.playBtn.addEventListener('click', () => {
-                if (audio_url) playWithLipSync(audio_url, speech_text || '');
-                else if (speech_text) speakWithBrowser(speech_text);
+                setActiveResponseBubble(bubble.el);
+                if (audio_url) playWithLipSync(audio_url, speech_text || '', bubble.el);
+                else if (speech_text) speakWithBrowser(speech_text, bubble.el);
             });
         }
     }
@@ -608,9 +664,10 @@
      * Play audioUrl while updating mouth from amplitude.
      * Returns the actual duration in ms when finished, or 0 if aborted.
      */
-    async function playWithLipSync(audioUrl, spokenText = '') {
+    async function playWithLipSync(audioUrl, spokenText = '', bubbleEl = null) {
         return new Promise((resolve) => {
             try {
+                if (bubbleEl) setActiveResponseBubble(bubbleEl);
                 stopCurrentAudio();
                 const audio = new Audio(audioUrl);
                 audio.crossOrigin = 'anonymous';
@@ -759,10 +816,11 @@
      *  platforms — solving both the cost concern at student scale and
      *  the wrong-gender voice problem from the previous TTSMaker setup.
      */
-    function speakWithBrowser(text) {
+    function speakWithBrowser(text, bubbleEl = null) {
         return new Promise(resolve => {
             if (!window.speechSynthesis) return resolve(0);
             try {
+                if (bubbleEl) setActiveResponseBubble(bubbleEl);
                 // Cancel any in-flight speech first so we don't end up with
                 // two utterances overlapping (which is also why the mouth
                 // appeared to keep moving — the previous utterance's pulse
@@ -865,6 +923,7 @@
         setExpression('thinking');
 
         const bubble = addAdvisorBubble();
+        setActiveResponseBubble(bubble.el);
         let speechText = '';
         let audioUrl = null;
         let audioStarted = false;
@@ -942,11 +1001,11 @@
                             // Start playback immediately — runs in parallel with continued typing.
                             if (!audioStarted) {
                                 audioStarted = true;
-                                playWithLipSync(audioUrl, speechText || '');
+                                playWithLipSync(audioUrl, speechText || '', bubble.el);
                             }
                         } else if (data.use_browser_fallback && speechText && !audioStarted) {
                             audioStarted = true;
-                            speakWithBrowser(speechText);
+                            speakWithBrowser(speechText, bubble.el);
                         }
                     } else if (event === 'done') {
                         final = data;
@@ -1546,7 +1605,12 @@
                 location.replace('/');
             });
 
+
+        syncMobileLayoutVars();
+        setTimeout(syncMobileLayoutVars, 200);
             // Pull live quota and refresh the badge.
+
+    window.addEventListener('resize', syncMobileLayoutVars, { passive: true });
             if (showQuota) {
                 refreshQuotaBadge();
                 // Refresh after each ask completes (askNow updates the cached

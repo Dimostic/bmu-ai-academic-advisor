@@ -462,3 +462,131 @@ html[data-theme="dark"] .bubble--student {
 }
 html[data-theme="dark"] .bubble--advisor { background: var(--bg-elev); }
 html[data-theme="dark"] .mic-btn { background: var(--bg-elev); color: var(--accent); }
+
+/* ========================================================================
+   Mobile advisor interaction model
+   - Avatar remains visible at top
+   - Composer stays directly under avatar
+   - While speaking, highlight/anchor the active advisor response card
+   ===================================================================== */
+@media (max-width: 1024px) {
+    .advisor-grid {
+        display: block;
+        max-width: 100%;
+        padding: 12px;
+    }
+
+    .avatar-pane {
+        position: sticky;
+        top: var(--mobile-topbar-h, 64px);
+        z-index: 35;
+        margin-bottom: 8px;
+        padding: 12px;
+        border-radius: 12px;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 12px;
+    }
+
+    .avatar-stage {
+        width: 118px;
+        height: 136px;
+        flex: 0 0 auto;
+    }
+
+    .avatar-meta {
+        text-align: left;
+    }
+
+    .avatar-meta strong {
+        font-size: .95rem;
+    }
+
+    .avatar-meta span {
+        font-size: .78rem;
+    }
+
+    .chat-pane {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: visible;
+        background: transparent;
+        box-shadow: none;
+        border-radius: 0;
+    }
+
+    .topics-bar {
+        order: 1;
+        margin: 0 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--bg-elev);
+        box-shadow: var(--shadow);
+    }
+
+    .composer {
+        order: 2;
+        position: sticky;
+        top: calc(var(--mobile-topbar-h, 64px) + var(--mobile-avatar-h, 160px) + 8px);
+        z-index: 34;
+        margin: 0 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--bg-elev);
+        box-shadow: var(--shadow);
+    }
+
+    .followups {
+        order: 3;
+        padding: 0 0 10px;
+    }
+
+    .transcript {
+        order: 4;
+        overflow: visible;
+        padding: 4px 0 22vh;
+        min-height: 36vh;
+    }
+
+    .bubble {
+        max-width: 100%;
+    }
+
+    .history-pane {
+        display: none;
+    }
+
+    body.is-speaking .bubble--advisor.is-speaking-focus {
+        outline: 2px solid rgba(35, 182, 165, .55);
+        box-shadow: 0 0 0 4px rgba(35, 182, 165, .18);
+        scroll-margin-top: calc(var(--mobile-topbar-h, 64px) + var(--mobile-avatar-h, 160px) + 72px);
+    }
+}
+
+@media (max-width: 560px) {
+    .avatar-pane {
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .avatar-stage {
+        width: 102px;
+        height: 122px;
+    }
+
+    .composer {
+        padding: 10px;
+    }
+
+    .composer input[type="text"] {
+        padding: 9px 11px;
+        font-size: .95rem;
+    }
+
+    .mic-btn, .send-btn {
+        width: 40px;
+        height: 40px;
+    }
+}
