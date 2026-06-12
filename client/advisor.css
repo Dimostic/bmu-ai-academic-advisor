@@ -490,8 +490,8 @@ html[data-theme="dark"] .mic-btn { background: var(--bg-elev); color: var(--acce
     }
 
     .avatar-stage {
-        width: 118px;
-        height: 136px;
+        width: 146px;
+        height: 172px;
         flex: 0 0 auto;
     }
 
@@ -572,8 +572,8 @@ html[data-theme="dark"] .mic-btn { background: var(--bg-elev); color: var(--acce
     }
 
     .avatar-stage {
-        width: 102px;
-        height: 122px;
+        width: 130px;
+        height: 152px;
     }
 
     .composer {
