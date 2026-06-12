@@ -590,3 +590,23 @@ html[data-theme="dark"] .mic-btn { background: var(--bg-elev); color: var(--acce
         height: 40px;
     }
 }
+
+/* On very small phones, reclaim vertical space while speaking by
+   collapsing the topic strip. It returns automatically when speech ends
+   because setAvatarState toggles body.is-speaking. */
+@media (max-width: 420px) {
+    body.is-speaking .topics-bar {
+        max-height: 0;
+        opacity: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin: 0;
+        border-width: 0;
+        overflow: hidden;
+        pointer-events: none;
+    }
+
+    .topics-bar {
+        transition: max-height .2s ease, opacity .16s ease, padding .2s ease, margin .2s ease;
+    }
+}
