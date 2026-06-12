@@ -192,18 +192,22 @@
     // that survives re-render.
     function blink() {
         if (!lidL || !lidR) return;
+        // Clamp to non-negative; the previous version sometimes called
+        // grow() with a tiny negative number (rounding error when t ≥ 1)
+        // which the SVG <rect> rejects with a console error.
         const grow = (h) => {
-            lidL.setAttribute('height', h);
-            lidR.setAttribute('height', h);
+            const v = Math.max(0, h);
+            lidL.setAttribute('height', v);
+            lidR.setAttribute('height', v);
         };
         const FULL = 16;
         let t = 0;
         const start = performance.now();
         const step = (now) => {
             t = (now - start) / 140;
-            if (t < 0.5) grow(FULL * (t * 2));
-            else if (t < 1) grow(FULL * (2 - t * 2));
-            else { grow(0); return; }
+            if (t < 0.5)      grow(FULL * (t * 2));
+            else if (t < 1)   grow(FULL * (2 - t * 2));
+            else { grow(0); return; }   // hard reset, no further frames
             requestAnimationFrame(step);
         };
         requestAnimationFrame(step);
@@ -484,7 +488,12 @@
             try { state.currentAudio.pause(); } catch (_) {}
             state.currentAudio = null;
         }
+        if (state.activeUtterance) {
+            try { state.activeUtterance.stopPulse(); } catch (_) {}
+            state.activeUtterance = null;
+        }
         try { window.speechSynthesis?.cancel(); } catch (_) {}
+        setMouthOpenness(0);
     }
 
     /** Pick a browser SpeechSynthesis voice that matches the user's
@@ -500,38 +509,54 @@
         const voices = speechSynthesis.getVoices() || [];
         if (!voices.length) return null;
 
-        // Names that strongly suggest a given gender across Windows/macOS/iOS/Android.
-        const FEMALE_HINTS = /\b(samantha|karen|moira|tessa|fiona|vicki|allison|ava|susan|fiona|zira|hazel|catherine|libby|aria|jenny|sonia|natasha|joanna|salli|kendra|kimberly|amy|emma|nicole|raveena|google\s+uk\s+english\s+female|google\s+us\s+english.*female|female)\b/i;
-        const MALE_HINTS   = /\b(daniel|alex|fred|tom|david|mark|ryan|james|guy|matthew|brian|joey|justin|aaron|google\s+uk\s+english\s+male|male)\b/i;
+        const wantMale = gender === 'male';
 
-        const wantFemale = gender !== 'male';
+        // Names that strongly suggest a given gender across Windows /
+        // macOS / iOS / Android / Chrome remote voices. The lists are
+        // generous — anything that matches gets a strong bias so we
+        // don't accidentally pick a female voice for the male advisor.
+        const FEMALE_HINTS = /\b(samantha|karen|moira|tessa|fiona|vicki|allison|ava|susan|zira|hazel|catherine|libby|aria|jenny|sonia|natasha|joanna|salli|kendra|kimberly|amy|emma|nicole|raveena|ezinne|female)\b/i;
+        const MALE_HINTS   = /\b(daniel|alex|fred|tom|david|mark|ryan|james|guy|matthew|brian|joey|justin|aaron|abeo|onyema|oliver|arthur|george|liam|noah|ethan|connor|albert|male)\b/i;
+
         const enVoices = voices.filter(v => /^en[-_]/i.test(v.lang) || v.lang === 'en');
 
-        // 1. Prefer en-NG / en-GB / en-US matching the wanted gender by name.
         const score = (v) => {
             let s = 0;
             const name = (v.name || '').toLowerCase();
             const lang = (v.lang || '').toLowerCase();
-            if (wantFemale && FEMALE_HINTS.test(name)) s += 100;
-            if (!wantFemale && MALE_HINTS.test(name)) s += 100;
-            if (wantFemale && MALE_HINTS.test(name)) s -= 50;
-            if (!wantFemale && FEMALE_HINTS.test(name)) s -= 50;
-            // Also try the voice's own .gender field if the platform reports it.
-            const g = (v.gender || '').toLowerCase();
-            if (wantFemale && g === 'female') s += 30;
-            if (!wantFemale && g === 'male') s += 30;
+            const g    = (v.gender || '').toLowerCase();
+
+            // Strong, decisive bias from the name.
+            if ( wantMale && MALE_HINTS.test(name))   s += 200;
+            if ( wantMale && FEMALE_HINTS.test(name)) s -= 200;
+            if (!wantMale && FEMALE_HINTS.test(name)) s += 200;
+            if (!wantMale && MALE_HINTS.test(name))   s -= 200;
+
+            // Honour the explicit .gender field when the platform reports it.
+            if ( wantMale && g === 'male')   s += 60;
+            if (!wantMale && g === 'female') s += 60;
+            if ( wantMale && g === 'female') s -= 60;
+            if (!wantMale && g === 'male')   s -= 60;
+
             // Locale preference: en-NG > en-GB > en-US > anything en
             if (lang.startsWith('en-ng')) s += 8;
             else if (lang.startsWith('en-gb')) s += 6;
             else if (lang.startsWith('en-us')) s += 4;
             else if (lang.startsWith('en'))    s += 2;
-            // Local voices (no remote lookup) tend to be lower-latency.
+
+            // Local voices tend to be lower-latency.
             if (v.localService) s += 1;
             return s;
         };
 
         const ranked = enVoices.slice().sort((a, b) => score(b) - score(a));
-        return ranked[0] || null;
+        const top    = ranked[0] || null;
+        // If the top score is negative for a wanted gender, that means no
+        // voice of that gender exists on this device. Return null so the
+        // caller falls back to the engine default rather than picking a
+        // wrong-gender voice.
+        if (top && score(top) <= 0) return null;
+        return top;
     }
 
     /** Fallback TTS using the browser's SpeechSynthesis API. Returns duration estimate.
@@ -546,34 +571,70 @@
         return new Promise(resolve => {
             if (!window.speechSynthesis) return resolve(0);
             try {
-                const u = new SpeechSynthesisUtterance(text);
+                // Cancel any in-flight speech first so we don't end up with
+                // two utterances overlapping (which is also why the mouth
+                // appeared to keep moving — the previous utterance's pulse
+                // loop kept firing while a new utterance started).
+                try { window.speechSynthesis.cancel(); } catch (_) {}
+
+                const cleaned = humanizeForSpeech(text);
+                const u = new SpeechSynthesisUtterance(cleaned);
                 const gender = (typeof getAdvisorGender === 'function') ? getAdvisorGender() : 'female';
                 const v = pickBrowserVoice(gender);
                 if (v) u.voice = v;
                 u.lang = (v && v.lang) || 'en-NG';
                 u.rate = 1.02;
-                u.pitch = gender === 'male' ? 0.95 : 1.05;  // mild pitch nudge as backup signal
+                u.pitch = gender === 'male' ? 0.85 : 1.10;
                 u.volume = 1;
-                console.info('[advisor] browser TTS voice:', v ? `${v.name} (${v.lang})` : 'default');
+                console.info('[advisor] browser TTS voice:', v ? `${v.name} (${v.lang})` : 'default', '| gender wanted:', gender);
 
-                // Roughly drive the mouth from amplitude proxy (word boundaries)
+                // Drive a simple lip-sync pulse during speaking. We track
+                // BOTH the rAF id AND the timeout id so onend can hard-stop
+                // every pending tick — previous version only cancelled the
+                // rAF, leaving an orphaned setTimeout that re-opened the
+                // mouth after the audio was finished.
                 let opening = 0;
-                let raf;
+                let pulseRaf = null;
+                let pulseTimer = null;
+                let stopped = false;
+
+                const pulse = () => {
+                    if (stopped) return;
+                    opening = opening > 0.05 ? 0 : 0.7;
+                    setMouthOpenness(opening);
+                    pulseRaf = requestAnimationFrame(() => {
+                        if (stopped) return;
+                        pulseTimer = setTimeout(pulse, 110);
+                    });
+                };
+
+                const stopPulse = () => {
+                    stopped = true;
+                    if (pulseRaf) cancelAnimationFrame(pulseRaf);
+                    if (pulseTimer) clearTimeout(pulseTimer);
+                    pulseRaf = pulseTimer = null;
+                    setMouthOpenness(0);
+                };
+
                 u.onstart = () => {
                     setAvatarState('speaking', 'Speaking');
-                    const pulse = () => {
-                        opening = opening > 0.05 ? 0 : 0.7;
-                        setMouthOpenness(opening);
-                        raf = requestAnimationFrame(() => setTimeout(pulse, 110));
-                    };
                     pulse();
                 };
-                u.onboundary = () => { opening = 0.7; setMouthOpenness(opening); };
+                u.onboundary = () => { if (!stopped) { opening = 0.7; setMouthOpenness(opening); } };
                 u.onend = () => {
-                    cancelAnimationFrame(raf); setMouthOpenness(0); setAvatarState('idle', 'Ready');
-                    // Estimate: ~14 chars/sec speaking rate
-                    resolve(Math.max(1500, text.length * 70));
+                    stopPulse();
+                    setAvatarState('idle', 'Ready');
+                    resolve(Math.max(1500, cleaned.length * 70));
                 };
+                u.onerror = () => {
+                    stopPulse();
+                    setAvatarState('idle', 'Ready');
+                    resolve(0);
+                };
+
+                // Track this utterance so an external stop (mic re-arm,
+                // page navigation, etc) can also halt the pulse.
+                state.activeUtterance = { stopPulse, utter: u };
                 window.speechSynthesis.speak(u);
             } catch (_) { resolve(0); }
         });
@@ -1104,21 +1165,118 @@
     function scrollToBottom() { transcript.scrollTop = transcript.scrollHeight; }
     function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
-    /** Pick a face mood from a finished reply.
-     *
-     *  Keep this purely heuristic — we don't want a separate LLM call
-     *  just for facial expressions. We look at the speech text for
-     *  positive/negative cues; escalations always read as "concerned".
-     */
+    /** Pick a mood for the avatar from a finished reply. */
     function pickMood({ needsEscalation, speech }) {
         if (needsEscalation) return 'concerned';
         const s = String(speech || '').toLowerCase();
         if (/\b(congratulations|well done|great|excellent|nice|welcome|happy|good (job|news))\b/.test(s)) return 'smile';
         if (/\b(sorry|unfortunately|cannot|can't|trouble|problem|fail(ed)?)\b/.test(s)) return 'concerned';
-        if (/\?\s*$/.test(s.trim())) return 'thinking';   // counter-question
+        if (/\?\s*$/.test(s.trim())) return 'thinking';
         if (/\b(here|sure|certainly|absolutely)\b/.test(s)) return 'smile';
         return 'neutral';
     }
+
+    // -----------------------------------------------------------------
+    // Speech-text humaniser.
+    //
+    // The browser's SpeechSynthesis engine reads tokens literally. So
+    // "₦50,000" comes out as "N five comma zero zero zero" and "100 level"
+    // becomes "one zero zero level". We rewrite the most common BMU
+    // patterns into spoken-form before sending to the engine:
+    //   * "₦600,000"  -> "six hundred thousand naira"
+    //   * "N1,230,000" -> "one million two hundred and thirty thousand naira"
+    //   * "100 level" -> "one hundred level"
+    //   * "BMU"       -> "B M U" (still spelt, but with spaces so the
+    //                    voice doesn't try to pronounce "bmu")
+    // -----------------------------------------------------------------
+    const ONES = ['', 'one','two','three','four','five','six','seven','eight','nine','ten',
+                  'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+    const TENS = ['', '', 'twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+
+    function _belowThousand(n) {
+        if (n === 0) return '';
+        if (n < 20) return ONES[n];
+        if (n < 100) {
+            const t = Math.floor(n / 10), o = n % 10;
+            return TENS[t] + (o ? ' ' + ONES[o] : '');
+        }
+        const h = Math.floor(n / 100), rest = n % 100;
+        return ONES[h] + ' hundred' + (rest ? ' and ' + _belowThousand(rest) : '');
+    }
+    function numberToWords(num) {
+        const n = Math.trunc(num);
+        if (n === 0) return 'zero';
+        if (n < 0)  return 'minus ' + numberToWords(-n);
+        if (n > 999_999_999_999) return String(n);   // too big — let TTS handle it
+        const parts = [];
+        const billions  = Math.floor(n / 1_000_000_000);
+        const millions  = Math.floor((n % 1_000_000_000) / 1_000_000);
+        const thousands = Math.floor((n % 1_000_000) / 1_000);
+        const hundreds  = n % 1_000;
+        if (billions)  parts.push(_belowThousand(billions)  + ' billion');
+        if (millions)  parts.push(_belowThousand(millions)  + ' million');
+        if (thousands) parts.push(_belowThousand(thousands) + ' thousand');
+        if (hundreds)  parts.push(_belowThousand(hundreds));
+        return parts.join(' ');
+    }
+
+    /** Convert a numeric string with optional commas + decimal into spoken
+     *  English. e.g. "1,230,000" -> "one million two hundred and thirty
+     *  thousand"; "2.5"  -> "two point five"; "0.85" -> "zero point eight five". */
+    function speakNumeric(raw) {
+        const s = String(raw).replace(/,/g, '');
+        if (!/^\d+(\.\d+)?$/.test(s)) return raw;
+        const [intPart, fracPart] = s.split('.');
+        let out = numberToWords(parseInt(intPart, 10) || 0);
+        if (fracPart) {
+            // "0.85" -> "zero point eight five" (digit-by-digit so "2.5m"
+            // doesn't become "two point five hundred").
+            out += ' point ' + fracPart.split('').map(d => ONES[+d] || 'zero').join(' ');
+        }
+        return out;
+    }
+
+    function humanizeForSpeech(text) {
+        if (!text) return '';
+        let s = String(text);
+
+        // Currency: ₦, NGN, N (when followed by digits), $, USD
+        s = s.replace(/[₦]\s?(\d[\d,]*(?:\.\d+)?)/g, (_, n) => speakNumeric(n) + ' naira');
+        s = s.replace(/\bNGN\s?(\d[\d,]*(?:\.\d+)?)/gi, (_, n) => speakNumeric(n) + ' naira');
+        // "N50,000" or "N 50,000" — only when the N has no preceding letter
+        // (so "BMU N..." still reads N as a letter; here we look for a word
+        // boundary AND a digit right after).
+        s = s.replace(/(^|[\s(])N\s?(\d[\d,]*(?:\.\d+)?)/g, (_, pre, n) => `${pre}${speakNumeric(n)} naira`);
+        s = s.replace(/[$]\s?(\d[\d,]*(?:\.\d+)?)/g, (_, n) => speakNumeric(n) + ' US dollars');
+
+        // Abbreviated millions / thousands: "2.5m", "600k", "1.23m naira"
+        s = s.replace(/\b(\d+(?:\.\d+)?)\s?m\b/gi,
+            (_, n) => speakNumeric((parseFloat(n) * 1_000_000).toString()));
+        s = s.replace(/\b(\d+(?:\.\d+)?)\s?k\b/gi,
+            (_, n) => speakNumeric((parseFloat(n) * 1_000).toString()));
+
+        // "100 level", "200 level", etc — make sure the number is read
+        // as a word, not "one zero zero".
+        s = s.replace(/\b(\d{3})\s?level\b/gi, (_, n) => `${speakNumeric(n)} level`);
+
+        // Standalone numbers with commas — "1,234,567" -> words.
+        s = s.replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/g, m => speakNumeric(m));
+
+        // Acronyms: spell them out so the voice doesn't try to pronounce
+        // them as words. Restrict to the BMU vocabulary so we don't break
+        // ordinary capitalised words.
+        const ACRONYMS = ['BMU', 'MBBS', 'BNSc', 'BMLS', 'CCMAS', 'GPA', 'MDCN', 'CGPA', 'NYSC', 'HOD'];
+        for (const a of ACRONYMS) {
+            const re = new RegExp('\\b' + a + '\\b', 'g');
+            s = s.replace(re, a.split('').join(' '));
+        }
+
+        // Collapse whitespace.
+        return s.replace(/\s+/g, ' ').trim();
+    }
+
+    // Expose for the (rare) caller that wants to reuse it.
+    window._humanizeForSpeech = humanizeForSpeech;
 
     // ---------- Boot ----------
     (async () => {

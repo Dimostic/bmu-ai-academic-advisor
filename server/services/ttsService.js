@@ -115,11 +115,34 @@ async function synthesise(text, opts = {}) {
         return { provider: 'none', useBrowserFallback: true };
     }
 
+    const gender = (opts && opts.gender === 'male') ? 'male' : 'female';
+
+    // Edge TTS path — Microsoft's free neural voices. Preferred over
+    // browser TTS when the operator wants a uniform "BMU voice" across
+    // every device.
+    if (PROVIDER === 'edge') {
+        try {
+            const edge = require('./edgeTtsService');
+            if (edge.isConfigured()) {
+                const r = await edge.synthesiseToFile(text, { gender });
+                return {
+                    provider: 'edge',
+                    audioUrl: r.audioUrl,
+                    fromCache: !!r.fromCache,
+                    voice: r.voice
+                };
+            }
+        } catch (err) {
+            console.warn('[ttsService] edge tts failed, falling back to browser:', err.message);
+            return { provider: 'browser', useBrowserFallback: true, error: err.message };
+        }
+        return { provider: 'browser', useBrowserFallback: true };
+    }
+
     if (PROVIDER === 'browser' || !isTtsmakerConfigured()) {
         return { provider: 'browser', useBrowserFallback: true };
     }
 
-    const gender = (opts && opts.gender === 'male') ? 'male' : 'female';
     const voiceId = getVoiceId(gender);
     const speed = getSpeed();
 

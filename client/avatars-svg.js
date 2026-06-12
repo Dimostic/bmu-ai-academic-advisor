@@ -286,6 +286,76 @@
     window.BMUAvatars = {
         svg(gender) {
             return gender === 'male' ? maleAvatarSVG() : femaleAvatarSVG();
+        },
+        /** Compact head-and-shoulders thumbnail used by login/register
+         *  picker cards. Same colour palette as the full SVGs but smaller
+         *  viewBox so it fits a 110-px-wide circle. */
+        thumb(gender) {
+            const skin     = gender === 'male' ? SKIN_M      : SKIN_F;
+            const skinDark = gender === 'male' ? SKIN_M_DARK : SKIN_F_DARK;
+            if (gender === 'male') {
+                return `
+                <svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="thumbBgM" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#143638"/>
+                            <stop offset="100%" stop-color="#0a2528"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="0" y="0" width="110" height="110" rx="55" fill="url(#thumbBgM)"/>
+                    <!-- coat -->
+                    <path d="M10 110 Q55 75 100 110 L100 110 Z" fill="${COAT}"/>
+                    <path d="M40 95 L55 110 L70 95 Z" fill="${TIE}"/>
+                    <!-- neck + head -->
+                    <rect x="48" y="68" width="14" height="14" fill="${skin}"/>
+                    <ellipse cx="55" cy="52" rx="22" ry="26" fill="${skin}"/>
+                    <!-- hair -->
+                    <path d="M33 44 Q38 20 55 18 Q72 20 77 44 Q72 33 55 32 Q38 33 33 44 Z" fill="${HAIR}"/>
+                    <!-- glasses -->
+                    <g stroke="${SCRUB}" stroke-width="1.6" fill="none">
+                        <rect x="38" y="48" width="11" height="9" rx="2"/>
+                        <rect x="61" y="48" width="11" height="9" rx="2"/>
+                        <line x1="49" y1="52" x2="61" y2="52"/>
+                    </g>
+                    <!-- eyes -->
+                    <circle cx="44" cy="53" r="1.5" fill="${HAIR}"/>
+                    <circle cx="66" cy="53" r="1.5" fill="${HAIR}"/>
+                    <!-- mouth (smile) -->
+                    <path d="M46 64 Q55 68 64 64" fill="none" stroke="#3a1f12" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>`;
+            }
+            return `
+                <svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="thumbBgF" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#143638"/>
+                            <stop offset="100%" stop-color="#0a2528"/>
+                        </linearGradient>
+                        <linearGradient id="thumbWrapF" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#3a1c4a"/>
+                            <stop offset="50%" stop-color="#7b2e58"/>
+                            <stop offset="100%" stop-color="#c64a73"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="0" y="0" width="110" height="110" rx="55" fill="url(#thumbBgF)"/>
+                    <!-- coat -->
+                    <path d="M10 110 Q55 75 100 110 L100 110 Z" fill="${COAT}"/>
+                    <path d="M40 95 L55 110 L70 95 Z" fill="${TIE}"/>
+                    <!-- neck + head -->
+                    <rect x="48" y="68" width="14" height="14" fill="${skin}"/>
+                    <ellipse cx="55" cy="52" rx="22" ry="26" fill="${skin}"/>
+                    <!-- gele wrap -->
+                    <path d="M29 44 Q38 14 55 12 Q72 14 81 44 Q76 30 55 30 Q34 30 29 44 Z"
+                          fill="url(#thumbWrapF)"/>
+                    <!-- earrings -->
+                    <circle cx="33" cy="58" r="2" fill="#e7c64e" stroke="#a98c1c"/>
+                    <circle cx="77" cy="58" r="2" fill="#e7c64e" stroke="#a98c1c"/>
+                    <!-- eyes -->
+                    <circle cx="46" cy="54" r="1.7" fill="${HAIR}"/>
+                    <circle cx="64" cy="54" r="1.7" fill="${HAIR}"/>
+                    <!-- mouth (smile) -->
+                    <path d="M46 64 Q55 69 64 64" fill="none" stroke="#552220" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>`;
         }
     };
 })();

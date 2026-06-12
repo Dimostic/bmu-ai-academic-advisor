@@ -183,6 +183,18 @@ app.get(['/bmulogo.png'], (req, res) => {
     res.sendFile(path.join(__dirname, '../bmulogo.png'));
 });
 
+// Serve generated MP3 files (Edge TTS / cached audio). The directory is
+// created on demand by edgeTtsService when the first synthesis runs.
+app.use('/uploads/audio',
+    express.static(path.join(__dirname, '../uploads/audio'), {
+        maxAge: '7d',
+        setHeaders(res, filePath) {
+            if (filePath.endsWith('.mp3')) {
+                res.setHeader('Content-Type', 'audio/mpeg');
+            }
+        }
+    }));
+
 // Ensure PWA assets are served (avoid SPA fallback edge cases)
 app.get('/sw.js', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/sw.js'));
