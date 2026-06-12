@@ -38,6 +38,40 @@ const Advisor = {
         return rows[0] || null;
     },
 
+    async ensureStudentForUser(user = null) {
+        if (!user?.id) return null;
+
+        const existing = await this.findStudentByUserId(user.id);
+        if (existing?.id) return existing;
+
+        const first = (user.first_name || user.firstName || '').trim();
+        const last = (user.last_name || user.lastName || '').trim();
+        const email = (user.email || '').trim() || null;
+        const fullName = `${first} ${last}`.trim() || email || `BMU User ${user.id}`;
+
+        // students.matric_no is required+unique, so generate a stable
+        // synthetic value for self-registered users without a formal matric.
+        let matric = `USR/${user.id}`;
+        try {
+            await query(
+                `INSERT INTO students (user_id, matric_no, full_name, email, is_active)
+                 VALUES (?, ?, ?, ?, TRUE)`,
+                [user.id, matric, fullName, email]
+            );
+        } catch (err) {
+            // Collision fallback (very rare): append a short time suffix.
+            if (!/duplicate/i.test(String(err?.message || ''))) throw err;
+            matric = `USR/${user.id}/${Date.now().toString().slice(-6)}`;
+            await query(
+                `INSERT INTO students (user_id, matric_no, full_name, email, is_active)
+                 VALUES (?, ?, ?, ?, TRUE)`,
+                [user.id, matric, fullName, email]
+            );
+        }
+
+        return await this.findStudentByUserId(user.id);
+    },
+
     async findStudentByMatric(matricNo) {
         if (!matricNo) return null;
         const rows = await query(

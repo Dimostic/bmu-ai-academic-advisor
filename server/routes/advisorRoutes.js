@@ -62,14 +62,24 @@ router.get('/usage', optionalAuth, getUsage);
 // that were created during the current session, so history isn't lost.
 router.get('/history', authenticateToken, async (req, res) => {
     try {
-        const student = await Advisor.findStudentByUserId(req.user.id);
+        const student = await Advisor.ensureStudentForUser(req.user);
         const limit = Math.max(1, Math.min(50, parseInt(req.query?.limit, 10) || 20));
+        const localSessions = String(req.query?.localSessions || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .slice(0, 80);
         
         // If user has a linked student record, get conversations for that student.
         // Also include conversations with student_id=NULL to capture any orphaned
         // conversations from before account linking.
         let rows = [];
         if (student?.id) {
+            const tokenPlaceholders = localSessions.map(() => '?').join(', ');
+            const includeLocalNull = localSessions.length
+                ? ` OR (c.student_id IS NULL AND c.session_token IN (${tokenPlaceholders}))`
+                : '';
+
             rows = await query(
                 `SELECT c.id,
                         c.session_token,
@@ -80,15 +90,11 @@ router.get('/history', authenticateToken, async (req, res) => {
                         (SELECT m.text FROM advisor_messages m WHERE m.conversation_id = c.id AND m.role = 'student' ORDER BY m.id ASC LIMIT 1) AS first_question,
                         (SELECT COUNT(*) FROM advisor_messages m WHERE m.conversation_id = c.id) AS message_count
                  FROM advisor_conversations c
-                 WHERE c.student_id = ? OR c.student_id IS NULL
+                 WHERE c.student_id = ?${includeLocalNull}
                  ORDER BY c.last_active_at DESC, c.id DESC
                  LIMIT ?`,
-                [student.id, limit]
+                [student.id, ...localSessions, limit]
             );
-        } else {
-            // No student record yet; still try to return recent conversations if any exist.
-            // This is a fallback for edge cases.
-            rows = [];
         }
 
         const conversations = rows.map(r => ({
@@ -121,6 +127,12 @@ router.get('/history/:sessionToken/messages', authenticateToken, async (req, res
             return res.status(400).json({ success: false, error: 'sessionToken is required' });
         }
 
+        const localSessions = String(req.query?.localSessions || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .slice(0, 80);
+
         const conv = await Advisor.getConversationByToken(sessionToken);
         if (!conv?.id) {
             return res.status(404).json({ success: false, error: 'Conversation not found' });
@@ -129,10 +141,14 @@ router.get('/history/:sessionToken/messages', authenticateToken, async (req, res
         // Verify ownership: if conversation has a student_id, verify it matches the logged-in user.
         // If conversation has NULL student_id, we accept it (orphaned conversation from before linking).
         if (conv.student_id !== null) {
-            const student = await Advisor.findStudentByUserId(req.user.id);
+            const student = await Advisor.ensureStudentForUser(req.user);
             if (!student?.id || conv.student_id !== student.id) {
                 return res.status(404).json({ success: false, error: 'Conversation not found' });
             }
+        } else if (!localSessions.includes(sessionToken)) {
+            // NULL-student legacy conversations are only readable if the
+            // browser presents a known local session token.
+            return res.status(404).json({ success: false, error: 'Conversation not found' });
         }
 
         const limit = Math.max(1, Math.min(200, parseInt(req.query?.limit, 10) || 120));
@@ -203,7 +219,7 @@ router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
 
         let student = null;
         if (req.user?.id) {
-            student = await Advisor.findStudentByUserId(req.user.id);
+            student = await Advisor.ensureStudentForUser(req.user);
             // Even when there's no `students` row, surface the user's first
             // name so the advisor can address them by name occasionally.
             if (!student && req.user.first_name) {
@@ -279,7 +295,7 @@ router.post('/ask/stream', optionalAuth, enforceLimits, async (req, res) => {
     try {
         let student = null;
         if (req.user?.id) {
-            student = await Advisor.findStudentByUserId(req.user.id);
+            student = await Advisor.ensureStudentForUser(req.user);
             if (!student && req.user.first_name) {
                 student = { first_name: req.user.first_name, full_name: `${req.user.first_name} ${req.user.last_name || ''}`.trim() };
             } else if (student && req.user.first_name && !student.first_name) {

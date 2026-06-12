@@ -66,6 +66,14 @@
             <div class="avatar-meta">
                 <strong id="advisorName">Dr. Tari</strong>
                 <span>BMU Academic Advisor</span>
+                <div class="avatar-audio-controls" aria-label="Speech controls">
+                    <button type="button" id="avatarMuteBtn" class="icon-btn" title="Mute advisor" aria-pressed="false">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                    <button type="button" id="avatarPauseBtn" class="icon-btn" title="Pause advisor speech" aria-pressed="false">
+                        <i class="fa-solid fa-pause"></i>
+                    </button>
+                </div>
             </div>
         </section>
 
@@ -162,8 +170,20 @@
                 <input type="tel" name="contactPhone" placeholder="0803…" />
             </label>
             <menu>
-                <button value="cancel" class="btn btn-ghost">Cancel</button>
-                <button value="confirm" class="btn btn-primary" id="escalateSubmit">Send</button>
+                <button type="submit" value="cancel" class="btn btn-ghost">Cancel</button>
+                <button type="submit" value="confirm" class="btn btn-primary" id="escalateSubmit">Send</button>
+            </menu>
+        </form>
+    </dialog>
+
+    <!-- Usage notice / limit reached overlay -->
+    <dialog id="usageOverlay" class="modal usage-overlay">
+        <form method="dialog" id="usageOverlayForm">
+            <h2 id="usageOverlayTitle"><i class="fa-solid fa-gauge"></i> Usage Limits</h2>
+            <p id="usageOverlayBody" class="muted"></p>
+            <ul id="usageOverlayHints" class="usage-hints"></ul>
+            <menu>
+                <button type="submit" value="ok" class="btn btn-primary" id="usageOverlayOk">Okay</button>
             </menu>
         </form>
     </dialog>

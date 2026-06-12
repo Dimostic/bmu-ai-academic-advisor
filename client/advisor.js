@@ -51,6 +51,8 @@
     const historyList   = $('historyList');
     const advisorStatus = $('avatarStatus');
     const avatarPane    = document.querySelector('.avatar-pane');
+    const avatarMuteBtn = $('avatarMuteBtn');
+    const avatarPauseBtn= $('avatarPauseBtn');
     // The SVG element is rendered inside #avatarSvgHost by applyAvatar().
     // We re-resolve advisorSvg / mouthShape / brow / hand handles every
     // time we render so they always point at the live nodes.
@@ -60,6 +62,10 @@
     const welcomeName   = $('welcomeName');
     const toastHost     = $('toastHost');
     const avatarToggleBtn = $('avatarToggleBtn');
+    const usageOverlay  = $('usageOverlay');
+    const usageOverlayTitle = $('usageOverlayTitle');
+    const usageOverlayBody  = $('usageOverlayBody');
+    const usageOverlayHints = $('usageOverlayHints');
 
     // Handbook (FAQ) browser
     const handbookBtn       = $('handbookBtn');
@@ -73,19 +79,36 @@
     // ---------- State ----------
     const state = {
         sessionToken: localStorage.getItem('bmu_advisor_session') || null,
+        localSessionTokens: (() => {
+            try {
+                const arr = JSON.parse(localStorage.getItem('bmu_advisor_sessions') || '[]');
+                return Array.isArray(arr) ? arr.filter(Boolean).slice(0, 80) : [];
+            } catch (_) {
+                return [];
+            }
+        })(),
         topics: [],
         token: sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || null,
         recording: false,
         mediaRecorder: null,
         audioCtx: null,
         currentAudio: null,
+        ttsMuted: localStorage.getItem('bmu_tts_muted') === '1',
+        ttsPaused: false,
         currentLottie: null,
         activeResponseBubble: null,
         speakingFocusTimer: null,
         lastSpeakingFocusAt: 0,
         historyLoaded: false,
-        loadingHistory: false
+        loadingHistory: false,
+        usageIntroShown: false,
+        usage: null
     };
+
+    if (state.sessionToken && !state.localSessionTokens.includes(state.sessionToken)) {
+        state.localSessionTokens = [state.sessionToken, ...state.localSessionTokens].slice(0, 80);
+        try { localStorage.setItem('bmu_advisor_sessions', JSON.stringify(state.localSessionTokens)); } catch (_) { /* ignore */ }
+    }
 
     function isMobileLayout() {
         return window.matchMedia('(max-width: 1024px)').matches;
@@ -125,6 +148,55 @@
 
     function authHeaders() {
         return state.token ? { Authorization: `Bearer ${state.token}` } : {};
+    }
+
+    function rememberSessionToken(token) {
+        const t = String(token || '').trim();
+        if (!t) return;
+        const next = [t, ...state.localSessionTokens.filter(x => x !== t)].slice(0, 80);
+        state.localSessionTokens = next;
+        try { localStorage.setItem('bmu_advisor_sessions', JSON.stringify(next)); } catch (_) { /* ignore */ }
+    }
+
+    function localSessionsQuery() {
+        return state.localSessionTokens.length
+            ? `&localSessions=${encodeURIComponent(state.localSessionTokens.join(','))}`
+            : '';
+    }
+
+    function showUsageOverlay({ title, body, hints = [] }) {
+        if (!usageOverlay) return;
+        if (usageOverlayTitle) usageOverlayTitle.innerHTML = `<i class="fa-solid fa-gauge"></i> ${escapeHtml(title || 'Usage Limits')}`;
+        if (usageOverlayBody) usageOverlayBody.textContent = body || '';
+        if (usageOverlayHints) {
+            usageOverlayHints.innerHTML = '';
+            for (const h of hints) {
+                const li = document.createElement('li');
+                li.textContent = h;
+                usageOverlayHints.appendChild(li);
+            }
+        }
+        if (typeof usageOverlay.showModal === 'function') usageOverlay.showModal();
+        else usageOverlay.setAttribute('open', '');
+    }
+
+    function maybeShowUsageIntro(user) {
+        if (!user || state.usageIntroShown) return;
+        const key = `bmu_usage_intro_seen_${user.id || user.email || 'user'}`;
+        if (localStorage.getItem(key) === '1') return;
+        const dayLimit = Number(state.usage?.day?.limit ?? 10);
+        const monthLimit = Number(state.usage?.month?.limit ?? 100);
+        showUsageOverlay({
+            title: 'Daily and Monthly Prompt Limits',
+            body: `You can ask up to ${dayLimit === -1 ? 'unlimited' : dayLimit} prompts per day and ${monthLimit === -1 ? 'unlimited' : monthLimit} prompts per month.`,
+            hints: [
+                'Your usage is tracked automatically each time the advisor replies.',
+                'Daily quota resets at midnight, monthly quota resets on the 1st.',
+                'If you hit a limit, you will see a prompt with what to do next.'
+            ]
+        });
+        localStorage.setItem(key, '1');
+        state.usageIntroShown = true;
     }
 
     // ---------- Toast ----------
@@ -611,7 +683,7 @@
         state.loadingHistory = true;
         historyList.innerHTML = '<p class="muted">Loading conversations…</p>';
         try {
-            const data = await api('/api/advisor/history?limit=20');
+            const data = await api(`/api/advisor/history?limit=20${localSessionsQuery()}`);
             const list = Array.isArray(data.conversations) ? data.conversations : [];
             state.historyLoaded = true;
 
@@ -651,7 +723,7 @@
         followups.innerHTML = '';
         setAvatarState('thinking', 'Loading conversation');
         try {
-            const data = await api(`/api/advisor/history/${encodeURIComponent(sessionToken)}/messages?limit=120`);
+            const data = await api(`/api/advisor/history/${encodeURIComponent(sessionToken)}/messages?limit=120${localSessionsQuery()}`);
             const messages = Array.isArray(data.messages) ? data.messages : [];
 
             transcript.innerHTML = '';
@@ -665,6 +737,7 @@
 
             state.sessionToken = sessionToken;
             localStorage.setItem('bmu_advisor_session', sessionToken);
+            rememberSessionToken(sessionToken);
             await loadHistoryList(true);
             setAvatarState('idle', 'Ready');
             scrollToBottom();
@@ -761,6 +834,7 @@
                 stopCurrentAudio();
                 const audio = new Audio(audioUrl);
                 audio.crossOrigin = 'anonymous';
+                audio.volume = state.ttsMuted ? 0 : 1;
                 state.currentAudio = audio;
 
                 if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -808,8 +882,12 @@
                 };
 
                 audio.addEventListener('play', () => { setAvatarState('speaking', 'Speaking'); tick(); });
+                audio.addEventListener('pause', () => {
+                    if (!audio.ended) setAvatarState('idle', 'Paused');
+                });
                 audio.addEventListener('ended', () => {
                     cancelAnimationFrame(raf); setMouthOpenness(0); setAvatarState('idle', 'Ready');
+                    state.ttsPaused = false;
                     const dur = audio.duration && isFinite(audio.duration) ? audio.duration * 1000 : 0;
                     resolve(dur);
                 });
@@ -825,6 +903,7 @@
     function stopCurrentAudio() {
         if (state.currentAudio) {
             try { state.currentAudio.pause(); } catch (_) {}
+            try { state.currentAudio.currentTime = 0; } catch (_) {}
             state.currentAudio = null;
         }
         if (state.activeUtterance) {
@@ -832,7 +911,64 @@
             state.activeUtterance = null;
         }
         try { window.speechSynthesis?.cancel(); } catch (_) {}
+        state.ttsPaused = false;
         setMouthOpenness(0);
+        if (avatarPauseBtn) {
+            avatarPauseBtn.setAttribute('aria-pressed', 'false');
+            avatarPauseBtn.classList.remove('is-active');
+            avatarPauseBtn.title = 'Pause advisor speech';
+            avatarPauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+        }
+    }
+
+    function applyMuteState() {
+        if (state.currentAudio) {
+            state.currentAudio.volume = state.ttsMuted ? 0 : 1;
+        }
+        if (avatarMuteBtn) {
+            avatarMuteBtn.setAttribute('aria-pressed', state.ttsMuted ? 'true' : 'false');
+            avatarMuteBtn.classList.toggle('is-active', state.ttsMuted);
+            avatarMuteBtn.title = state.ttsMuted ? 'Unmute advisor' : 'Mute advisor';
+            avatarMuteBtn.innerHTML = state.ttsMuted
+                ? '<i class="fa-solid fa-volume-xmark"></i>'
+                : '<i class="fa-solid fa-volume-high"></i>';
+        }
+    }
+
+    function togglePauseSpeech() {
+        if (state.currentAudio) {
+            if (state.currentAudio.paused) {
+                state.currentAudio.play().catch(() => {});
+                state.ttsPaused = false;
+            } else {
+                state.currentAudio.pause();
+                state.ttsPaused = true;
+            }
+        } else if (window.speechSynthesis?.speaking) {
+            if (window.speechSynthesis.paused) {
+                try { window.speechSynthesis.resume(); } catch (_) {}
+                state.ttsPaused = false;
+                setAvatarState('speaking', 'Speaking');
+            } else {
+                try { window.speechSynthesis.pause(); } catch (_) {
+                    try { window.speechSynthesis.cancel(); } catch (_) {}
+                }
+                state.ttsPaused = true;
+                setAvatarState('idle', 'Paused');
+            }
+        } else {
+            return;
+        }
+
+        if (avatarPauseBtn) {
+            const paused = state.ttsPaused;
+            avatarPauseBtn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+            avatarPauseBtn.classList.toggle('is-active', paused);
+            avatarPauseBtn.title = paused ? 'Resume advisor speech' : 'Pause advisor speech';
+            avatarPauseBtn.innerHTML = paused
+                ? '<i class="fa-solid fa-play"></i>'
+                : '<i class="fa-solid fa-pause"></i>';
+        }
     }
 
     /** Pick a browser SpeechSynthesis voice that matches the user's
@@ -925,7 +1061,7 @@
                 u.lang = (v && v.lang) || 'en-NG';
                 u.rate = 1.02;
                 u.pitch = gender === 'male' ? 0.85 : 1.10;
-                u.volume = 1;
+                u.volume = state.ttsMuted ? 0 : 1;
                 console.info('[advisor] browser TTS voice:', v ? `${v.name} (${v.lang})` : 'default', '| gender wanted:', gender);
 
                 // Drive lip-sync during browser TTS. Since we cannot read
@@ -976,11 +1112,13 @@
                 };
                 u.onend = () => {
                     stopPulse();
+                    state.ttsPaused = false;
                     setAvatarState('idle', 'Ready');
                     resolve(Math.max(1500, cleaned.length * 70));
                 };
                 u.onerror = () => {
                     stopPulse();
+                    state.ttsPaused = false;
                     setAvatarState('idle', 'Ready');
                     resolve(0);
                 };
@@ -1036,13 +1174,30 @@
                 // "HTTP 429" toast, since these are expected end-user states.
                 if (res.status === 429) {
                     let msg = 'You have reached your usage limit. Please try again later.';
+                    let code = '';
+                    let limit = null;
+                    let used = null;
                     try {
                         const j = await res.json();
                         if (j?.error) msg = j.error;
+                        code = String(j?.code || '');
+                        limit = Number.isFinite(Number(j?.limit)) ? Number(j.limit) : null;
+                        used = Number.isFinite(Number(j?.used)) ? Number(j.used) : null;
                     } catch (_) { /* ignore */ }
                     bubble.body.textContent = msg;
                     if (bubble.caret) bubble.caret.remove();
                     setAvatarState('idle', 'Limit reached');
+                    showUsageOverlay({
+                        title: code === 'MONTHLY_LIMIT_REACHED' ? 'Monthly Limit Reached' : 'Daily Limit Reached',
+                        body: msg,
+                        hints: [
+                            (limit !== null && used !== null) ? `Used: ${used} of ${limit}` : 'Your quota has been exhausted for this window.',
+                            code === 'MONTHLY_LIMIT_REACHED'
+                                ? 'Your monthly prompt quota resets on the 1st day of next month.'
+                                : 'Your daily prompt quota resets after midnight.',
+                            'You can still browse conversation history while waiting for reset.'
+                        ]
+                    });
                     return;
                 }
                 throw new Error(`HTTP ${res.status}`);
@@ -1078,6 +1233,7 @@
                             state.sessionToken = data.sessionToken;
                             localStorage.setItem('bmu_advisor_session', data.sessionToken);
                         }
+                        if (data.sessionToken) rememberSessionToken(data.sessionToken);
                     } else if (event === 'speech_ready') {
                         speechText = data.speech_text || '';
                         // Avatar status hint: voice is being prepared.
@@ -1306,6 +1462,22 @@
     micBtn.addEventListener('click', () => {
         if (state.recording) stopListening(); else startListening();
     });
+
+    if (avatarMuteBtn) {
+        avatarMuteBtn.addEventListener('click', () => {
+            state.ttsMuted = !state.ttsMuted;
+            localStorage.setItem('bmu_tts_muted', state.ttsMuted ? '1' : '0');
+            applyMuteState();
+            toast(state.ttsMuted ? 'Advisor speech muted' : 'Advisor speech unmuted');
+        });
+        applyMuteState();
+    }
+
+    if (avatarPauseBtn) {
+        avatarPauseBtn.addEventListener('click', () => {
+            togglePauseSpeech();
+        });
+    }
 
     // ---------- Avatar quick-toggle ----------
     if (avatarToggleBtn) {
@@ -1714,7 +1886,8 @@
 
     window.addEventListener('resize', syncMobileLayoutVars, { passive: true });
             if (showQuota) {
-                refreshQuotaBadge();
+                await refreshQuotaBadge();
+                maybeShowUsageIntro(user);
                 // Refresh after each ask completes (askNow updates the cached
                 // quota via this same call).
                 window.refreshAdvisorQuota = refreshQuotaBadge;
@@ -1726,6 +1899,7 @@
             if (!badge) return;
             try {
                 const u = await api('/api/advisor/usage');
+                state.usage = u;
                 if (u?.anonymous) { badge.remove(); return; }
                 const day = u.day || {};
                 const month = u.month || {};
