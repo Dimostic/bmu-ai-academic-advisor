@@ -137,18 +137,35 @@
                 <path d="M110 135 Q108 148 105 152 Q110 156 115 152 Q112 148 110 135 Z"
                       fill="${SKIN_F_DARK}" opacity=".35"/>
 
-                <!-- ============= MOUTH (path-driven) ============= -->
-                <!-- d-attribute is computed by JS — see updateMouth() in advisor.js.
-                     Initial state: gentle closed smile. -->
-                <g id="avMouthGroup" transform="translate(110 165)">
-                    <path id="avMouth"
-                          d="M -14 0 Q 0 6 14 0"
-                          fill="none" stroke="#552220" stroke-width="3"
-                          stroke-linecap="round"/>
-                    <!-- inner mouth (used while speaking; revealed by JS) -->
-                    <path id="avMouthInner"
-                          d="M -10 1 Q 0 1 10 1 Q 0 1 -10 1 Z"
-                          fill="#3a1f12" opacity="0"/>
+                <!-- ============= MOUTH (path-driven) =============
+                     Built from four parts so the lip-sync is genuinely
+                     visible: dark cavity at the back, off-white teeth
+                     strip in front of it, then upper-lip + lower-lip
+                     paths on top. The driver code in advisor.js
+                     re-computes all four `d=` attributes each frame; at
+                     rest it forms a closed smile, while speaking the
+                     upper lip lifts and the lower lip drops to expose
+                     the cavity. -->
+                <g id="avMouthGroup" transform="translate(110 167)">
+                    <!-- back cavity (visible when mouth is open) -->
+                    <path id="avMouthCavity"
+                          d="M -16 0 Q 0 0 16 0 Q 0 0 -16 0 Z"
+                          fill="#2a0d05"/>
+                    <!-- teeth strip in front of the cavity -->
+                    <path id="avMouthTeeth"
+                          d="M -14 -1 Q 0 -1 14 -1 Q 0 -1 -14 -1 Z"
+                          fill="#f7ecd9" opacity="0"/>
+                    <!-- upper lip -->
+                    <path id="avMouthUpper"
+                          d="M -16 0 Q -8 -2 0 -2 Q 8 -2 16 0 Q 8 0 0 0 Q -8 0 -16 0 Z"
+                          fill="#7a2f29" stroke="#552220" stroke-width=".6"/>
+                    <!-- lower lip -->
+                    <path id="avMouthLower"
+                          d="M -16 0 Q -8 4 0 4 Q 8 4 16 0 Q 8 0 0 0 Q -8 0 -16 0 Z"
+                          fill="#8a3a32" stroke="#552220" stroke-width=".6"/>
+                    <!-- legacy id retained so older code paths still find it -->
+                    <path id="avMouth" d="M -14 0 Q 0 0 14 0" stroke="none" fill="none"/>
+                    <path id="avMouthInner" d="M -10 0 Q 0 0 10 0 Z" fill="none" opacity="0"/>
                 </g>
 
                 <!-- subtle blush -->
@@ -262,15 +279,24 @@
                 <!-- moustache (subtle) -->
                 <path d="M96 162 Q110 158 124 162" stroke="${HAIR}" stroke-width="2" fill="none"/>
 
-                <!-- MOUTH -->
-                <g id="avMouthGroup" transform="translate(110 168)">
-                    <path id="avMouth"
-                          d="M -13 0 Q 0 5 13 0"
-                          fill="none" stroke="#3a1f12" stroke-width="3"
-                          stroke-linecap="round"/>
-                    <path id="avMouthInner"
-                          d="M -10 1 Q 0 1 10 1 Q 0 1 -10 1 Z"
-                          fill="#3a1f12" opacity="0"/>
+                <!-- ============= MOUTH (path-driven) =============
+                     Same shape as the female avatar's mouth so the
+                     driver code in advisor.js works for both. -->
+                <g id="avMouthGroup" transform="translate(110 170)">
+                    <path id="avMouthCavity"
+                          d="M -15 0 Q 0 0 15 0 Q 0 0 -15 0 Z"
+                          fill="#2a0d05"/>
+                    <path id="avMouthTeeth"
+                          d="M -13 -1 Q 0 -1 13 -1 Q 0 -1 -13 -1 Z"
+                          fill="#f7ecd9" opacity="0"/>
+                    <path id="avMouthUpper"
+                          d="M -15 0 Q -7 -2 0 -2 Q 7 -2 15 0 Q 7 0 0 0 Q -7 0 -15 0 Z"
+                          fill="#5a2a1f" stroke="#3a1f12" stroke-width=".6"/>
+                    <path id="avMouthLower"
+                          d="M -15 0 Q -7 4 0 4 Q 7 4 15 0 Q 7 0 0 0 Q -7 0 -15 0 Z"
+                          fill="#6a3225" stroke="#3a1f12" stroke-width=".6"/>
+                    <path id="avMouth" d="M -13 0 Q 0 0 13 0" stroke="none" fill="none"/>
+                    <path id="avMouthInner" d="M -10 0 Q 0 0 10 0 Z" fill="none" opacity="0"/>
                 </g>
 
                 <!-- chin shadow -->

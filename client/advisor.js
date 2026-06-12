@@ -54,7 +54,7 @@
     // We re-resolve advisorSvg / mouthShape / brow / hand handles every
     // time we render so they always point at the live nodes.
     const avatarSvgHost = $('avatarSvgHost');
-    let advisorSvg, mouthShape, mouthInner, browL, browR, lidL, lidR, pupilL, pupilR, headG, handL, handR;
+    let advisorSvg, mouthShape, mouthInner, mouthUpper, mouthLower, mouthCavity, mouthTeeth, browL, browR, lidL, lidR, pupilL, pupilR, headG, handL, handR;
     const advisorName   = $('advisorName');
     const welcomeName   = $('welcomeName');
     const toastHost     = $('toastHost');
@@ -140,6 +140,10 @@
         advisorSvg = avatarSvgHost.querySelector('#avatarSvg');
         mouthShape = avatarSvgHost.querySelector('#avMouth');
         mouthInner = avatarSvgHost.querySelector('#avMouthInner');
+        mouthUpper = avatarSvgHost.querySelector('#avMouthUpper');
+        mouthLower = avatarSvgHost.querySelector('#avMouthLower');
+        mouthCavity= avatarSvgHost.querySelector('#avMouthCavity');
+        mouthTeeth = avatarSvgHost.querySelector('#avMouthTeeth');
         browL      = avatarSvgHost.querySelector('#avBrowL');
         browR      = avatarSvgHost.querySelector('#avBrowR');
         lidL       = avatarSvgHost.querySelector('#avLidL');
@@ -227,24 +231,74 @@
     }, 3500);
 
     // ---------- Mouth shape ----------
-    // Build a quadratic Bezier between (-W, 0) and (W, 0) with a control
-    // point that's `open` units below for an open mouth, or `smile`
-    // units above for a smile. Mixing the two gives natural "speaking
-    // while smiling" curves.
+    // Drives the four mouth pieces (upper lip, lower lip, cavity, teeth)
+    // from a 0..1 openness level. The previous single-curve mouth was
+    // visually too subtle — students reported lip-sync was hard to see.
+    // Now:
+    //   - upper lip rises  by up to 5px
+    //   - lower lip drops  by up to 9px  (asymmetric like a real jaw)
+    //   - cavity opens to follow the new lip gap (dark void in back)
+    //   - teeth strip fades in at half-open (visible only when wide)
+    //   - smile/concerned/neutral expressions reshape the LIP CORNERS
+    //     so a smile while speaking still reads as a smile.
     function setMouthOpenness(level) {
-        if (!mouthShape) return;
-        const W = 14;
-        const open  = Math.max(0, Math.min(1, level)) * 9;     // px below baseline
-        const smile = currentExpression === 'smile' ? 6
-                    : currentExpression === 'concerned' ? -3
-                    : 0;
-        const cy = open - smile;                                 // control-point y
-        const d = `M ${-W} 0 Q 0 ${cy.toFixed(1)} ${W} 0`;
-        mouthShape.setAttribute('d', d);
-        if (mouthInner) {
-            const innerOpen = Math.max(0, Math.min(1, level));
-            mouthInner.setAttribute('opacity', (innerOpen * 0.85).toFixed(2));
-            mouthInner.setAttribute('d', `M ${-W+4} 0 Q 0 ${(open*0.7).toFixed(1)} ${W-4} 0 Q 0 ${(open*0.4).toFixed(1)} ${-W+4} 0 Z`);
+        if (!mouthUpper || !mouthLower) return;
+        const W = 16;
+        const open = Math.max(0, Math.min(1, level));   // 0..1
+
+        // Vertical lip displacement. The lower lip moves further than the
+        // upper lip (the jaw drops more than the upper face).
+        const upperRise = open * 5;        // px the upper lip travels UP
+        const lowerDrop = open * 9;        // px the lower lip travels DOWN
+
+        // Lip corner offset for expression. Smile pulls corners up (-3),
+        // concerned pulls them down (+2.5), neutral stays flat.
+        const cornerY = currentExpression === 'smile'     ? -3
+                      : currentExpression === 'concerned' ?  2.5
+                      : currentExpression === 'surprised' ? -1
+                      : 0;
+
+        // Upper lip: corners at (±W, cornerY), bow dipping at (0, -upperRise)
+        const upperD = `M ${-W} ${cornerY} Q ${-W*0.4} ${cornerY - upperRise * 0.6} 0 ${-upperRise} ` +
+                       `Q ${W*0.4} ${cornerY - upperRise * 0.6} ${W} ${cornerY} ` +
+                       `Q ${W*0.4} ${cornerY - upperRise * 0.2} 0 ${-upperRise + 1.5} ` +
+                       `Q ${-W*0.4} ${cornerY - upperRise * 0.2} ${-W} ${cornerY} Z`;
+        mouthUpper.setAttribute('d', upperD);
+
+        // Lower lip: corners at (±W, cornerY), curving DOWN to (0, lowerDrop)
+        const lowerD = `M ${-W} ${cornerY} Q ${-W*0.4} ${cornerY + lowerDrop * 0.7} 0 ${lowerDrop} ` +
+                       `Q ${W*0.4} ${cornerY + lowerDrop * 0.7} ${W} ${cornerY} ` +
+                       `Q ${W*0.4} ${cornerY + lowerDrop * 0.3} 0 ${lowerDrop - 1.5} ` +
+                       `Q ${-W*0.4} ${cornerY + lowerDrop * 0.3} ${-W} ${cornerY} Z`;
+        mouthLower.setAttribute('d', lowerD);
+
+        // Cavity: an oval that fills the space between lip tips. Hidden
+        // when nearly closed (open<0.05) so we don't render a black line
+        // when the mouth is at rest.
+        if (mouthCavity) {
+            if (open < 0.05) {
+                mouthCavity.setAttribute('d', `M 0 0 Z`);
+            } else {
+                const innerW = W * 0.85;
+                const top    = -upperRise * 0.85;
+                const bottom =  lowerDrop * 0.85;
+                mouthCavity.setAttribute('d',
+                    `M ${-innerW} 0 Q 0 ${top.toFixed(1)} ${innerW} 0 Q 0 ${bottom.toFixed(1)} ${-innerW} 0 Z`);
+            }
+        }
+
+        // Teeth strip: fades in from open=0.35 onwards so a wide-open
+        // mouth shows a clear off-white strip across the top half of the
+        // cavity. Looks like the upper teeth.
+        if (mouthTeeth) {
+            const teethOpacity = Math.max(0, (open - 0.35) / 0.6);   // 0..1 as open goes 0.35->0.95
+            const teethW = W * 0.75;
+            const teethTop = -upperRise * 0.55;
+            const teethBot = -upperRise * 0.15;
+            mouthTeeth.setAttribute('opacity', teethOpacity.toFixed(2));
+            mouthTeeth.setAttribute('d',
+                `M ${-teethW} ${teethTop.toFixed(1)} L ${teethW} ${teethTop.toFixed(1)} ` +
+                `L ${teethW} ${teethBot.toFixed(1)} L ${-teethW} ${teethBot.toFixed(1)} Z`);
         }
     }
 
@@ -252,24 +306,59 @@
     // Maps a high-level mood to brow + mouth shape. The chat layer calls
     // setExpression('smile') after a successful answer, 'thinking' while
     // the LLM is generating, 'concerned' for escalations, etc.
+    //
+    // Important: the female and male avatars have brows at slightly
+    // different x-anchors. We read those anchors from the SVG's initial
+    // d= attribute once per render so the same logic works for both.
+    let browAnchors = null;
+    function _captureBrowAnchors() {
+        if (!browL || !browR) { browAnchors = null; return; }
+        // d looks like "M82 118 Q92 113 102 118". Parse the three x's of
+        // each brow and the resting y.
+        const parse = (path) => {
+            const nums = (path.getAttribute('d') || '').match(/-?\d+(?:\.\d+)?/g) || [];
+            // [Mx My Qcx cy Lx Ly] — start, control, end
+            return {
+                x0: +nums[0], y0: +nums[1],
+                cx: +nums[2], cy: +nums[3],
+                x1: +nums[4], y1: +nums[5]
+            };
+        };
+        browAnchors = {
+            L: parse(browL),
+            R: parse(browR),
+        };
+    }
+
     function setExpression(mood) {
         currentExpression = ['neutral','smile','concerned','thinking','surprised'].includes(mood)
             ? mood : 'neutral';
         if (!browL || !browR) return;
-        // The avatar SVGs draw the brows roughly at y=116-118; we rewrite
-        // the path d= to bend up (raise) or down (furrow) by a few pixels.
-        const browPaths = {
-            neutral:    [['M82 118 Q92 113 102 118'], ['M118 118 Q128 113 138 118']],
-            smile:      [['M82 116 Q92 110 102 116'], ['M118 116 Q128 110 138 116']],
-            concerned:  [['M82 122 Q92 117 102 122'], ['M118 122 Q128 117 138 122']],
-            thinking:   [['M82 117 Q92 112 102 117'], ['M120 119 Q130 113 138 121']], // asymmetric
-            surprised:  [['M82 110 Q92 104 102 110'], ['M118 110 Q128 104 138 110']]
+        if (!browAnchors) _captureBrowAnchors();
+        if (!browAnchors) return;
+
+        // For each mood we shift the resting y (DY) and the curvature (CV).
+        // Positive DY = brow lower on the face (looks concerned/furrowed);
+        // negative DY = brow higher (raised/surprised). CV > 0 deepens the
+        // arch (worried); CV < 0 lifts the inner brow (happy).
+        const moods = {
+            neutral:    { dy:  0,  cv:  0,  asym: 0 },
+            smile:      { dy: -2,  cv: -3,  asym: 0 },
+            concerned:  { dy:  3,  cv:  3,  asym: 0 },
+            thinking:   { dy:  1,  cv:  0,  asym: 3 },   // right brow lifts
+            surprised:  { dy: -7,  cv: -5,  asym: 0 }
         };
-        // For male portraits the brows sit a touch lower; the male SVG
-        // happens to use the same y-range so we can share the same paths.
-        const [ld, rd] = browPaths[currentExpression];
-        browL.setAttribute('d', ld[0]);
-        browR.setAttribute('d', rd[0]);
+        const m = moods[currentExpression];
+        const renderBrow = (anchor, side) => {
+            const dy = m.dy + (side === 'R' ? m.asym : 0);
+            const cv = m.cv + (side === 'R' ? -m.asym * 0.6 : 0);
+            const x0 = anchor.x0, x1 = anchor.x1, cx = anchor.cx;
+            const yBase = anchor.y0;     // resting y
+            const yCtrl = anchor.cy + cv;
+            return `M${x0} ${yBase + dy} Q${cx} ${yCtrl + dy} ${x1} ${yBase + dy}`;
+        };
+        browL.setAttribute('d', renderBrow(browAnchors.L, 'L'));
+        browR.setAttribute('d', renderBrow(browAnchors.R, 'R'));
         // Re-render the mouth so the smile/frown curve picks up.
         setMouthOpenness(0);
     }
@@ -459,16 +548,29 @@
                 const data = new Uint8Array(analyser.frequencyBinCount);
 
                 let raf;
+                // Smoothed lip-sync level. Without smoothing the mouth
+                // jitters at frame-rate; without amplification the FFT
+                // sum from typical TTS rarely exceeds ~0.4 of the [0,1]
+                // range so the mouth barely moves. We boost AND smooth
+                // for a more obviously articulated motion.
+                let smoothLevel = 0;
                 const tick = () => {
                     analyser.getByteFrequencyData(data);
                     let sum = 0; const len = Math.min(64, data.length);
                     for (let i = 4; i < len; i++) sum += data[i];
-                    const level = Math.min(1, sum / (len * 110));
-                    setMouthOpenness(level);
+                    // Raw is roughly 0..0.6 for TTS. Multiply by 2.2 then
+                    // clamp so a loud word maps to fully-open and quiet
+                    // periods clearly close.
+                    const raw = Math.min(1, (sum / (len * 110)) * 2.2);
+                    // EMA smoothing — opens fast (0.45), closes slower (0.18)
+                    // so the mouth doesn't snap shut between vowels.
+                    const alpha = raw > smoothLevel ? 0.45 : 0.18;
+                    smoothLevel = smoothLevel + (raw - smoothLevel) * alpha;
+                    setMouthOpenness(smoothLevel);
                     raf = requestAnimationFrame(tick);
                 };
 
-                audio.addEventListener('play', () => { setAvatarState('talking', 'Speaking'); tick(); });
+                audio.addEventListener('play', () => { setAvatarState('speaking', 'Speaking'); tick(); });
                 audio.addEventListener('ended', () => {
                     cancelAnimationFrame(raf); setMouthOpenness(0); setAvatarState('idle', 'Ready');
                     const dur = audio.duration && isFinite(audio.duration) ? audio.duration * 1000 : 0;
@@ -588,24 +690,34 @@
                 u.volume = 1;
                 console.info('[advisor] browser TTS voice:', v ? `${v.name} (${v.lang})` : 'default', '| gender wanted:', gender);
 
-                // Drive a simple lip-sync pulse during speaking. We track
-                // BOTH the rAF id AND the timeout id so onend can hard-stop
-                // every pending tick — previous version only cancelled the
-                // rAF, leaving an orphaned setTimeout that re-opened the
-                // mouth after the audio was finished.
-                let opening = 0;
+                // Drive lip-sync during speaking. We can't FFT the browser
+                // TTS audio (it doesn't expose an audio stream), so we
+                // synthesise a fake amplitude envelope: a sine wave at
+                // syllable-rate (~5 Hz) multiplied by random vowel
+                // intensity, hard-reset to full open on each word
+                // boundary the engine reports. This gives much more
+                // obvious mouth motion than the previous binary toggle.
                 let pulseRaf = null;
                 let pulseTimer = null;
                 let stopped = false;
+                let lastOpen = 0;
+                let boundaryBoost = 0;       // bumped on every onboundary
+                const startedAt = performance.now();
 
-                const pulse = () => {
+                const animate = () => {
                     if (stopped) return;
-                    opening = opening > 0.05 ? 0 : 0.7;
-                    setMouthOpenness(opening);
-                    pulseRaf = requestAnimationFrame(() => {
-                        if (stopped) return;
-                        pulseTimer = setTimeout(pulse, 110);
-                    });
+                    const t = (performance.now() - startedAt) / 1000;
+                    // 5 Hz "syllable" oscillation + small jitter so adjacent
+                    // beats aren't identical.
+                    const wave = 0.5 + 0.45 * Math.sin(t * 2 * Math.PI * 5);
+                    const jitter = 0.05 * Math.sin(t * 2 * Math.PI * 13);
+                    // boundaryBoost decays back to 0 over ~250 ms.
+                    boundaryBoost = Math.max(0, boundaryBoost - 0.06);
+                    const target = Math.min(1, wave + jitter + boundaryBoost);
+                    // Light smoothing so motion isn't twitchy.
+                    lastOpen = lastOpen + (target - lastOpen) * 0.35;
+                    setMouthOpenness(lastOpen);
+                    pulseRaf = requestAnimationFrame(animate);
                 };
 
                 const stopPulse = () => {
@@ -613,14 +725,18 @@
                     if (pulseRaf) cancelAnimationFrame(pulseRaf);
                     if (pulseTimer) clearTimeout(pulseTimer);
                     pulseRaf = pulseTimer = null;
+                    lastOpen = 0;
                     setMouthOpenness(0);
                 };
 
                 u.onstart = () => {
                     setAvatarState('speaking', 'Speaking');
-                    pulse();
+                    animate();
                 };
-                u.onboundary = () => { if (!stopped) { opening = 0.7; setMouthOpenness(opening); } };
+                // Each word boundary briefly opens the mouth wider so the
+                // motion correlates with actual speech rather than just
+                // running on a metronome.
+                u.onboundary = () => { if (!stopped) boundaryBoost = 0.6; };
                 u.onend = () => {
                     stopPulse();
                     setAvatarState('idle', 'Ready');

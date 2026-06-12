@@ -136,24 +136,27 @@ html[data-theme="dark"] .avatar-stage {
 }
 .avatar-svg-host svg.av-thinking #avHead { animation: av-think-tilt 3.2s ease-in-out infinite; }
 
-/* Speaking: head bob + hand emphasis. No background glow / pulse. */
+/* Speaking: subtle head sway + hand emphasis. The previous bob ran at
+   0.55s and was very obvious; people read it as "bobbing". Now slower
+   (1.6s) and smaller — the head feels alive without distracting. The
+   mouth animation in JS does the heavy lifting for "is talking". */
 @keyframes av-speak-bob {
-    0%, 100% { transform: translateY(0); }
-    25%      { transform: translateY(-1.5px); }
-    75%      { transform: translateY(-0.5px); }
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    33%      { transform: translateY(-0.6px) rotate(-0.4deg); }
+    66%      { transform: translateY(-0.3px) rotate(0.3deg); }
 }
 @keyframes av-hand-l-emph {
     0%, 100% { transform: translate(50px, 268px) rotate(0deg); }
-    40%      { transform: translate(50px, 264px) rotate(-12deg); }
+    40%      { transform: translate(50px, 265px) rotate(-8deg); }
     60%      { transform: translate(50px, 268px) rotate(0deg); }
 }
 @keyframes av-hand-r-emph {
     0%, 100% { transform: translate(170px, 268px) rotate(0deg); }
-    50%      { transform: translate(170px, 264px) rotate(10deg); }
+    50%      { transform: translate(170px, 265px) rotate(6deg); }
 }
-.avatar-svg-host svg.av-speaking #avHead  { animation: av-speak-bob .55s ease-in-out infinite; transform-origin: 110px 200px; }
-.avatar-svg-host svg.av-speaking #avHandL { animation: av-hand-l-emph 2.4s ease-in-out infinite; }
-.avatar-svg-host svg.av-speaking #avHandR { animation: av-hand-r-emph 2.0s ease-in-out infinite; }
+.avatar-svg-host svg.av-speaking #avHead  { animation: av-speak-bob 1.6s ease-in-out infinite; transform-origin: 110px 200px; }
+.avatar-svg-host svg.av-speaking #avHandL { animation: av-hand-l-emph 3.2s ease-in-out infinite; }
+.avatar-svg-host svg.av-speaking #avHandR { animation: av-hand-r-emph 2.8s ease-in-out infinite; }
 .avatar-status {
     position: absolute; left: 12px; bottom: 12px;
     background: rgba(15, 61, 62, .85); color: #fff;
