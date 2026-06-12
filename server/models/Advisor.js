@@ -77,6 +77,54 @@ const Advisor = {
         return rows[0] || null;
     },
 
+    async getConversationByTokenForStudent(token, studentId) {
+        if (!token || !studentId) return null;
+        const rows = await query(
+            `SELECT *
+             FROM advisor_conversations
+             WHERE session_token = ? AND student_id = ?
+             LIMIT 1`,
+            [token, studentId]
+        );
+        return rows[0] || null;
+    },
+
+    async listConversationsByStudentId(studentId, limit = 20) {
+        if (!studentId) return [];
+        const safeLimit = Math.max(1, Math.min(50, parseInt(limit, 10) || 20));
+        return await query(
+            `SELECT c.id,
+                    c.session_token,
+                    c.title,
+                    c.last_active_at,
+                    c.created_at,
+                    (
+                        SELECT m.text
+                        FROM advisor_messages m
+                        WHERE m.conversation_id = c.id
+                        ORDER BY m.id DESC
+                        LIMIT 1
+                    ) AS last_message,
+                    (
+                        SELECT m.text
+                        FROM advisor_messages m
+                        WHERE m.conversation_id = c.id AND m.role = 'student'
+                        ORDER BY m.id ASC
+                        LIMIT 1
+                    ) AS first_question,
+                    (
+                        SELECT COUNT(*)
+                        FROM advisor_messages m
+                        WHERE m.conversation_id = c.id
+                    ) AS message_count
+             FROM advisor_conversations c
+             WHERE c.student_id = ?
+             ORDER BY c.last_active_at DESC, c.id DESC
+             LIMIT ?`,
+            [studentId, safeLimit]
+        );
+    },
+
     async touchConversation(id, topicId = null) {
         await query(
             `UPDATE advisor_conversations
@@ -132,6 +180,22 @@ const Advisor = {
              ORDER BY id DESC
              LIMIT ?`,
             [conversationId, limit]
+        );
+    },
+
+    async getConversationMessages(conversationId, limit = 120) {
+        const safeLimit = Math.max(1, Math.min(200, parseInt(limit, 10) || 120));
+        return await query(
+            `SELECT role, text, speech_text, display_markdown, topic_id, created_at
+             FROM (
+                SELECT id, role, text, speech_text, display_markdown, topic_id, created_at
+                FROM advisor_messages
+                WHERE conversation_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+             ) AS recent
+             ORDER BY recent.id ASC`,
+            [conversationId, safeLimit]
         );
     },
 

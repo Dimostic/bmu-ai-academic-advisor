@@ -16,7 +16,7 @@ const express = require('express');
 const multer = require('multer');
 const router = express.Router();
 
-const { optionalAuth } = require('../middleware/auth');
+const { optionalAuth, authenticateToken } = require('../middleware/auth');
 const { enforceLimits, recordUsage, getUsage } = require('../middleware/usageLimits');
 const Advisor = require('../models/Advisor');
 const advisorService = require('../services/advisorService');
@@ -51,6 +51,73 @@ router.get('/topics', async (_req, res) => {
 // GET /api/advisor/usage — caller's quota for the day + month
 // ---------------------------------------------------------------------------
 router.get('/usage', optionalAuth, getUsage);
+
+// ---------------------------------------------------------------------------
+// GET /api/advisor/history — recent conversations for the signed-in user
+// ---------------------------------------------------------------------------
+router.get('/history', authenticateToken, async (req, res) => {
+    try {
+        const student = await Advisor.findStudentByUserId(req.user.id);
+        if (!student?.id) {
+            return res.json({ success: true, conversations: [] });
+        }
+
+        const limit = Math.max(1, Math.min(50, parseInt(req.query?.limit, 10) || 20));
+        const rows = await Advisor.listConversationsByStudentId(student.id, limit);
+
+        const conversations = rows.map(r => ({
+            sessionToken: r.session_token,
+            title: (r.title || r.first_question || 'Conversation').toString().slice(0, 120),
+            preview: (r.last_message || '').toString().slice(0, 180),
+            messageCount: Number(r.message_count || 0),
+            lastActiveAt: r.last_active_at,
+            createdAt: r.created_at
+        }));
+
+        res.json({ success: true, conversations });
+    } catch (err) {
+        console.error('[advisorRoutes] history:', err.message);
+        res.status(500).json({ success: false, error: 'Could not load conversation history' });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/advisor/history/:sessionToken/messages
+// ---------------------------------------------------------------------------
+router.get('/history/:sessionToken/messages', authenticateToken, async (req, res) => {
+    try {
+        const sessionToken = String(req.params.sessionToken || '').trim();
+        if (!sessionToken) {
+            return res.status(400).json({ success: false, error: 'sessionToken is required' });
+        }
+
+        const student = await Advisor.findStudentByUserId(req.user.id);
+        if (!student?.id) {
+            return res.status(404).json({ success: false, error: 'Conversation not found' });
+        }
+
+        const conv = await Advisor.getConversationByTokenForStudent(sessionToken, student.id);
+        if (!conv?.id) {
+            return res.status(404).json({ success: false, error: 'Conversation not found' });
+        }
+
+        const limit = Math.max(1, Math.min(200, parseInt(req.query?.limit, 10) || 120));
+        const messages = await Advisor.getConversationMessages(conv.id, limit);
+
+        res.json({
+            success: true,
+            conversation: {
+                sessionToken: conv.session_token,
+                lastActiveAt: conv.last_active_at,
+                createdAt: conv.created_at
+            },
+            messages
+        });
+    } catch (err) {
+        console.error('[advisorRoutes] history messages:', err.message);
+        res.status(500).json({ success: false, error: 'Could not load conversation messages' });
+    }
+});
 
 // ---------------------------------------------------------------------------
 // GET /api/advisor/health

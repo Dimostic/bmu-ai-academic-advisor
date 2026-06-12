@@ -82,7 +82,9 @@
         currentLottie: null,
         activeResponseBubble: null,
         speakingFocusTimer: null,
-        lastSpeakingFocusAt: 0
+        lastSpeakingFocusAt: 0,
+        historyLoaded: false,
+        loadingHistory: false
     };
 
     function isMobileLayout() {
@@ -502,6 +504,17 @@
         };
     }
 
+    function addAdvisorHistoryBubble(text) {
+        const el = document.createElement('article');
+        el.className = 'bubble bubble--advisor';
+        const body = escapeHtml(text || '');
+        el.innerHTML = `
+            <header><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(window.ADVISOR_NAME || 'Dr. Tari')}</header>
+            <div class="bubble-body">${body}</div>`;
+        transcript.appendChild(el);
+        return el;
+    }
+
     function fillBubbleMeta(bubble, { citations, suggested_actions, speech_text, audio_url }) {
         if (Array.isArray(suggested_actions) && suggested_actions.length) {
             bubble.actions.innerHTML = '';
@@ -581,6 +594,83 @@
         } else if (action.startsWith('open_url:')) {
             const url = action.slice('open_url:'.length);
             if (/^https?:\/\//.test(url)) window.open(url, '_blank', 'noopener');
+        }
+    }
+
+    function formatHistoryTime(value) {
+        if (!value) return '';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return '';
+        return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    async function loadHistoryList(force = false) {
+        if (!state.token) return;
+        if (state.loadingHistory) return;
+        if (state.historyLoaded && !force) return;
+        state.loadingHistory = true;
+        historyList.innerHTML = '<p class="muted">Loading conversations…</p>';
+        try {
+            const data = await api('/api/advisor/history?limit=20');
+            const list = Array.isArray(data.conversations) ? data.conversations : [];
+            state.historyLoaded = true;
+
+            if (!list.length) {
+                historyList.innerHTML = '<p class="muted">No conversations yet. Ask your first question to start one.</p>';
+                return;
+            }
+
+            historyList.innerHTML = '';
+            for (const c of list) {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'item';
+                item.style.width = '100%';
+                item.style.textAlign = 'left';
+                item.style.background = 'transparent';
+                const active = state.sessionToken && c.sessionToken === state.sessionToken;
+                if (active) item.style.borderColor = 'var(--accent)';
+                item.innerHTML = `
+                    <div class="title">${escapeHtml(c.title || 'Conversation')}</div>
+                    <div class="when">${escapeHtml(formatHistoryTime(c.lastActiveAt || c.createdAt))}${c.messageCount ? ` • ${c.messageCount} msgs` : ''}</div>
+                    ${c.preview ? `<div class="when">${escapeHtml(String(c.preview).slice(0, 100))}</div>` : ''}
+                `;
+                item.addEventListener('click', () => openHistoryConversation(c.sessionToken));
+                historyList.appendChild(item);
+            }
+        } catch (err) {
+            historyList.innerHTML = '<p class="muted">Could not load conversation history.</p>';
+        } finally {
+            state.loadingHistory = false;
+        }
+    }
+
+    async function openHistoryConversation(sessionToken) {
+        if (!sessionToken) return;
+        stopCurrentAudio();
+        followups.innerHTML = '';
+        setAvatarState('thinking', 'Loading conversation');
+        try {
+            const data = await api(`/api/advisor/history/${encodeURIComponent(sessionToken)}/messages?limit=120`);
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+
+            transcript.innerHTML = '';
+            for (const m of messages) {
+                if (m.role === 'student') {
+                    addStudentBubble(m.text || '');
+                } else if (m.role === 'advisor') {
+                    addAdvisorHistoryBubble(m.display_markdown || m.speech_text || m.text || '');
+                }
+            }
+
+            state.sessionToken = sessionToken;
+            localStorage.setItem('bmu_advisor_session', sessionToken);
+            await loadHistoryList(true);
+            setAvatarState('idle', 'Ready');
+            scrollToBottom();
+        } catch (err) {
+            setAvatarState('idle', 'Ready');
+            toast(err.message || 'Could not open this conversation.', 'error');
         }
     }
 
@@ -1059,6 +1149,9 @@
         } finally {
             sendBtn.disabled = false;
             if (!audioStarted) setAvatarState('idle', 'Ready');
+            if (state.token && state.historyLoaded) {
+                loadHistoryList(true).catch(() => {});
+            }
             // Refresh the quota badge — usage went up by one (or stayed
             // the same if the call failed before recordUsage ran).
             if (typeof window.refreshAdvisorQuota === 'function') {
@@ -1254,13 +1347,15 @@
     });
 
     // ---------- History sidebar ----------
-    historyToggle?.addEventListener('click', () => historyPane.classList.toggle('hidden'));
+    historyToggle?.addEventListener('click', async () => {
+        historyPane.classList.toggle('hidden');
+        if (!historyPane.classList.contains('hidden')) await loadHistoryList();
+    });
     historyClose?.addEventListener('click', () => historyPane.classList.add('hidden'));
     if (state.token) {
         historyToggle?.classList.remove('hidden');
         historyPane.classList.remove('hidden');
-        // (History list endpoint not yet implemented — placeholder.)
-        historyList.innerHTML = '<p class="muted">Your recent conversations will appear here in a future update.</p>';
+        loadHistoryList().catch(() => {});
     }
 
     // ---------- Form ----------
