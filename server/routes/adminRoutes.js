@@ -1653,6 +1653,133 @@ router.post('/cache/warmup-queries', authenticateToken, requireAdmin, async (req
     }
 });
 
+async function _promoteAdvisorMessageToCache({ advisorId, question, answer, categoryId, qaType, adminUserId, ipAddress, userAgent }) {
+    const arows = await query(
+        `SELECT id, conversation_id, text AS advisor_text,
+                display_markdown, speech_text, citations_json
+         FROM advisor_messages
+         WHERE id = ? AND role = 'advisor' LIMIT 1`,
+        [advisorId]
+    );
+    const a = arows[0];
+    if (!a) {
+        const err = new Error('Advisor message not found');
+        err.status = 404;
+        throw err;
+    }
+
+    let q = String(question || '').trim();
+    if (!q) {
+        const srows = await query(
+            `SELECT text FROM advisor_messages
+             WHERE conversation_id = ? AND role = 'student' AND id < ?
+             ORDER BY id DESC LIMIT 1`,
+            [a.conversation_id, a.id]
+        );
+        q = String(srows[0]?.text || '').trim();
+    }
+    if (!q) {
+        const err = new Error('No preceding student question found; supply question to override.');
+        err.status = 400;
+        throw err;
+    }
+
+    let ans = String(answer || '').trim();
+    if (!ans) ans = String(a.display_markdown || a.speech_text || a.advisor_text || '').trim();
+    if (!ans || ans.length < 8) {
+        const err = new Error('Answer is empty or too short to cache.');
+        err.status = 400;
+        throw err;
+    }
+
+    const existingRows = await query(
+        `SELECT id FROM cached_qa WHERE is_active = 1 AND question = ? LIMIT 1`,
+        [q]
+    );
+
+    let answerSources = [];
+    try { answerSources = a.citations_json ? JSON.parse(a.citations_json) : []; }
+    catch (_) { answerSources = []; }
+
+    let embedding = null;
+    try {
+        const aiService = require('../services/aiService');
+        embedding = await aiService.generateEmbedding(q, true);
+    } catch (err) {
+        console.warn('[promote-qa] embedding failed:', err.message);
+    }
+
+    const CachedQA = require('../models/CachedQA');
+    if (existingRows.length) {
+        const id = existingRows[0].id;
+        await query(
+            `UPDATE cached_qa
+             SET answer            = ?,
+                 answer_sources    = ?,
+                 embedding         = ?,
+                 confidence_score  = 1.0,
+                 is_active         = 1,
+                 is_verified       = 1,
+                 verified_by       = ?,
+                 verified_at       = NOW(),
+                 qa_type           = ?,
+                 updated_at        = NOW()
+             WHERE id = ?`,
+            [
+                ans,
+                JSON.stringify(answerSources),
+                embedding ? JSON.stringify(embedding) : null,
+                adminUserId,
+                qaType || 'curated',
+                id
+            ]
+        );
+        await AuditTrail.log({
+            userId: adminUserId,
+            action: 'PROMOTE_ADVISOR_QA',
+            entityType: 'cached_qa',
+            entityId: id,
+            details: { advisorMessageId: advisorId, mode: 'refreshed' },
+            ipAddress,
+            userAgent
+        });
+        _invalidateFAQCache();
+        return { mode: 'refreshed', cachedQaId: id };
+    }
+
+    const newId = await CachedQA.create({
+        documentId: null,
+        categoryId: categoryId || null,
+        question: q,
+        questionVariations: [],
+        answer: ans,
+        answerSources,
+        embedding,
+        confidenceScore: 1.0,
+        createdBy: adminUserId,
+        qaType: qaType || 'curated'
+    });
+
+    try {
+        await query(
+            `UPDATE cached_qa SET is_verified = 1, verified_by = ?, verified_at = NOW() WHERE id = ?`,
+            [adminUserId, newId]
+        );
+    } catch (_) { /* ignore */ }
+
+    await AuditTrail.log({
+        userId: adminUserId,
+        action: 'PROMOTE_ADVISOR_QA',
+        entityType: 'cached_qa',
+        entityId: newId,
+        details: { advisorMessageId: advisorId, mode: 'created' },
+        ipAddress,
+        userAgent
+    });
+    _invalidateFAQCache();
+    return { mode: 'created', cachedQaId: newId };
+}
+
 // ============================================================================
 // FAQ Curation — review recent advisor Q&A turns and promote them into the
 // `cached_qa` table so they short-circuit the LLM next time the same (or
@@ -1712,6 +1839,12 @@ router.get('/advisor/recent-qa', authenticateToken, requireAdmin, async (req, re
                                 rq.auto_cached,
                                 rq.auto_cached_qa_id,
                                 rq.score_version,
+                                 rq.feedback_score,
+                                 rq.helpful_count,
+                                 rq.not_helpful_count,
+                                 rq.admin_cache_decision,
+                                 rq.admin_cache_user_id,
+                                 rq.admin_cache_decided_at,
                 (SELECT s.text
                    FROM advisor_messages s
                    WHERE s.conversation_id = a.conversation_id
@@ -1755,7 +1888,9 @@ router.get('/advisor/quality-summary', authenticateToken, requireAdmin, async (r
                 AVG(overall_score) AS avg_overall,
                 SUM(CASE WHEN overall_score < 0.70 THEN 1 ELSE 0 END) AS low_quality,
                 SUM(CASE WHEN auto_cache_eligible = 1 THEN 1 ELSE 0 END) AS eligible_for_auto_cache,
-                SUM(CASE WHEN auto_cached = 1 THEN 1 ELSE 0 END) AS auto_cached_count
+                SUM(CASE WHEN auto_cached = 1 THEN 1 ELSE 0 END) AS auto_cached_count,
+                SUM(COALESCE(helpful_count, 0)) AS helpful_votes,
+                SUM(COALESCE(not_helpful_count, 0)) AS unhelpful_votes
             FROM advisor_response_quality
         `);
         res.json({ success: true, summary: rows[0] || {} });
@@ -1775,143 +1910,94 @@ router.post('/advisor/promote/:id', authenticateToken, requireAdmin, async (req,
 
         // Optional overrides
         let { question, answer, categoryId, qaType } = req.body || {};
-
-        // Pull the advisor row + its preceding student question.
-        const arows = await query(
-            `SELECT id, conversation_id, text AS advisor_text,
-                    display_markdown, speech_text, citations_json
-             FROM advisor_messages
-             WHERE id = ? AND role = 'advisor' LIMIT 1`,
-            [advisorId]
-        );
-        const a = arows[0];
-        if (!a) return res.status(404).json({ success: false, error: 'Advisor message not found' });
-
-        if (!question) {
-            const srows = await query(
-                `SELECT text FROM advisor_messages
-                 WHERE conversation_id = ? AND role = 'student' AND id < ?
-                 ORDER BY id DESC LIMIT 1`,
-                [a.conversation_id, a.id]
-            );
-            question = (srows[0]?.text || '').trim();
-        }
-        if (!question) {
-            return res.status(400).json({
-                success: false,
-                error: 'No preceding student question found; supply `question` in the body to override.'
-            });
-        }
-
-        if (!answer) {
-            // Prefer the cleaner display_markdown; fall back to speech_text.
-            answer = (a.display_markdown || a.speech_text || a.advisor_text || '').trim();
-        }
-        if (!answer || answer.length < 8) {
-            return res.status(400).json({ success: false, error: 'Answer is empty or too short to cache.' });
-        }
-
-        // De-dupe: if this exact question is already cached & active, refresh
-        // its answer instead of inserting a duplicate.
-        const existingRows = await query(
-            `SELECT id FROM cached_qa WHERE is_active = 1 AND question = ? LIMIT 1`,
-            [question]
-        );
-
-        let answerSources = [];
-        try { answerSources = a.citations_json ? JSON.parse(a.citations_json) : []; }
-        catch (_) { answerSources = []; }
-
-        // Generate embedding for the question.
-        let embedding = null;
-        try {
-            const aiService = require('../services/aiService');
-            embedding = await aiService.generateEmbedding(question, true);
-        } catch (err) {
-            console.warn('[promote-qa] embedding failed:', err.message);
-            // Still allow promotion — the FAQ service will skip rows with no
-            // embedding when matching, but the row is still usable via
-            // exact-question lookup.
-        }
-
-        const CachedQA = require('../models/CachedQA');
-
-        if (existingRows.length) {
-            const id = existingRows[0].id;
-            // Direct SQL update (CachedQA.update() whitelists fewer columns
-            // than we need for a curated refresh — we want to bump answer,
-            // sources, embedding, verification AND qa_type in one shot).
-            await query(
-                `UPDATE cached_qa
-                 SET answer            = ?,
-                     answer_sources    = ?,
-                     embedding         = ?,
-                     confidence_score  = 1.0,
-                     is_active         = 1,
-                     is_verified       = 1,
-                     verified_by       = ?,
-                     verified_at       = NOW(),
-                     qa_type           = ?,
-                     updated_at        = NOW()
-                 WHERE id = ?`,
-                [
-                    answer,
-                    JSON.stringify(answerSources),
-                    embedding ? JSON.stringify(embedding) : null,
-                    req.user.id,
-                    qaType || 'curated',
-                    id
-                ]
-            );
-            await AuditTrail.log({
-                userId: req.user.id,
-                action: 'PROMOTE_ADVISOR_QA',
-                entityType: 'cached_qa',
-                entityId: id,
-                details: { advisorMessageId: advisorId, mode: 'refreshed' },
-                ipAddress: req.ip,
-                userAgent: req.headers['user-agent']
-            });
-            _invalidateFAQCache();
-            return res.json({ success: true, mode: 'refreshed', cachedQaId: id });
-        }
-
-        const newId = await CachedQA.create({
-            documentId: null,
-            categoryId: categoryId || null,
+        const result = await _promoteAdvisorMessageToCache({
+            advisorId,
             question,
-            questionVariations: [],
             answer,
-            answerSources,
-            embedding,
-            confidenceScore: 1.0,
-            createdBy: req.user.id,
-            qaType: qaType || 'curated'
-        });
-
-        // Mark verified (curated by an admin).
-        try {
-            await query(
-                `UPDATE cached_qa SET is_verified = 1, verified_by = ?, verified_at = NOW() WHERE id = ?`,
-                [req.user.id, newId]
-            );
-        } catch (_) { /* table may not have these columns in all envs */ }
-
-        await AuditTrail.log({
-            userId: req.user.id,
-            action: 'PROMOTE_ADVISOR_QA',
-            entityType: 'cached_qa',
-            entityId: newId,
-            details: { advisorMessageId: advisorId, mode: 'created' },
+            categoryId,
+            qaType,
+            adminUserId: req.user.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent']
         });
-        _invalidateFAQCache();
-
-        res.json({ success: true, mode: 'created', cachedQaId: newId });
+        try {
+            await responseQualityService.setAdminCacheDecision({ advisorMessageId: advisorId, decision: 'approved', adminUserId: req.user.id });
+        } catch (_) { /* ignore */ }
+        res.json({ success: true, mode: result.mode, cachedQaId: result.cachedQaId });
     } catch (err) {
         console.error('Promote advisor Q&A error:', err);
-        res.status(500).json({ success: false, error: 'Could not promote Q&A' });
+        res.status(err.status || 500).json({ success: false, error: err.message || 'Could not promote Q&A' });
+    }
+});
+
+// Admin decision on score-driven caching for a specific advisor reply.
+// approve => force promote/refresh in cache; block => prevent auto-cache use.
+router.post('/advisor/quality/:id/decision', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const advisorId = parseInt(req.params.id, 10);
+        const decision = String(req.body?.decision || '').trim().toLowerCase();
+        if (!advisorId) return res.status(400).json({ success: false, error: 'Invalid advisor message id' });
+        if (!['approved', 'blocked', 'none'].includes(decision)) {
+            return res.status(400).json({ success: false, error: 'decision must be approved, blocked, or none' });
+        }
+
+        let promoted = null;
+        if (decision === 'approved') {
+            promoted = await _promoteAdvisorMessageToCache({
+                advisorId,
+                question: req.body?.question,
+                answer: req.body?.answer,
+                categoryId: req.body?.categoryId,
+                qaType: 'curated',
+                adminUserId: req.user.id,
+                ipAddress: req.ip,
+                userAgent: req.headers['user-agent']
+            });
+        }
+
+        await responseQualityService.setAdminCacheDecision({
+            advisorMessageId: advisorId,
+            decision,
+            adminUserId: req.user.id
+        });
+
+        if (decision === 'blocked') {
+            const rows = await query(
+                `SELECT auto_cached_qa_id FROM advisor_response_quality WHERE advisor_message_id = ? LIMIT 1`,
+                [advisorId]
+            );
+            const cachedId = Number(rows?.[0]?.auto_cached_qa_id || 0);
+            if (cachedId) {
+                await query(`UPDATE cached_qa SET is_active = 0 WHERE id = ?`, [cachedId]);
+                await query(
+                    `UPDATE advisor_response_quality
+                     SET auto_cached = 0,
+                         auto_cached_qa_id = NULL
+                     WHERE advisor_message_id = ?`,
+                    [advisorId]
+                );
+                _invalidateFAQCache();
+            }
+        }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'ADVISOR_CACHE_DECISION',
+            entityType: 'advisor_message',
+            entityId: advisorId,
+            details: { decision, promotedCachedQaId: promoted?.cachedQaId || null },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        return res.json({
+            success: true,
+            decision,
+            promoted: promoted ? { mode: promoted.mode, cachedQaId: promoted.cachedQaId } : null
+        });
+    } catch (err) {
+        console.error('Advisor cache decision error:', err);
+        res.status(err.status || 500).json({ success: false, error: err.message || 'Could not save decision' });
     }
 });
 

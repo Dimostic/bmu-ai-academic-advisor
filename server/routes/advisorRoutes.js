@@ -24,6 +24,7 @@ const advisorService = require('../services/advisorService');
 const advisorStreamService = require('../services/advisorStreamService');
 const sttService = require('../services/sttService');
 const ttsService = require('../services/ttsService');
+const responseQualityService = require('../services/responseQualityService');
 const emailService = (() => {
     try { return require('../services/emailService'); }
     catch (_) { return null; }
@@ -351,6 +352,56 @@ router.post('/ask/stream', optionalAuth, enforceLimits, async (req, res) => {
     } finally {
         clearInterval(heartbeat);
         if (!closed) res.end();
+    }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/advisor/feedback
+// Body: { advisorMessageId, helpful, comment? }
+// ---------------------------------------------------------------------------
+router.post('/feedback', authenticateToken, async (req, res) => {
+    try {
+        const advisorMessageId = parseInt(req.body?.advisorMessageId, 10);
+        const helpful = req.body?.helpful;
+        const comment = req.body?.comment;
+
+        if (!advisorMessageId || typeof helpful !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                error: 'advisorMessageId and boolean helpful are required'
+            });
+        }
+
+        const rows = await query(
+            `SELECT m.id, c.student_id
+             FROM advisor_messages m
+             JOIN advisor_conversations c ON c.id = m.conversation_id
+             WHERE m.id = ? AND m.role = 'advisor'
+             LIMIT 1`,
+            [advisorMessageId]
+        );
+        const msg = rows[0];
+        if (!msg) return res.status(404).json({ success: false, error: 'Advisor message not found' });
+
+        // Ownership guard when the conversation is tied to a student record.
+        if (msg.student_id !== null) {
+            const student = await Advisor.ensureStudentForUser(req.user);
+            if (!student?.id || student.id !== msg.student_id) {
+                return res.status(403).json({ success: false, error: 'Not allowed to rate this message' });
+            }
+        }
+
+        const agg = await responseQualityService.recordFeedback({
+            advisorMessageId,
+            userId: req.user.id,
+            helpful,
+            comment
+        });
+
+        return res.json({ success: true, feedback: agg });
+    } catch (err) {
+        console.error('[advisorRoutes] feedback:', err.message);
+        return res.status(500).json({ success: false, error: 'Could not save feedback' });
     }
 });
 

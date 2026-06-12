@@ -125,6 +125,12 @@ async function ensureTable() {
             completeness_score DECIMAL(5,4) NULL,
             overall_score DECIMAL(5,4) NULL,
             score_version VARCHAR(32) NOT NULL DEFAULT 'heuristic_v1',
+            feedback_score DECIMAL(5,4) NULL,
+            helpful_count INT UNSIGNED NOT NULL DEFAULT 0,
+            not_helpful_count INT UNSIGNED NOT NULL DEFAULT 0,
+            admin_cache_decision VARCHAR(16) NOT NULL DEFAULT 'none',
+            admin_cache_user_id BIGINT UNSIGNED NULL,
+            admin_cache_decided_at TIMESTAMP NULL,
             auto_cache_eligible TINYINT(1) NOT NULL DEFAULT 0,
             auto_cached TINYINT(1) NOT NULL DEFAULT 0,
             auto_cached_qa_id BIGINT UNSIGNED NULL,
@@ -136,6 +142,38 @@ async function ensureTable() {
             KEY idx_auto_cache (auto_cache_eligible, auto_cached)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    await query(`
+        CREATE TABLE IF NOT EXISTS advisor_response_feedback (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            advisor_message_id BIGINT UNSIGNED NOT NULL,
+            user_id BIGINT UNSIGNED NULL,
+            helpful TINYINT(1) NOT NULL,
+            comment VARCHAR(500) NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_msg_user (advisor_message_id, user_id),
+            KEY idx_msg_helpful (advisor_message_id, helpful)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Backward-compatible upgrades for already-existing deployments.
+    const alters = [
+        `ALTER TABLE advisor_response_quality ADD COLUMN feedback_score DECIMAL(5,4) NULL`,
+        `ALTER TABLE advisor_response_quality ADD COLUMN helpful_count INT UNSIGNED NOT NULL DEFAULT 0`,
+        `ALTER TABLE advisor_response_quality ADD COLUMN not_helpful_count INT UNSIGNED NOT NULL DEFAULT 0`,
+        `ALTER TABLE advisor_response_quality ADD COLUMN admin_cache_decision VARCHAR(16) NOT NULL DEFAULT 'none'`,
+        `ALTER TABLE advisor_response_quality ADD COLUMN admin_cache_user_id BIGINT UNSIGNED NULL`,
+        `ALTER TABLE advisor_response_quality ADD COLUMN admin_cache_decided_at TIMESTAMP NULL`
+    ];
+    for (const sql of alters) {
+        try { await query(sql); }
+        catch (err) {
+            // Ignore duplicate-column errors on environments already migrated.
+            if (!err || (err.code !== 'ER_DUP_FIELDNAME' && err.errno !== 1060)) throw err;
+        }
+    }
 }
 
 async function saveAssessment({
@@ -253,6 +291,7 @@ async function assessAndMaybeCache({
     citations,
     needsEscalation
 }) {
+    await ensureTable();
     const { metrics, autoCacheEligible } = evaluate({
         questionText,
         answerText,
@@ -261,19 +300,31 @@ async function assessAndMaybeCache({
         needsEscalation
     });
 
+    const decisionRows = await query(
+        `SELECT admin_cache_decision
+         FROM advisor_response_quality
+         WHERE advisor_message_id = ?
+         LIMIT 1`,
+        [advisorMessageId]
+    );
+    const adminDecision = String(decisionRows?.[0]?.admin_cache_decision || 'none').toLowerCase();
+    const shouldForceCache = adminDecision === 'approved';
+    const shouldBlockCache = adminDecision === 'blocked';
+    const effectiveAutoCacheEligible = shouldBlockCache ? false : (autoCacheEligible || shouldForceCache);
+
     await saveAssessment({
         advisorMessageId,
         conversationId,
         questionText,
         answerText,
         metrics,
-        autoCacheEligible
+        autoCacheEligible: effectiveAutoCacheEligible
     });
 
     let autoCached = false;
     let cachedQaId = null;
 
-    if (autoCacheEligible) {
+    if (effectiveAutoCacheEligible) {
         const r = await _autoCacheIfEligible({ questionText, answerText, citations, metrics });
         autoCached = r.autoCached;
         cachedQaId = r.cachedQaId;
@@ -288,11 +339,97 @@ async function assessAndMaybeCache({
         }
     }
 
-    return { metrics, autoCacheEligible, autoCached, cachedQaId };
+    return {
+        metrics,
+        autoCacheEligible: effectiveAutoCacheEligible,
+        autoCached,
+        cachedQaId,
+        adminDecision
+    };
+}
+
+async function _recomputeFeedbackAggregate(advisorMessageId) {
+    await ensureTable();
+    const rows = await query(
+        `SELECT
+            SUM(CASE WHEN helpful = 1 THEN 1 ELSE 0 END) AS helpful_count,
+            SUM(CASE WHEN helpful = 0 THEN 1 ELSE 0 END) AS not_helpful_count
+         FROM advisor_response_feedback
+         WHERE advisor_message_id = ?`,
+        [advisorMessageId]
+    );
+    const helpful = Number(rows?.[0]?.helpful_count || 0);
+    const notHelpful = Number(rows?.[0]?.not_helpful_count || 0);
+    const total = helpful + notHelpful;
+    const feedbackScore = total > 0 ? helpful / total : null;
+
+    await query(
+        `UPDATE advisor_response_quality
+         SET helpful_count = ?,
+             not_helpful_count = ?,
+             feedback_score = ?
+         WHERE advisor_message_id = ?`,
+        [helpful, notHelpful, feedbackScore, advisorMessageId]
+    );
+
+    return { helpful_count: helpful, not_helpful_count: notHelpful, feedback_score: feedbackScore };
+}
+
+async function recordFeedback({ advisorMessageId, userId = null, helpful, comment = null }) {
+    await ensureTable();
+    const aid = parseInt(advisorMessageId, 10);
+    if (!aid) throw new Error('Invalid advisor message id');
+
+    // Ensure quality row exists even if feedback arrives before scoring.
+    await query(
+        `INSERT INTO advisor_response_quality (advisor_message_id)
+         VALUES (?)
+         ON DUPLICATE KEY UPDATE advisor_message_id = VALUES(advisor_message_id)`,
+        [aid]
+    );
+
+    await query(
+        `INSERT INTO advisor_response_feedback
+            (advisor_message_id, user_id, helpful, comment)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            helpful = VALUES(helpful),
+            comment = VALUES(comment),
+            updated_at = CURRENT_TIMESTAMP`,
+        [aid, userId || null, helpful ? 1 : 0, comment ? String(comment).slice(0, 500) : null]
+    );
+
+    return await _recomputeFeedbackAggregate(aid);
+}
+
+async function setAdminCacheDecision({ advisorMessageId, decision, adminUserId }) {
+    await ensureTable();
+    const aid = parseInt(advisorMessageId, 10);
+    if (!aid) throw new Error('Invalid advisor message id');
+    const d = ['none', 'approved', 'blocked'].includes(String(decision || ''))
+        ? String(decision)
+        : 'none';
+
+    await query(
+        `INSERT INTO advisor_response_quality
+            (advisor_message_id, admin_cache_decision, admin_cache_user_id, admin_cache_decided_at)
+         VALUES
+            (?, ?, ?, CASE WHEN ? = 'none' THEN NULL ELSE CURRENT_TIMESTAMP END)
+         ON DUPLICATE KEY UPDATE
+            admin_cache_decision = VALUES(admin_cache_decision),
+            admin_cache_user_id = VALUES(admin_cache_user_id),
+            admin_cache_decided_at = CASE WHEN VALUES(admin_cache_decision) = 'none' THEN NULL ELSE CURRENT_TIMESTAMP END,
+            auto_cache_eligible = CASE WHEN VALUES(admin_cache_decision) = 'blocked' THEN 0 ELSE auto_cache_eligible END`,
+        [aid, d, adminUserId || null, d]
+    );
+
+    return { advisorMessageId: aid, decision: d };
 }
 
 module.exports = {
     ensureTable,
     evaluate,
-    assessAndMaybeCache
+    assessAndMaybeCache,
+    recordFeedback,
+    setAdminCacheDecision
 };

@@ -400,7 +400,9 @@
                 `<span class="badge">Avg quality: ${(avg * 100).toFixed(1)}%</span>`,
                 `<span class="badge">Low-quality: ${Number(s.low_quality || 0)}</span>`,
                 `<span class="badge">Auto-cache eligible: ${Number(s.eligible_for_auto_cache || 0)}</span>`,
-                `<span class="badge">Auto-cached: ${Number(s.auto_cached_count || 0)}</span>`
+                `<span class="badge">Auto-cached: ${Number(s.auto_cached_count || 0)}</span>`,
+                `<span class="badge">Helpful votes: ${Number(s.helpful_votes || 0)}</span>`,
+                `<span class="badge">Unhelpful votes: ${Number(s.unhelpful_votes || 0)}</span>`
             ].join(' ');
         } catch (_) {
             const box = document.getElementById('qualitySummary');
@@ -431,6 +433,15 @@
                 const autoCache = it.auto_cached
                     ? '<span class="badge badge-ok">auto-cached</span>'
                     : (it.auto_cache_eligible ? '<span class="badge">auto-cache eligible</span>' : '');
+                const decision = String(it.admin_cache_decision || 'none');
+                const decisionBadge = decision === 'approved'
+                    ? '<span class="badge badge-ok">admin: approved</span>'
+                    : (decision === 'blocked' ? '<span class="badge badge-danger">admin: blocked</span>' : '');
+                const helpfulCount = Number(it.helpful_count || 0);
+                const notHelpfulCount = Number(it.not_helpful_count || 0);
+                const feedbackPct = (helpfulCount + notHelpfulCount) > 0
+                    ? `${((helpfulCount / (helpfulCount + notHelpfulCount)) * 100).toFixed(0)}%`
+                    : 'n/a';
                 const when = new Date(it.created_at).toLocaleString();
                 const fullAnswer = it.display_markdown || it.advisor_text || '';
                 const preview = fullAnswer.slice(0, 800);
@@ -442,6 +453,10 @@
                         ${cached}
                         ${scoreBadge}
                         ${autoCache}
+                        ${decisionBadge}
+                        <span class="badge">👍 ${helpfulCount}</span>
+                        <span class="badge">👎 ${notHelpfulCount}</span>
+                        <span class="badge">helpful rate: ${feedbackPct}</span>
                     </div>
                     <div class="curate-q"><strong>Q:</strong> ${escapeHtml(it.question_text || '')}</div>
                     <details class="curate-a">
@@ -451,6 +466,15 @@
                     <div class="curate-actions">
                         <button class="btn btn-primary btn-sm promote-btn" type="button">
                             <i class="fa-solid fa-star"></i> ${promoteLabel}
+                        </button>
+                        <button class="btn btn-ghost btn-sm approve-cache-btn" type="button">
+                            <i class="fa-solid fa-circle-check"></i> Approve auto-cache
+                        </button>
+                        <button class="btn btn-ghost btn-sm block-cache-btn" type="button">
+                            <i class="fa-solid fa-ban"></i> Block auto-cache
+                        </button>
+                        <button class="btn btn-ghost btn-sm clear-cache-decision-btn" type="button">
+                            <i class="fa-solid fa-rotate-left"></i> Clear decision
                         </button>
                         <button class="btn btn-ghost btn-sm edit-btn" type="button">
                             <i class="fa-solid fa-pen"></i> Edit &amp; promote
@@ -552,6 +576,63 @@
                         toast(err.message || 'Could not save', 'error');
                         submit.disabled = false;
                         submit.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save &amp; promote';
+                    }
+                });
+            });
+
+            listEl.querySelectorAll('.approve-cache-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const card = btn.closest('.curate-card');
+                    const id = card.dataset.id;
+                    btn.disabled = true;
+                    try {
+                        await api('/api/admin/advisor/quality/' + id + '/decision', {
+                            method: 'POST',
+                            body: { decision: 'approved' }
+                        });
+                        toast('Approved and promoted for cache');
+                        renderCurate();
+                    } catch (err) {
+                        toast(err.message || 'Could not approve cache decision', 'error');
+                        btn.disabled = false;
+                    }
+                });
+            });
+
+            listEl.querySelectorAll('.block-cache-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const card = btn.closest('.curate-card');
+                    const id = card.dataset.id;
+                    btn.disabled = true;
+                    try {
+                        await api('/api/admin/advisor/quality/' + id + '/decision', {
+                            method: 'POST',
+                            body: { decision: 'blocked' }
+                        });
+                        toast('Auto-cache blocked for this response');
+                        renderCurate();
+                    } catch (err) {
+                        toast(err.message || 'Could not block cache decision', 'error');
+                        btn.disabled = false;
+                    }
+                });
+            });
+
+            listEl.querySelectorAll('.clear-cache-decision-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const card = btn.closest('.curate-card');
+                    const id = card.dataset.id;
+                    btn.disabled = true;
+                    try {
+                        await api('/api/admin/advisor/quality/' + id + '/decision', {
+                            method: 'POST',
+                            body: { decision: 'none' }
+                        });
+                        toast('Cache decision reset');
+                        renderCurate();
+                    } catch (err) {
+                        toast(err.message || 'Could not clear cache decision', 'error');
+                        btn.disabled = false;
                     }
                 });
             });

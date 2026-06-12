@@ -587,7 +587,8 @@
         return el;
     }
 
-    function fillBubbleMeta(bubble, { citations, suggested_actions, speech_text, audio_url }) {
+    function fillBubbleMeta(bubble, { citations, suggested_actions, speech_text, audio_url, message_id }) {
+        if (message_id) bubble.el.dataset.messageId = String(message_id);
         if (Array.isArray(suggested_actions) && suggested_actions.length) {
             bubble.actions.innerHTML = '';
             for (const a of suggested_actions) {
@@ -614,9 +615,36 @@
                 });
                 bubble.actions.appendChild(b);
             }
-        } else {
+        }
+
+        const msgId = Number(bubble.el.dataset.messageId || message_id || 0);
+        if (msgId) {
+            const fbWrap = document.createElement('div');
+            fbWrap.className = 'advisor-feedback';
+            fbWrap.innerHTML = `
+                <button type="button" class="feedback-btn" data-helpful="1" title="Helpful">
+                    <i class="fa-regular fa-thumbs-up"></i>
+                </button>
+                <button type="button" class="feedback-btn" data-helpful="0" title="Not helpful">
+                    <i class="fa-regular fa-thumbs-down"></i>
+                </button>`;
+            const buttons = Array.from(fbWrap.querySelectorAll('.feedback-btn'));
+            buttons.forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const helpful = btn.getAttribute('data-helpful') === '1';
+                    const ok = await sendAdvisorFeedback(msgId, helpful);
+                    if (!ok) return;
+                    buttons.forEach(b => b.classList.remove('is-selected'));
+                    btn.classList.add('is-selected');
+                });
+            });
+            bubble.actions.appendChild(fbWrap);
+        }
+
+        if (!bubble.actions.children.length) {
             bubble.actions.remove();
         }
+
         if (Array.isArray(citations) && citations.length) {
             bubble.cite.innerHTML = `<strong>Sources:</strong> ${citations.map(c => escapeHtml(c.title || c.source || '')).join(' • ')}`;
             bubble.footer.classList.remove('hidden');
@@ -627,6 +655,20 @@
                 if (audio_url) playWithLipSync(audio_url, speech_text || '', bubble.el);
                 else if (speech_text) speakWithBrowser(speech_text, bubble.el);
             });
+        }
+    }
+
+    async function sendAdvisorFeedback(advisorMessageId, helpful) {
+        try {
+            await api('/api/advisor/feedback', {
+                method: 'POST',
+                body: { advisorMessageId, helpful }
+            });
+            toast(helpful ? 'Thanks. Marked helpful.' : 'Thanks. We will improve this answer.');
+            return true;
+        } catch (err) {
+            toast(err.message || 'Could not save feedback', 'error');
+            return false;
         }
     }
 
@@ -1276,7 +1318,8 @@
                     citations:         final.reply?.citations || [],
                     suggested_actions: final.reply?.suggested_actions || [],
                     speech_text:       final.reply?.speech_text || speechText,
-                    audio_url:         final.audio?.audio_url || audioUrl
+                    audio_url:         final.audio?.audio_url || audioUrl,
+                    message_id:        final.messageId || final.message_id || null
                 });
                 renderFollowups(final.reply?.follow_up_questions);
                 if (final.reply?.needs_escalation) addEscalationHint();
