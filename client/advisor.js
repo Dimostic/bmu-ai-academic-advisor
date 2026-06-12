@@ -101,6 +101,7 @@
     // blink, and a "thinking" furrow can co-exist with the speaking bob.
     let currentState = 'idle';
     let currentExpression = 'neutral';
+    let browAnchors = null;
 
     function setAvatarState(stateName, label) {
         currentState = stateName;
@@ -153,6 +154,7 @@
         headG      = avatarSvgHost.querySelector('#avHead');
         handL      = avatarSvgHost.querySelector('#avHandL');
         handR      = avatarSvgHost.querySelector('#avHandR');
+        browAnchors = null;
 
         const stage = document.getElementById('avatarStage');
         if (stage) {
@@ -310,7 +312,6 @@
     // Important: the female and male avatars have brows at slightly
     // different x-anchors. We read those anchors from the SVG's initial
     // d= attribute once per render so the same logic works for both.
-    let browAnchors = null;
     function _captureBrowAnchors() {
         if (!browL || !browR) { browAnchors = null; return; }
         // d looks like "M82 118 Q92 113 102 118". Parse the three x's of
