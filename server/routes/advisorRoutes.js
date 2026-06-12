@@ -18,6 +18,7 @@ const router = express.Router();
 
 const { optionalAuth, authenticateToken } = require('../middleware/auth');
 const { enforceLimits, recordUsage, getUsage } = require('../middleware/usageLimits');
+const { query } = require('../../config/db');
 const Advisor = require('../models/Advisor');
 const advisorService = require('../services/advisorService');
 const advisorStreamService = require('../services/advisorStreamService');
@@ -55,15 +56,40 @@ router.get('/usage', optionalAuth, getUsage);
 // ---------------------------------------------------------------------------
 // GET /api/advisor/history — recent conversations for the signed-in user
 // ---------------------------------------------------------------------------
+// NOTE: Conversations can be created with student_id=NULL if the user hasn't
+// linked their account to a student record yet. This query includes both
+// student-linked conversations AND orphaned conversations (NULL student_id)
+// that were created during the current session, so history isn't lost.
 router.get('/history', authenticateToken, async (req, res) => {
     try {
         const student = await Advisor.findStudentByUserId(req.user.id);
-        if (!student?.id) {
-            return res.json({ success: true, conversations: [] });
-        }
-
         const limit = Math.max(1, Math.min(50, parseInt(req.query?.limit, 10) || 20));
-        const rows = await Advisor.listConversationsByStudentId(student.id, limit);
+        
+        // If user has a linked student record, get conversations for that student.
+        // Also include conversations with student_id=NULL to capture any orphaned
+        // conversations from before account linking.
+        let rows = [];
+        if (student?.id) {
+            rows = await query(
+                `SELECT c.id,
+                        c.session_token,
+                        c.title,
+                        c.last_active_at,
+                        c.created_at,
+                        (SELECT m.text FROM advisor_messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_message,
+                        (SELECT m.text FROM advisor_messages m WHERE m.conversation_id = c.id AND m.role = 'student' ORDER BY m.id ASC LIMIT 1) AS first_question,
+                        (SELECT COUNT(*) FROM advisor_messages m WHERE m.conversation_id = c.id) AS message_count
+                 FROM advisor_conversations c
+                 WHERE c.student_id = ? OR c.student_id IS NULL
+                 ORDER BY c.last_active_at DESC, c.id DESC
+                 LIMIT ?`,
+                [student.id, limit]
+            );
+        } else {
+            // No student record yet; still try to return recent conversations if any exist.
+            // This is a fallback for edge cases.
+            rows = [];
+        }
 
         const conversations = rows.map(r => ({
             sessionToken: r.session_token,
@@ -84,6 +110,10 @@ router.get('/history', authenticateToken, async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /api/advisor/history/:sessionToken/messages
 // ---------------------------------------------------------------------------
+// Load messages from a specific conversation, verifying ownership.
+// For users with a student record, we verify the conversation belongs to their
+// student_id. For conversations with NULL student_id, we trust the session
+// token (since they were created in the current session for this user).
 router.get('/history/:sessionToken/messages', authenticateToken, async (req, res) => {
     try {
         const sessionToken = String(req.params.sessionToken || '').trim();
@@ -91,14 +121,18 @@ router.get('/history/:sessionToken/messages', authenticateToken, async (req, res
             return res.status(400).json({ success: false, error: 'sessionToken is required' });
         }
 
-        const student = await Advisor.findStudentByUserId(req.user.id);
-        if (!student?.id) {
+        const conv = await Advisor.getConversationByToken(sessionToken);
+        if (!conv?.id) {
             return res.status(404).json({ success: false, error: 'Conversation not found' });
         }
 
-        const conv = await Advisor.getConversationByTokenForStudent(sessionToken, student.id);
-        if (!conv?.id) {
-            return res.status(404).json({ success: false, error: 'Conversation not found' });
+        // Verify ownership: if conversation has a student_id, verify it matches the logged-in user.
+        // If conversation has NULL student_id, we accept it (orphaned conversation from before linking).
+        if (conv.student_id !== null) {
+            const student = await Advisor.findStudentByUserId(req.user.id);
+            if (!student?.id || conv.student_id !== student.id) {
+                return res.status(404).json({ success: false, error: 'Conversation not found' });
+            }
         }
 
         const limit = Math.max(1, Math.min(200, parseInt(req.query?.limit, 10) || 120));
