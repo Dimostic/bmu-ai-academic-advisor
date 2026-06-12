@@ -342,6 +342,8 @@
             <h2>Curate Q&amp;A</h2>
             <p class="lede">Add new question-answer pairs by hand, or promote existing advisor replies. Both go into the FAQ cache that short-circuits the LLM for future students.</p>
 
+            <div id="qualitySummary" class="admin-actions" style="margin-bottom:10px;"></div>
+
             <details class="curate-compose" id="composeBlock">
                 <summary><i class="fa-solid fa-plus"></i> Compose a new Q&amp;A</summary>
                 <form id="composeForm" class="curate-edit" style="margin-top:12px;">
@@ -372,6 +374,10 @@
             <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Recent advisor replies</h3>
             <div class="admin-actions">
                 <button class="btn btn-ghost" id="curateRefresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                <label style="display:flex;gap:6px;align-items:center;">
+                    <input type="checkbox" id="curateOnlyLow" />
+                    Show low-score only
+                </label>
             </div>
             <div id="curateList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
@@ -379,8 +385,33 @@
         wireComposeForm();
 
         const listEl = document.getElementById('curateList');
+        const onlyLowEl = document.getElementById('curateOnlyLow');
+        let onlyLow = false;
+        onlyLowEl?.addEventListener('change', () => {
+            onlyLow = !!onlyLowEl.checked;
+            loadRecent();
+        });
+
         try {
-            const r = await api('/api/admin/advisor/recent-qa?limit=40');
+            const q = await api('/api/admin/advisor/quality-summary');
+            const s = q.summary || {};
+            const avg = Number(s.avg_overall || 0);
+            document.getElementById('qualitySummary').innerHTML = [
+                `<span class="badge">Avg quality: ${(avg * 100).toFixed(1)}%</span>`,
+                `<span class="badge">Low-quality: ${Number(s.low_quality || 0)}</span>`,
+                `<span class="badge">Auto-cache eligible: ${Number(s.eligible_for_auto_cache || 0)}</span>`,
+                `<span class="badge">Auto-cached: ${Number(s.auto_cached_count || 0)}</span>`
+            ].join(' ');
+        } catch (_) {
+            const box = document.getElementById('qualitySummary');
+            if (box) box.innerHTML = '';
+        }
+
+        async function loadRecent() {
+        try {
+            const qs = new URLSearchParams({ limit: '40' });
+            if (onlyLow) qs.set('onlyLow', '1');
+            const r = await api('/api/admin/advisor/recent-qa?' + qs.toString());
             const items = r.items || [];
             if (!items.length) {
                 listEl.innerHTML = '<p class="lede">No advisor replies yet. Once students chat with Dr. Tari, their Q&amp;A pairs will appear here.</p>';
@@ -390,6 +421,16 @@
                 const cached = it.existing_cache_id
                     ? '<span class="badge badge-ok"><i class="fa-solid fa-check"></i> in cache</span>'
                     : '<span class="badge">not cached</span>';
+                const overall = Number(it.overall_score || 0);
+                const scorePct = Number.isFinite(overall) && overall > 0 ? `${(overall * 100).toFixed(1)}%` : 'unscored';
+                const scoreBadge = !it.overall_score
+                    ? `<span class="badge">quality: ${scorePct}</span>`
+                    : (overall < 0.70
+                        ? `<span class="badge badge-danger">quality: ${scorePct}</span>`
+                        : `<span class="badge badge-ok">quality: ${scorePct}</span>`);
+                const autoCache = it.auto_cached
+                    ? '<span class="badge badge-ok">auto-cached</span>'
+                    : (it.auto_cache_eligible ? '<span class="badge">auto-cache eligible</span>' : '');
                 const when = new Date(it.created_at).toLocaleString();
                 const fullAnswer = it.display_markdown || it.advisor_text || '';
                 const preview = fullAnswer.slice(0, 800);
@@ -399,6 +440,8 @@
                     <div class="curate-meta">
                         <span class="muted">${escapeHtml(when)}</span>
                         ${cached}
+                        ${scoreBadge}
+                        ${autoCache}
                     </div>
                     <div class="curate-q"><strong>Q:</strong> ${escapeHtml(it.question_text || '')}</div>
                     <details class="curate-a">
@@ -515,6 +558,9 @@
         } catch (err) {
             listEl.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
         }
+        }
+
+        loadRecent();
     }
 
     // -------------------------------------------------------- USERS

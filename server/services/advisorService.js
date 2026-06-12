@@ -15,6 +15,7 @@ const Advisor = require('../models/Advisor');
 const llm = require('./llmClient');
 const persona = require('./advisorPersonaService');
 const tts = require('./ttsService');
+const responseQualityService = require('./responseQualityService');
 
 let faqService = null;
 try { faqService = require('./faqService'); }
@@ -590,7 +591,9 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
                     confidence: cached.cacheConfidence || 0.95
                 };
                 const result = await _persistAndPackage({
-                    conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender
+                    conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
+                    questionText: trimmed,
+                    ragContext: ''
                 });
                 result.meta.source = 'faq_cache';
                 result.meta.cached_qa_id = cached.cachedQaId;
@@ -611,7 +614,9 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     if (isOfficeHolderIdentity) {
         const parsed = _buildOfficeHolderSafeReply(trimmed, ragContext);
         return await _persistAndPackage({
-            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender
+            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
+            questionText: trimmed,
+            ragContext
         });
     }
 
@@ -636,7 +641,9 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         };
         return await _persistAndPackage({
             conversation, parsed: fallback, llmUsage: null, voiceEnabled,
-            startedAt, errorMsg: err.message, advisorGender
+            startedAt, errorMsg: err.message, advisorGender,
+            questionText: trimmed,
+            ragContext
         });
     }
 
@@ -644,11 +651,23 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     const parsedRaw = persona.parseAdvisorReply(llmResult.content, trimmed);
     const parsed = await _sanitizeInteractiveSuggestions(parsedRaw);
     return await _persistAndPackage({
-        conversation, parsed, llmUsage: llmResult.usage, voiceEnabled, startedAt, advisorGender
+        conversation, parsed, llmUsage: llmResult.usage, voiceEnabled, startedAt, advisorGender,
+        questionText: trimmed,
+        ragContext
     });
 }
 
-async function _persistAndPackage({ conversation, parsed, llmUsage, voiceEnabled, startedAt, errorMsg = null, advisorGender = 'female' }) {
+async function _persistAndPackage({
+    conversation,
+    parsed,
+    llmUsage,
+    voiceEnabled,
+    startedAt,
+    errorMsg = null,
+    advisorGender = 'female',
+    questionText = '',
+    ragContext = ''
+}) {
     // Resolve topic id for tagging
     let topicId = null;
     if (parsed.topic_slug) {
@@ -680,6 +699,21 @@ async function _persistAndPackage({ conversation, parsed, llmUsage, voiceEnabled
         tokensOut: llmUsage?.completion_tokens || null
     });
 
+    let quality = null;
+    try {
+        quality = await responseQualityService.assessAndMaybeCache({
+            advisorMessageId: messageId,
+            conversationId: conversation.id,
+            questionText,
+            answerText: parsed.display_markdown || parsed.speech_text,
+            ragContext,
+            citations: parsed.citations || [],
+            needsEscalation: Boolean(parsed.needs_escalation)
+        });
+    } catch (err) {
+        console.warn('[advisorService] response quality scoring failed:', err.message);
+    }
+
     await Advisor.touchConversation(conversation.id, topicId);
 
     return {
@@ -706,7 +740,15 @@ async function _persistAndPackage({ conversation, parsed, llmUsage, voiceEnabled
             latency_ms: Date.now() - startedAt,
             tokens_in:  llmUsage?.prompt_tokens || null,
             tokens_out: llmUsage?.completion_tokens || null,
-            error:      errorMsg
+            error:      errorMsg,
+            quality:    quality ? {
+                overall: quality.metrics?.overall_score || null,
+                addressed: quality.metrics?.addressed_score || null,
+                grounded: quality.metrics?.grounding_score || null,
+                auto_cache_eligible: Boolean(quality.autoCacheEligible),
+                auto_cached: Boolean(quality.autoCached),
+                auto_cached_qa_id: quality.cachedQaId || null
+            } : null
         }
     };
 }

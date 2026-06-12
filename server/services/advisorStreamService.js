@@ -23,6 +23,7 @@ const Advisor = require('../models/Advisor');
 const llm = require('./llmClient');
 const persona = require('./advisorPersonaService');
 const tts = require('./ttsService');
+const responseQualityService = require('./responseQualityService');
 
 let faqService = null;
 try { faqService = require('./faqService'); }
@@ -698,7 +699,8 @@ async function askStream({
                         latency_ms: Date.now() - startedAt,
                         source: 'faq_cache',
                         cached_qa_id: cached.cachedQaId,
-                        similarity: cached.cacheConfidence
+                        similarity: cached.cacheConfidence,
+                        quality: null
                     }
                 });
                 return;
@@ -795,7 +797,8 @@ async function askStream({
                 latency_ms: Date.now() - startedAt,
                 tokens_in: null,
                 tokens_out: null,
-                source: 'office_holder_guard'
+                source: 'office_holder_guard',
+                quality: null
             }
         });
         return;
@@ -910,6 +913,7 @@ async function askStream({
     }
 
     let messageId = null;
+    let quality = null;
     try {
         messageId = await Advisor.addMessage({
             conversationId: conversation.id,
@@ -927,6 +931,23 @@ async function askStream({
             tokensIn:  llmUsage?.prompt_tokens || null,
             tokensOut: llmUsage?.completion_tokens || null
         });
+
+        if (messageId) {
+            try {
+                quality = await responseQualityService.assessAndMaybeCache({
+                    advisorMessageId: messageId,
+                    conversationId: conversation.id,
+                    questionText: trimmed,
+                    answerText: parsed.display_markdown || parsed.speech_text,
+                    ragContext,
+                    citations: parsed.citations || [],
+                    needsEscalation: Boolean(parsed.needs_escalation)
+                });
+            } catch (err) {
+                console.warn('[advisorStreamService] response quality scoring failed:', err.message);
+            }
+        }
+
         await Advisor.touchConversation(conversation.id, topicId);
     } catch (err) {
         console.warn('[advisorStreamService] persist advisor turn failed:', err.message);
@@ -958,7 +979,15 @@ async function askStream({
             latency_ms: Date.now() - startedAt,
             tokens_in:  llmUsage?.prompt_tokens || null,
             tokens_out: llmUsage?.completion_tokens || null,
-            error:      llmError
+            error:      llmError,
+            quality:    quality ? {
+                overall: quality.metrics?.overall_score || null,
+                addressed: quality.metrics?.addressed_score || null,
+                grounded: quality.metrics?.grounding_score || null,
+                auto_cache_eligible: Boolean(quality.autoCacheEligible),
+                auto_cached: Boolean(quality.autoCached),
+                auto_cached_qa_id: quality.cachedQaId || null
+            } : null
         }
     });
 }

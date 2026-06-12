@@ -5,6 +5,7 @@ const Document = require('../models/Document');
 const ChatMessage = require('../models/ChatMessage');
 const User = require('../models/User');
 const Advisor = require('../models/Advisor');
+const responseQualityService = require('../services/responseQualityService');
 const emailService = (() => {
     try { return require('../services/emailService'); }
     catch (_) { return null; }
@@ -1671,6 +1672,24 @@ router.get('/advisor/recent-qa', authenticateToken, requireAdmin, async (req, re
     try {
         const limit  = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 30));
         const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+        const minScore = Number.isFinite(Number(req.query.minScore)) ? Number(req.query.minScore) : null;
+        const maxScore = Number.isFinite(Number(req.query.maxScore)) ? Number(req.query.maxScore) : null;
+        const onlyLow = String(req.query.onlyLow || '').trim() === '1';
+
+        try { await responseQualityService.ensureTable(); } catch (_) { /* ignore */ }
+
+        const where = ['a.role = \'advisor\''];
+        const params = [];
+        if (onlyLow) where.push('(rq.overall_score IS NULL OR rq.overall_score < 0.70)');
+        if (minScore !== null) {
+            where.push('rq.overall_score >= ?');
+            params.push(Math.max(0, Math.min(1, minScore)));
+        }
+        if (maxScore !== null) {
+            where.push('rq.overall_score <= ?');
+            params.push(Math.max(0, Math.min(1, maxScore)));
+        }
+        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
         // Pair each advisor row with its most-recent earlier student row in
         // the same conversation. We sort by the advisor row's id descending.
@@ -1684,6 +1703,15 @@ router.get('/advisor/recent-qa', authenticateToken, requireAdmin, async (req, re
                 a.speech_text,
                 a.tokens_in, a.tokens_out, a.latency_ms,
                 a.citations_json,
+                                rq.addressed_score,
+                                rq.grounding_score,
+                                rq.citation_score,
+                                rq.completeness_score,
+                                rq.overall_score,
+                                rq.auto_cache_eligible,
+                                rq.auto_cached,
+                                rq.auto_cached_qa_id,
+                                rq.score_version,
                 (SELECT s.text
                    FROM advisor_messages s
                    WHERE s.conversation_id = a.conversation_id
@@ -1700,10 +1728,11 @@ router.get('/advisor/recent-qa', authenticateToken, requireAdmin, async (req, re
                                          ORDER BY s2.id DESC LIMIT 1)
                    LIMIT 1)                            AS existing_cache_id
             FROM advisor_messages a
-            WHERE a.role = 'advisor'
+                        LEFT JOIN advisor_response_quality rq ON rq.advisor_message_id = a.id
+                        ${whereClause}
             ORDER BY a.id DESC
             LIMIT ? OFFSET ?
-        `, [limit, offset]);
+                `, [...params, limit, offset]);
 
         // Drop rows that have no preceding student question (would be useless
         // to cache).
@@ -1713,6 +1742,26 @@ router.get('/advisor/recent-qa', authenticateToken, requireAdmin, async (req, re
     } catch (err) {
         console.error('Recent advisor Q&A error:', err);
         res.status(500).json({ success: false, error: 'Could not load recent Q&A' });
+    }
+});
+
+// Quick quality overview for admin curation workflow
+router.get('/advisor/quality-summary', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await responseQualityService.ensureTable();
+        const rows = await query(`
+            SELECT
+                COUNT(*) AS total_scored,
+                AVG(overall_score) AS avg_overall,
+                SUM(CASE WHEN overall_score < 0.70 THEN 1 ELSE 0 END) AS low_quality,
+                SUM(CASE WHEN auto_cache_eligible = 1 THEN 1 ELSE 0 END) AS eligible_for_auto_cache,
+                SUM(CASE WHEN auto_cached = 1 THEN 1 ELSE 0 END) AS auto_cached_count
+            FROM advisor_response_quality
+        `);
+        res.json({ success: true, summary: rows[0] || {} });
+    } catch (err) {
+        console.error('Advisor quality summary error:', err);
+        res.status(500).json({ success: false, error: 'Could not load quality summary' });
     }
 });
 
