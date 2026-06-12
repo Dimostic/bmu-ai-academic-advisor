@@ -97,6 +97,7 @@
         faqs:      renderFAQs,
         users:     renderUsers,
         audit:     renderAudit,
+        escalations: renderEscalations,
         metrics:   renderMetrics,
         curate:    renderCurate
     };
@@ -593,6 +594,7 @@
                 </form>
             </details>
             <div class="admin-actions">
+                <input id="usersSearch" class="admin-search" type="search" placeholder="Search users by name or email…" />
                 <button class="btn btn-ghost" id="filterAll">All</button>
                 <button class="btn btn-ghost" id="filterPending">Pending approval</button>
                 <button class="btn btn-ghost" id="filterAdmins">Admins</button>
@@ -601,11 +603,13 @@
         `;
         wireCreateUserForm();
         let filter = 'all';
+        let searchText = '';
         async function load() {
             try {
                 const params = new URLSearchParams({ limit: '200' });
                 if (filter === 'pending') params.set('status', 'pending_approval');
                 if (filter === 'admins') params.set('role', 'admin');
+                if (searchText) params.set('search', searchText);
                 const r = await api('/api/admin/users?' + params.toString());
                 const users = r.users || r.data || [];
                 if (!users.length) {
@@ -688,6 +692,11 @@
         document.getElementById('filterAll').addEventListener('click', () => { filter = 'all'; load(); });
         document.getElementById('filterPending').addEventListener('click', () => { filter = 'pending'; load(); });
         document.getElementById('filterAdmins').addEventListener('click', () => { filter = 'admins'; load(); });
+        const usersSearch = document.getElementById('usersSearch');
+        usersSearch?.addEventListener('input', () => {
+            searchText = usersSearch.value.trim();
+            load();
+        });
         load();
     }
 
@@ -696,10 +705,17 @@
         main.innerHTML = `
             <h2>Audit trail</h2>
             <p class="lede">Recent administrative and login actions.</p>
+            <div class="admin-actions">
+                <input id="auditSearch" class="admin-search" type="search" placeholder="Search audit entries by action, user, or entity…" />
+            </div>
             <div id="auditList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
-        try {
-            const r = await api('/api/admin/audit?limit=100');
+        let searchText = '';
+        async function loadAudit() {
+            try {
+            const q = new URLSearchParams({ limit: '200' });
+            if (searchText) q.set('search', searchText);
+            const r = await api('/api/admin/audit?' + q.toString());
             // Server returns `{logs, pagination}`. Older endpoints used
             // `entries`/`audit`/`data` so we keep them as fallbacks.
             const items = r.logs || r.entries || r.audit || r.data || [];
@@ -718,9 +734,73 @@
             document.getElementById('auditList').innerHTML = table(
                 ['When', 'Action', 'User', 'Entity', 'IP'], rows
             );
-        } catch (err) {
+            } catch (err) {
             document.getElementById('auditList').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+            }
         }
+        document.getElementById('auditSearch')?.addEventListener('input', (e) => {
+            searchText = (e.target.value || '').trim();
+            loadAudit();
+        });
+        loadAudit();
+    }
+
+    // -------------------------------------------------------- ESCALATIONS
+    async function renderEscalations() {
+        main.innerHTML = `
+            <h2>Escalations</h2>
+            <p class="lede">Track student escalation emails: who sent them, when, what was sent, and delivery status.</p>
+            <div class="admin-actions">
+                <input id="escSearch" class="admin-search" type="search" placeholder="Search by subject, student, email, or message…" />
+            </div>
+            <div id="escList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+        `;
+
+        let searchText = '';
+        async function loadEsc() {
+            try {
+                const q = new URLSearchParams({ limit: '200' });
+                if (searchText) q.set('search', searchText);
+                const r = await api('/api/admin/escalations?' + q.toString());
+                const items = r.escalations || [];
+                if (!items.length) {
+                    document.getElementById('escList').innerHTML = '<p class="empty">No escalations found.</p>';
+                    return;
+                }
+
+                const rows = items.map(it => {
+                    const statusCls = it.emailStatus === 'sent'
+                        ? 'badge-success'
+                        : (it.emailStatus === 'failed' ? 'badge-danger' : 'badge-warn');
+                    const who = it.student?.name || 'Anonymous';
+                    const whoDetail = it.student?.matricNo || it.contactEmail || '—';
+                    const msgPreview = (it.message || '').slice(0, 180);
+                    const sentAt = it.emailSentAt ? formatDate(it.emailSentAt) : '—';
+                    const error = it.emailError ? `<div style="color:#8a2522;font-size:.8rem;">${escapeHtml(it.emailError)}</div>` : '';
+                    return [
+                        `<div><strong>${escapeHtml(it.subject || 'No subject')}</strong><div style="color:var(--muted); font-size:.82rem;">${escapeHtml(msgPreview)}${(it.message || '').length > 180 ? '…' : ''}</div></div>`,
+                        `<div><strong>${escapeHtml(who)}</strong><div style="color:var(--muted); font-size:.82rem;">${escapeHtml(whoDetail)}</div></div>`,
+                        `<span class="badge ${statusCls}">${escapeHtml(it.emailStatus || 'pending')}</span>${error}`,
+                        `<div>${escapeHtml(it.assignedEmail || '—')}</div><div style="color:var(--muted); font-size:.82rem;">Sent: ${escapeHtml(sentAt)}</div>`,
+                        escapeHtml(formatDate(it.createdAt)),
+                        escapeHtml(it.priority || 'normal')
+                    ];
+                });
+
+                document.getElementById('escList').innerHTML = table(
+                    ['Escalation', 'From', 'Email status', 'To', 'When', 'Priority'],
+                    rows
+                );
+            } catch (err) {
+                document.getElementById('escList').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        document.getElementById('escSearch')?.addEventListener('input', (e) => {
+            searchText = (e.target.value || '').trim();
+            loadEsc();
+        });
+        loadEsc();
     }
 
     // -------------------------------------------------------- METRICS

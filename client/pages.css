@@ -244,6 +244,22 @@
     display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
 }
 .admin-actions .btn { font-size: .9rem; padding: 7px 14px; }
+.admin-actions .admin-search {
+    min-width: 260px;
+    flex: 1;
+    max-width: 520px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: .95rem;
+    background: var(--bg-elev);
+    color: var(--text);
+}
+.admin-actions .admin-search:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(26,130,112,.18);
+}
 
 /* Upload dropzone */
 .dropzone {

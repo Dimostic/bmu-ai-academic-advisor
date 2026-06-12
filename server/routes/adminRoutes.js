@@ -4,6 +4,7 @@ const AuditTrail = require('../models/AuditTrail');
 const Document = require('../models/Document');
 const ChatMessage = require('../models/ChatMessage');
 const User = require('../models/User');
+const Advisor = require('../models/Advisor');
 const { authenticateToken, requireAdmin, requireSuperAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -173,6 +174,66 @@ router.get('/audit-trail', authenticateToken, requireAdmin, async (req, res) => 
         res.status(500).json({
             success: false,
             error: 'Failed to fetch audit trail'
+        });
+    }
+});
+
+// Get escalations with email delivery visibility for admin follow-up
+router.get('/escalations', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { page = 1, limit = 100, search = '' } = req.query;
+        const pageNum = Math.max(1, parseInt(page, 10) || 1);
+        const limitNum = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
+        const offset = (pageNum - 1) * limitNum;
+
+        const result = await Advisor.listEscalations({
+            limit: limitNum,
+            offset,
+            search: String(search || '').trim()
+        });
+
+        const items = (result.rows || []).map(r => {
+            const deliveryError = typeof r.response_message === 'string' && r.response_message.startsWith('[EMAIL_ERROR]')
+                ? r.response_message.replace(/^\[EMAIL_ERROR\]\s*/i, '')
+                : null;
+            return {
+                id: r.id,
+                subject: r.subject,
+                message: r.message,
+                contactEmail: r.contact_email,
+                contactPhone: r.contact_phone,
+                status: r.status,
+                priority: r.priority,
+                assignedEmail: r.assigned_email,
+                emailSentAt: r.email_sent_at,
+                emailStatus: r.email_sent_at ? 'sent' : (deliveryError ? 'failed' : 'pending'),
+                emailError: deliveryError,
+                createdAt: r.created_at,
+                updatedAt: r.updated_at,
+                conversationId: r.conversation_id,
+                student: {
+                    id: r.student_id,
+                    name: r.student_name,
+                    matricNo: r.matric_no
+                }
+            };
+        });
+
+        res.json({
+            success: true,
+            escalations: items,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total: Number(result.total || 0),
+                totalPages: Math.max(1, Math.ceil(Number(result.total || 0) / limitNum))
+            }
+        });
+    } catch (error) {
+        console.error('Escalations list error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch escalations'
         });
     }
 });

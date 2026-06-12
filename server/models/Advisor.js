@@ -260,10 +260,84 @@ const Advisor = {
     async markEscalationEmailed(id, assignedEmail) {
         await query(
             `UPDATE escalations
-             SET email_sent_at = CURRENT_TIMESTAMP, assigned_email = ?
+             SET email_sent_at = CURRENT_TIMESTAMP,
+                 assigned_email = ?,
+                 response_message = NULL
              WHERE id = ?`,
             [assignedEmail, id]
         );
+    },
+
+    async markEscalationEmailFailed(id, assignedEmail, errorText) {
+        await query(
+            `UPDATE escalations
+             SET assigned_email = ?,
+                 response_message = ?
+             WHERE id = ?`,
+            [assignedEmail, `[EMAIL_ERROR] ${String(errorText || 'Unknown delivery failure').slice(0, 900)}`, id]
+        );
+    },
+
+    async listEscalations({ limit = 100, offset = 0, search = '' } = {}) {
+        const safeLimit = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
+        const safeOffset = Math.max(0, parseInt(offset, 10) || 0);
+        const q = String(search || '').trim();
+
+        const where = [];
+        const params = [];
+        if (q) {
+            where.push(`(
+                e.subject LIKE ? OR
+                e.message LIKE ? OR
+                e.contact_email LIKE ? OR
+                e.assigned_email LIKE ? OR
+                s.full_name LIKE ? OR
+                s.matric_no LIKE ?
+            )`);
+            const like = `%${q}%`;
+            params.push(like, like, like, like, like, like);
+        }
+
+        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        const rows = await query(
+            `SELECT
+                e.id,
+                e.subject,
+                e.message,
+                e.contact_email,
+                e.contact_phone,
+                e.status,
+                e.priority,
+                e.assigned_email,
+                e.email_sent_at,
+                e.response_message,
+                e.created_at,
+                e.updated_at,
+                e.conversation_id,
+                s.id AS student_id,
+                s.full_name AS student_name,
+                s.matric_no
+             FROM escalations e
+             LEFT JOIN students s ON s.id = e.student_id
+             ${whereClause}
+             ORDER BY e.created_at DESC, e.id DESC
+             LIMIT ? OFFSET ?`,
+            [...params, safeLimit, safeOffset]
+        );
+
+        const countRows = await query(
+            `SELECT COUNT(*) AS total
+             FROM escalations e
+             LEFT JOIN students s ON s.id = e.student_id
+             ${whereClause}`,
+            params
+        );
+
+        return {
+            rows,
+            total: Number(countRows?.[0]?.total || 0)
+        };
     }
 };
 

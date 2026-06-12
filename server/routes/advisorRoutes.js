@@ -29,6 +29,37 @@ const emailService = (() => {
     catch (_) { return null; }
 })();
 
+function _normalizeEscalationEmail(raw) {
+    let e = String(raw || '').trim().toLowerCase();
+    // Common typo reported in production: advisor@bmu.edu,ng
+    e = e.replace(/,\s*ng$/i, '.ng').replace(/\s+/g, '');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return null;
+    return e;
+}
+
+async function _resolveAdvisorEscalationEmail() {
+    const fromEnv = _normalizeEscalationEmail(process.env.ADVISOR_ESCALATION_EMAIL || '');
+    if (fromEnv) return fromEnv;
+
+    try {
+        const rows = await query(
+            `SELECT email
+             FROM human_advisors
+             WHERE is_active = TRUE
+               AND is_available = TRUE
+               AND email IS NOT NULL
+             ORDER BY id ASC
+             LIMIT 1`
+        );
+        const fromTable = _normalizeEscalationEmail(rows?.[0]?.email || '');
+        if (fromTable) return fromTable;
+    } catch (_) {
+        // Fall through to hard default
+    }
+
+    return 'advisor@bmu.edu.ng';
+}
+
 // 8 MB cap for short voice clips (Whisper recommends <25 MB).
 const audioUpload = multer({
     storage: multer.memoryStorage(),
@@ -368,7 +399,7 @@ router.post('/escalate', optionalAuth, async (req, res) => {
         }
 
         let student = null;
-        if (req.user?.id) student = await Advisor.findStudentByUserId(req.user.id);
+        if (req.user?.id) student = await Advisor.ensureStudentForUser(req.user);
 
         let conversationId = null;
         if (sessionToken) {
@@ -394,14 +425,26 @@ router.post('/escalate', optionalAuth, async (req, res) => {
         });
 
         // Best-effort email notification — never block the response on it.
-        const advisorEmail = process.env.ADVISOR_ESCALATION_EMAIL || 'advisor@bmu.edu.ng';
+        const advisorEmail = await _resolveAdvisorEscalationEmail();
         if (emailService && process.env.EMAIL_ENABLED === 'true') {
-            emailService.sendEmail?.({
+            emailService.sendMail?.({
                 to: advisorEmail,
                 subject: `[BMU Advisor] Escalation: ${subject}`,
-                text: `A student has escalated a question.\n\nFrom: ${student?.full_name || 'Anonymous'} (${contactEmail || student?.email || 'no email'})\nMatric: ${student?.matric_no || 'n/a'}\n\nMessage:\n${message}\n\nReply to: ${contactEmail || student?.email || 'unknown'}`
+                text: `A student has escalated a question.\n\nFrom: ${student?.full_name || 'Anonymous'} (${contactEmail || student?.email || 'no email'})\nMatric: ${student?.matric_no || 'n/a'}\nPriority: ${priority}\nSubmitted at: ${new Date().toISOString()}\n\nSubject:\n${subject}\n\nMessage:\n${message}\n\nReply to: ${contactEmail || student?.email || 'unknown'}`
             }).then(() => Advisor.markEscalationEmailed(id, advisorEmail))
-              .catch(e => console.warn('[advisorRoutes] escalation email failed:', e.message));
+              .catch(async (e) => {
+                  console.warn('[advisorRoutes] escalation email failed:', e.message);
+                  try {
+                      await Advisor.markEscalationEmailFailed(id, advisorEmail, e.message || 'mail send failed');
+                  } catch (_) { /* ignore persistence errors */ }
+              });
+        } else {
+            // Persist why an email wasn't sent so admins can diagnose quickly.
+            await Advisor.markEscalationEmailFailed(
+                id,
+                advisorEmail,
+                process.env.EMAIL_ENABLED === 'true' ? 'email service unavailable' : 'EMAIL_ENABLED is false'
+            );
         }
 
         res.json({ success: true, escalationId: id, assignedTo: advisorEmail });
