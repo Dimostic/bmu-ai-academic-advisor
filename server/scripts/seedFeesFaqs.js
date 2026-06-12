@@ -6,7 +6,7 @@
  * parse (e.g. PDF tables flattened into a digit-soup).
  *
  * Run once after deploying:
- *   ssh root@<vps> 'cd /var/www/bmu-ai-academic-advisor && node server/scripts/seedFeesFaqs.js'
+ *   ssh bmu-server 'cd /var/www/bmu-ai-academic-advisor && node server/scripts/seedFeesFaqs.js'
  *
  * Idempotent — uses POST /api/admin/cached-qa which refreshes any
  * existing row with the same question.

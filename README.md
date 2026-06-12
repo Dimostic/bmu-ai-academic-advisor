@@ -105,7 +105,7 @@ Open http://localhost:3000.
 - macOS / Linux: `./deploy.sh`
 - Windows (uses OpenSSH client): `.\deploy.ps1`
 
-Both expect an SSH config entry named `bmu-vps` pointing at your VPS.
+Both expect an SSH config entry named `bmu-server` pointing at your VPS.
 
 ## Project layout
 
