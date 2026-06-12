@@ -59,6 +59,14 @@ async function _resolvePriorityDocumentIds(question) {
             patterns.push('%brief profile%');
             patterns.push('%profile%');
         }
+        if (/(who\s+is|name\s+of|current)/i.test(q) && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor)/i.test(q)) {
+            patterns.push('%profile of bmu%');
+            patterns.push('%profile%');
+            patterns.push('%management%');
+            patterns.push('%principal officers%');
+            patterns.push('%governance%');
+            patterns.push('%quick facts%');
+        }
 
         const unique = [...new Set(patterns)];
         if (!unique.length) return [];
@@ -77,6 +85,73 @@ async function _resolvePriorityDocumentIds(question) {
     } catch (err) {
         console.warn('[advisorStreamService] priority document lookup failed:', err.message);
         return [];
+    }
+}
+
+function _isOfficeHolderIdentityQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    return /(who\s+is|name\s+of|current)/i.test(q)
+        && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor)/i.test(q);
+}
+
+async function _getOfficeHolderDocumentContext(question) {
+    try {
+        const q = String(question || '').toLowerCase();
+        const roleTerms = [];
+        if (/registrar/.test(q)) roleTerms.push('registrar', 'registry');
+        if (/vice[-\s]?chancellor|\bvc\b/.test(q)) roleTerms.push('vice chancellor', 'vice-chancellor', 'vc');
+        if (/bursar/.test(q)) roleTerms.push('bursar', 'bursary');
+        if (/dean/.test(q)) roleTerms.push('dean');
+        if (/chancellor/.test(q)) roleTerms.push('chancellor');
+
+        const docs = await query(
+            `SELECT id, title, category, content_text
+             FROM documents
+             WHERE is_active = TRUE
+               AND content_text IS NOT NULL
+               AND (
+                   LOWER(title) LIKE '%profile%'
+                   OR LOWER(title) LIKE '%management%'
+                   OR LOWER(title) LIKE '%governance%'
+                   OR LOWER(title) LIKE '%quick facts%'
+                   OR LOWER(content_text) LIKE '%registrar%'
+                   OR LOWER(content_text) LIKE '%vice-chancellor%'
+                   OR LOWER(content_text) LIKE '%vice chancellor%'
+                   OR LOWER(content_text) LIKE '%bursar%'
+                   OR LOWER(content_text) LIKE '%dean%'
+                   OR LOWER(content_text) LIKE '%chancellor%'
+               )
+             ORDER BY
+               CASE WHEN LOWER(title) LIKE '%profile of bmu%' THEN 0
+                    WHEN LOWER(title) LIKE '%profile%' THEN 1
+                    WHEN LOWER(title) LIKE '%management%' THEN 2
+                    WHEN LOWER(title) LIKE '%quick facts%' THEN 3
+                    ELSE 4 END,
+               id DESC
+             LIMIT 6`
+        );
+
+        if (!docs.length) return '';
+
+        const context = docs.map((doc) => {
+            const text = String(doc.content_text || '');
+            const lower = text.toLowerCase();
+            let start = 0;
+            for (const term of roleTerms) {
+                const at = lower.indexOf(term);
+                if (at >= 0) {
+                    start = Math.max(0, at - 200);
+                    break;
+                }
+            }
+            const snippet = text.slice(start, start + 2200).trim() || text.slice(0, 2200).trim();
+            return `--- ${doc.title || 'BMU Leadership Information'} (${doc.category || 'general'}) ---\n${snippet}`;
+        }).join('\n\n');
+
+        return context.slice(0, 9000);
+    } catch (err) {
+        console.warn('[advisorStreamService] _getOfficeHolderDocumentContext error:', err.message);
+        return '';
     }
 }
 
@@ -311,6 +386,18 @@ async function _getFeeDocumentContext(question) {
 
 async function _fetchRagContext(question) {
     if (!RAG_ENABLED || !question || question.length < 3) return '';
+
+    if (_isOfficeHolderIdentityQuestion(question)) {
+        try {
+            const leadershipContext = await _getOfficeHolderDocumentContext(question);
+            if (leadershipContext) {
+                console.log(`[advisorStreamService] Office-holder identity question: using focused leadership retrieval (${leadershipContext.length} chars)`);
+                return leadershipContext;
+            }
+        } catch (err) {
+            console.warn('[advisorStreamService] Focused office-holder retrieval failed:', err.message);
+        }
+    }
 
     // For fee-related questions, force a direct database search to guarantee
     // fee documents are included even if title patterns don't match exactly.
@@ -548,7 +635,7 @@ async function askStream({
     }
 
     const messages = [
-        { role: 'system', content: persona.buildSystemPrompt({ studentContext: student, ragContext }) },
+        { role: 'system', content: persona.buildSystemPrompt({ studentContext: student, ragContext, question: trimmed }) },
         { role: 'user',   content: persona.buildUserPrompt(trimmed, history) }
     ];
 

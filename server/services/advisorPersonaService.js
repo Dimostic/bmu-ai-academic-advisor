@@ -39,7 +39,7 @@ const SECTION_RE = {
 };
 
 /** Build the system prompt used for every advisor turn. */
-function buildSystemPrompt({ studentContext = null, ragContext = '' } = {}) {
+function buildSystemPrompt({ studentContext = null, ragContext = '', question = '' } = {}) {
     // Pull the user's first name if we have one (logged-in user). When the
     // route only had a `users` row (no student record) we still set
     // `first_name` so the model can address them by name occasionally.
@@ -78,6 +78,19 @@ If a topic is in RELEVANT BMU INFORMATION, USE IT. Do not redirect students to a
 ${ragContext.trim()}`
         : `No specific BMU documents matched this question. Use only widely accepted, general academic-advising knowledge. If the question is BMU-specific and you don't know, say so plainly and offer to escalate to a human advisor.`;
 
+    const q = String(question || '').toLowerCase();
+    const isOfficeHolderIdentityQuestion = /(who\s+is|name\s+of|current)/i.test(q)
+        && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor)/i.test(q);
+    const officeHolderGuardrail = isOfficeHolderIdentityQuestion
+        ? `
+
+IDENTITY QUESTION GUARDRAIL (IMPORTANT FOR THIS QUESTION):
+- The student is asking for the identity of a BMU office-holder (e.g., Registrar).
+- ONLY answer with a person's name/title if RELEVANT BMU INFORMATION explicitly contains that role with a person name.
+- If that exact role/name pair is not present, say you do not have verified BMU data for that role right now and offer escalation.
+- NEVER switch to unrelated explanations (for example acronym meanings like CCMAS) when asked who a person is.`
+        : '';
+
     return `You are ${ADVISOR_NAME}, the ${ADVISOR_TITLE} for Bayelsa Medical University (BMU), Yenagoa, Nigeria.
 
 Your audience is BMU students (mostly undergraduate, including MBBS, BNSc and BMLS programmes). Be warm, encouraging, plain-spoken, and brief. Use Nigerian English where natural.
@@ -106,6 +119,8 @@ CRITICAL ANTI-HALLUCINATION RULES — read carefully:
 ${studentBlock}
 
 ${knowledgeBlock}
+
+${officeHolderGuardrail}
 
 PROGRAMME VOCABULARY — these are all the SAME thing inside BMU documents.
 Treat the words on the LEFT as equivalent to the canonical names on the
