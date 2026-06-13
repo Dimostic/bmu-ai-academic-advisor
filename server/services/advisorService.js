@@ -35,6 +35,59 @@ catch (err) { console.warn('[advisorService] retrievalService unavailable:', err
 
 const { query } = require('../../config/db');
 
+const OFFICE_HOLDER_DOC_TITLE = '%profile of bmu%';
+
+async function _getProfileDocumentContent() {
+    try {
+        const rows = await query(
+            `SELECT id, title, category, content_text
+             FROM documents
+             WHERE is_active = TRUE
+               AND content_text IS NOT NULL
+               AND LOWER(title) LIKE ?
+             ORDER BY id DESC
+             LIMIT 1`,
+            [OFFICE_HOLDER_DOC_TITLE]
+        );
+
+        return rows[0] || null;
+    } catch (err) {
+        console.warn('[advisorService] _getProfileDocumentContent error:', err.message);
+        return null;
+    }
+}
+
+function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
+    const text = String(profileText || '');
+    if (!text.trim()) return null;
+
+    const normalizedRole = String(roleLabel || '').trim().toLowerCase();
+    const rolePatterns = {
+        'registrar': /^\s*registrar\s*[:\-]\s*([^\r\n]{3,160})/im,
+        'vice-chancellor': /^\s*vice[-\s]?chancellor\s*[:\-]\s*([^\r\n]{3,160})/im,
+        'bursar': /^\s*bursar\s*[:\-]\s*([^\r\n]{3,160})/im,
+        'dean': /^\s*dean\s*[:\-]\s*([^\r\n]{3,160})/im,
+        'chancellor': /^\s*chancellor\s*[:\-]\s*([^\r\n]{3,160})/im,
+        'librarian': /^\s*(?:university\s+)?librarian\s*[:\-]\s*([^\r\n]{3,160})/im
+    };
+
+    const re = rolePatterns[normalizedRole];
+    if (!re) return null;
+
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const line = lines.find(entry => re.test(entry));
+    if (!line) return null;
+
+    const match = line.match(re);
+    if (!match || !match[1]) return null;
+
+    const raw = String(match[1]).replace(/\s+/g, ' ').trim();
+    const candidate = raw.replace(/[,;.]+$/, '').trim();
+    if (!candidate) return null;
+
+    return candidate;
+}
+
 function _isSpecificProgrammeCourseQuery(question) {
     const q = String(question || '').toLowerCase();
     if (!/(course|courses|curriculum|units?)/i.test(q)) return false;
@@ -118,69 +171,16 @@ function _isOfficeHolderIdentityQuestion(question) {
 async function _getOfficeHolderDocumentContext(question) {
     try {
         const q = String(question || '').toLowerCase();
-        const roleTerms = [];
-        if (/registrar/.test(q)) roleTerms.push('registrar', 'registry');
-        if (/vice[-\s]?chancellor|\bvc\b/.test(q)) roleTerms.push('vice chancellor', 'vice-chancellor', 'vc');
-        if (/bursar/.test(q)) roleTerms.push('bursar', 'bursary');
-        if (/dean/.test(q)) roleTerms.push('dean');
-        if (/chancellor/.test(q)) roleTerms.push('chancellor');
-        if (/librarian|university\s+librarian/.test(q)) roleTerms.push('university librarian', 'librarian', 'library');
-
-                const docs = await query(
-            `SELECT id, title, category, content_text
-             FROM documents
-             WHERE is_active = TRUE
-               AND content_text IS NOT NULL
-               AND (
-                   LOWER(title) LIKE '%profile%'
-                   OR LOWER(title) LIKE '%management%'
-                   OR LOWER(title) LIKE '%governance%'
-                   OR LOWER(title) LIKE '%quick facts%'
-                   OR LOWER(content_text) LIKE '%registrar%'
-                   OR LOWER(content_text) LIKE '%vice-chancellor%'
-                   OR LOWER(content_text) LIKE '%vice chancellor%'
-                   OR LOWER(content_text) LIKE '%bursar%'
-                   OR LOWER(content_text) LIKE '%dean%'
-                   OR LOWER(content_text) LIKE '%chancellor%'
-                   OR LOWER(content_text) LIKE '%librarian%'
-                   OR LOWER(content_text) LIKE '%library%'
-               )
-             ORDER BY
-               CASE WHEN LOWER(title) LIKE '%profile of bmu%' THEN 0
-                    WHEN LOWER(title) LIKE '%profile%' THEN 1
-                    WHEN LOWER(title) LIKE '%management%' THEN 2
-                    WHEN LOWER(title) LIKE '%quick facts%' THEN 3
-                    ELSE 4 END,
-               id DESC
-             LIMIT 6`
-        );
-
-        if (!docs.length) return '';
-
-        const profileDoc = docs.find(doc => /profile of bmu/i.test(String(doc.title || '')))
-            || docs.find(doc => /profile/i.test(String(doc.title || '')))
-            || docs[0];
-
+        const roleLabel = _detectOfficeRoleLabel(q);
+        const profileDoc = await _getProfileDocumentContent();
         if (!profileDoc) return '';
 
-        const context = [profileDoc, ...docs.filter(doc => doc.id !== profileDoc.id)].map((doc) => {
-            const text = String(doc.content_text || '');
-            const lower = text.toLowerCase();
+        const roleName = _extractOfficeHolderFromProfileDoc(roleLabel, profileDoc.content_text);
+        if (roleName) {
+            return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${roleLabel}: ${roleName}`;
+        }
 
-            let start = 0;
-            for (const term of roleTerms) {
-                const at = lower.indexOf(term);
-                if (at >= 0) {
-                    start = Math.max(0, at - 200);
-                    break;
-                }
-            }
-
-            const snippet = text.slice(start, start + 2200).trim() || text.slice(0, 2200).trim();
-            return `--- ${doc.title || 'BMU Leadership Information'} (${doc.category || 'general'}) ---\n${snippet}`;
-        }).join('\n\n');
-
-        return context.slice(0, 9000);
+        return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${String(profileDoc.content_text || '').slice(0, 2400).trim()}`;
     } catch (err) {
         console.warn('[advisorService] _getOfficeHolderDocumentContext error:', err.message);
         return '';
@@ -219,22 +219,9 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     const m = line.match(re);
     if (!m || !m[1]) return null;
 
-    // Extract only the name portion: optional honorific titles followed by capitalised name words
-    const raw = String(m[1]).replace(/\s+/g, ' ').trim();
-    const nameMatch = raw.match(
-        /^((?:(?:Dr|Prof|Mr|Mrs|Ms|Engr|Rev|Chief|Barr|Hon|Alhaji|Arc|Pharm)\.?\s+)*(?:[A-Z][a-z'\-]*\.?\s*){1,4})/
-    );
-    if (!nameMatch) return null;
-    // Stop at the first role/governance word that is not a personal name component
-    const ROLE_STOP = /\b(Governing|Council|Chair|Director|Senate|Committee|Board|Office|Faculty|Department|Division|Unit|Head|Deputy|Acting|Former|Emeritus|Principal|Officer|Administrator|Meetings|Schedule|Principal|Off\b)/;
-    let candidate = nameMatch[1].trim();
-    const stopMatch = ROLE_STOP.exec(candidate);
-    if (stopMatch) candidate = candidate.slice(0, stopMatch.index).trim();
-    candidate = candidate.replace(/[,;.]+$/, '').trim();
+    const candidate = String(m[1]).replace(/\s+/g, ' ').trim().replace(/[,;.]+$/, '').trim();
     if (candidate.length < 4) return null;
     if (!/[a-z]/i.test(candidate)) return null;
-    if (/\b(tbd|unknown|vacant|n\/a|not available|to be appointed)\b/i.test(candidate)) return null;
-    if (roleLabel === 'Registrar' && /stephen\s+s\.\s*akpana/i.test(candidate)) return null;
     return candidate;
 }
 
@@ -250,19 +237,6 @@ function _buildOfficeHolderSafeReply(question, ragContext) {
     const roleLabel = _detectOfficeRoleLabel(question);
     const extractedName = _extractRoleNameFromContext(roleLabel, ragContext);
     const citations = _extractCitationsFromContext(ragContext);
-
-    if (roleLabel === 'Registrar' && !extractedName) {
-        return {
-            speech_text: 'The registrar information I have is not verified from the BMU profile document right now. Please check the official profile document or ask me to search that document directly.',
-            display_markdown: 'The registrar information I have is not verified from the BMU profile document right now.\n\nPlease check the official profile document or ask me to search that document directly.',
-            topic_slug: null,
-            citations,
-            suggested_actions: [{ label: 'Search the BMU profile document', action: 'search_profile_doc' }],
-            follow_up_questions: [],
-            needs_escalation: false,
-            confidence: 0.4
-        };
-    }
 
     if (extractedName) {
         const answer = `The ${roleLabel} of Bayelsa Medical University (BMU) is ${extractedName}.`;
@@ -393,14 +367,14 @@ async function _keywordFallback(question) {
     } catch (err) {
         console.warn('[advisorService] keyword fallback failed:', err.message);
         return '';
-    }
-}
+            speech_text: `The registrar information I have is not verified from the BMU profile document right now. Please check the official profile document or ask me to search that document directly.`,
+            display_markdown: `The registrar information I have is not verified from the BMU profile document right now.\n\nPlease check the official profile document or ask me to search that document directly.`,
 
 /**
- * Resolve (or create) the conversation row for this turn.
+            suggested_actions: [{ label: 'Search the BMU profile document', action: 'search_profile_doc' }],
  */
 async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
-    if (sessionToken) {
+            confidence: 0.4
         const existing = await Advisor.getConversationByToken(sessionToken);
         if (existing) return existing;
     }
