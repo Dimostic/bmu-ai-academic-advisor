@@ -499,13 +499,8 @@ async function _fetchRagContext(question) {
 
     if (!retrievalService) return await _keywordFallback(question);
 
-    const priorityDocIds = await _resolvePriorityDocumentIds(question);
-    const timed = (promise) => Promise.race([
-        promise,
-        new Promise(resolve => setTimeout(() => resolve(''), RAG_TIMEOUT_MS))
-    ]);
-
-    const [generalCtx, priorityCtx] = await Promise.all([
+                }
+            }
         timed(
             retrievalService.retrieve(question, { limit: 5 })
                 .then(r => r?.context || '')
