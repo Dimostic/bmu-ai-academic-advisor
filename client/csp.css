@@ -51,10 +51,15 @@
   opacity: 0.9;
 }
 
-.message-actions {
+.message-actions,
+.message-user-actions {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+.message-user-actions {
+  justify-content: flex-end;
 }
 
 /* Cards (used for placeholder states) */

@@ -1940,17 +1940,21 @@ function addMessageToUI({ sender, text, audioUrl, timestamp }, meta = {}) {
     const avatarIcon = sender === 'user' ? 'fa-user' : 'fa-robot';
     // Use markdown parsing for assistant messages, plain escape for user messages
     const formattedText = sender === 'assistant' ? parseMarkdown(text || '') : escapeHtml(text || '').replace(/\n/g, '<br/>');
-    const safeText = escapeHtml(text || ''); // Keep plain version for data attributes
     const timeText = formatDateTime(timestamp || new Date());
 
     const referencesHtml = sender === 'assistant' ? renderReferencedDocuments(meta.referencedDocuments) : '';
     const actionsHtml = sender === 'assistant' ? renderMessageActions({ messageId: meta.messageId, text: text }) : '';
     
-    // Add resend button for user messages
-    const resendHtml = sender === 'user' ? `
-        <button class="message-resend-btn" type="button" data-resend-text="${safeText}" title="Resend this message">
-            <i class="fas fa-redo"></i> Resend
-        </button>
+    // Add prompt actions for user messages
+    const userActionsHtml = sender === 'user' ? `
+        <div class="message-user-actions">
+            <button class="btn btn-sm btn-outline" type="button" data-action="copy-prompt" title="Copy prompt">
+                <i class="fas fa-copy"></i> Copy prompt
+            </button>
+            <button class="btn btn-sm btn-outline" type="button" data-action="reapply-prompt" title="Reapply this prompt">
+                <i class="fas fa-redo"></i> Reapply
+            </button>
+        </div>
     ` : '';
 
     msg.innerHTML = `
@@ -1960,19 +1964,22 @@ function addMessageToUI({ sender, text, audioUrl, timestamp }, meta = {}) {
             ${audioUrl ? `<div class="message-audio"><audio controls src="${escapeHtml(audioUrl)}"></audio></div>` : ''}
             ${referencesHtml}
             ${actionsHtml}
-            ${resendHtml}
+            ${userActionsHtml}
             <div class="message-time">${escapeHtml(timeText)}</div>
         </div>
     `;
 
-    // Bind resend button for user messages
-    const resendBtn = msg.querySelector('.message-resend-btn');
-    if (resendBtn) {
-        resendBtn.addEventListener('click', () => {
-            const messageText = resendBtn.getAttribute('data-resend-text');
-            if (messageText) {
-                resendMessage(messageText);
-            }
+    // Bind prompt actions for user messages
+    const userActionsEl = msg.querySelector('.message-user-actions');
+    if (userActionsEl) {
+        userActionsEl.querySelector('[data-action="copy-prompt"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            copyToClipboard(text || '');
+        });
+
+        userActionsEl.querySelector('[data-action="reapply-prompt"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            resendMessage(text || '');
         });
     }
 
