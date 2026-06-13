@@ -103,10 +103,14 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
         const line = lines[i];
         if (!roleToken.test(line)) continue;
 
-        const sameLine = line
-            .replace(roleToken, '')
+        const bulletStripped = line.replace(/^\s*[-•]\s*/, '').trim();
+        const colonIndex = bulletStripped.indexOf(':');
+        const sameLine = (
+            colonIndex >= 0
+                ? bulletStripped.slice(colonIndex + 1)
+                : bulletStripped.replace(roleToken, '')
+        )
             .replace(/^\s*[:\-–]+\s*/, '')
-            .trim()
             .trim();
 
         if (sameLine && !obviousNoise.test(sameLine) && /[a-z]/i.test(sameLine)) {
@@ -130,7 +134,14 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
 }
 
 function _normalizePersonName(value) {
-    const text = String(value || '').replace(/\s+/g, ' ').replace(/[,;.]+$/, '').trim();
+    const text = String(value || '')
+        // Remove profile metadata notes that can trail names.
+        .replace(/\((?:appointed|inaugurated|since|effective|acting)[^)]*\)/ig, ' ')
+        // Keep title qualifiers e.g. Dr. (Mrs) -> Dr. Mrs
+        .replace(/\((mrs|mr|ms|dr|prof)\.?\)/ig, ' $1 ')
+        .replace(/\s+/g, ' ')
+        .replace(/[,;.]+$/, '')
+        .trim();
     if (!text) return null;
     if (text.length < 4 || text.length > 80) return null;
 
@@ -331,12 +342,12 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     if (!text.trim()) return null;
 
     const patterns = {
-        'Vice-Chancellor': /^\s*(?:current\s+)?vice[-\s]?chancellor\s*[:\-]\s*([^\n\r;]{3,120})/im,
-        'Registrar': /^\s*registrar\s*[:\-]\s*([^\n\r;]{3,120})/im,
-        'Bursar': /^\s*bursar\s*[:\-]\s*([^\n\r;]{3,120})/im,
-        'Dean': /^\s*dean\s*[:\-]\s*([^\n\r;]{3,120})/im,
-        'Chancellor': /^\s*chancellor\s*[:\-]\s*([^\n\r;]{3,120})/im,
-        'Librarian': /^\s*(?:university\s+)?librarian\s*[:\-]\s*([^\n\r;]{3,120})/im
+        'Vice-Chancellor': /^\s*[-•]?\s*(?:current\s+)?vice[-\s]?chancellor\s*[:\-]\s*([^\n\r;]{3,180})/im,
+        'Registrar': /^\s*[-•]?\s*registrar\s*[:\-]\s*([^\n\r;]{3,180})/im,
+        'Bursar': /^\s*[-•]?\s*bursar\s*[:\-]\s*([^\n\r;]{3,180})/im,
+        'Dean': /^\s*[-•]?\s*dean\s*[:\-]\s*([^\n\r;]{3,180})/im,
+        'Chancellor': /^\s*[-•]?\s*chancellor\s*[:\-]\s*([^\n\r;]{3,180})/im,
+        'Librarian': /^\s*[-•]?\s*(?:university\s+)?librarian\s*[:\-]\s*([^\n\r;]{3,180})/im
     };
 
     const re = patterns[roleLabel];
@@ -365,12 +376,12 @@ function _extractRoleExcerptFromContext(roleLabel, ragContext) {
     if (!text) return null;
 
     const patterns = {
-        'Vice-Chancellor': /(?:vice[-\s]?chancellor|\bvc\b)[^.\n\r]{0,220}/i,
-        'Registrar': /\bregistrar\b[^.\n\r]{0,220}/i,
-        'Bursar': /\bbursar\b[^.\n\r]{0,220}/i,
-        'Dean': /\bdean\b[^.\n\r]{0,220}/i,
-        'Chancellor': /\bchancellor\b[^.\n\r]{0,220}/i,
-        'Librarian': /(?:university\s+librarian|\blibrarian\b)[^.\n\r]{0,220}/i
+        'Vice-Chancellor': /(?:vice[-\s]?chancellor|\bvc\b)[^\n\r]{0,220}/i,
+        'Registrar': /\bregistrar\b[^\n\r]{0,220}/i,
+        'Bursar': /\bbursar\b[^\n\r]{0,220}/i,
+        'Dean': /\bdean\b[^\n\r]{0,220}/i,
+        'Chancellor': /\bchancellor\b[^\n\r]{0,220}/i,
+        'Librarian': /(?:university\s+librarian|\blibrarian\b)[^\n\r]{0,220}/i
     };
 
     const re = patterns[roleLabel];
