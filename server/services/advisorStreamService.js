@@ -86,7 +86,7 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
         if (line) {
             const match = line.match(re);
             if (match && match[1]) {
-                const candidate = String(match[1]).replace(/\s+/g, ' ').trim().replace(/[,;.]+$/, '').trim();
+                const candidate = _normalizePersonName(match[1]);
                 if (candidate) return candidate;
             }
         }
@@ -114,25 +114,51 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
             .replace(roleToken, '')
             .replace(/^\s*[:\-–]+\s*/, '')
             .trim()
-            .replace(/[,;.]+$/, '')
             .trim();
 
         if (sameLine && !obviousNoise.test(sameLine) && /[a-z]/i.test(sameLine)) {
             if (sameLine.length >= 4 && (nameLike.test(sameLine) || /^[A-Z][A-Za-z\s.'-]{3,}$/.test(sameLine))) {
-                return sameLine;
+                const candidate = _normalizePersonName(sameLine);
+                if (candidate) return candidate;
             }
         }
 
         for (let j = i + 1; j <= Math.min(i + 2, lines.length - 1); j++) {
-            const nextLine = String(lines[j] || '').trim().replace(/[,;.]+$/, '').trim();
+            const nextLine = String(lines[j] || '').trim();
             if (!nextLine || obviousNoise.test(nextLine)) continue;
             if (nameLike.test(nextLine) || /^[A-Z][A-Za-z\s.'-]{3,}$/.test(nextLine)) {
-                return nextLine;
+                const candidate = _normalizePersonName(nextLine);
+                if (candidate) return candidate;
             }
         }
     }
 
     return null;
+}
+
+function _normalizePersonName(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').replace(/[,;.]+$/, '').trim();
+    if (!text) return null;
+    if (text.length < 4 || text.length > 80) return null;
+
+    const lower = text.toLowerCase();
+    if (/\b(university|profile|institutional|overview|document|chapter|section|department|faculty|programme|program|name:)\b/i.test(lower)) return null;
+    if (/^\d/.test(text)) return null;
+
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length < 2 || words.length > 8) return null;
+
+    const titlePrefix = /^(prof(?:essor)?\.?|dr\.?|mr\.?|mrs\.?|ms\.?|pharm\.?|arc\.?|engr\.?|alh\.?)$/i;
+    const cleanWord = /^[A-Za-z][A-Za-z'.-]*$/;
+    let alphaWords = 0;
+    for (const w of words) {
+        if (titlePrefix.test(w)) continue;
+        if (!cleanWord.test(w)) return null;
+        alphaWords++;
+    }
+    if (alphaWords < 2) return null;
+
+    return text;
 }
 
 function _isSpecificProgrammeCourseQuery(question) {
@@ -321,9 +347,8 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     const m = line.match(re);
     if (!m || !m[1]) return null;
 
-    const candidate = String(m[1]).replace(/\s+/g, ' ').trim().replace(/[,;.]+$/, '').trim();
-    if (candidate.length < 4) return null;
-    if (!/[a-z]/i.test(candidate)) return null;
+    const candidate = _normalizePersonName(m[1]);
+    if (!candidate) return null;
     return candidate;
 }
 
