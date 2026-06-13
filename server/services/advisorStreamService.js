@@ -400,18 +400,7 @@ async function _keywordFallback(question) {
     } catch (err) {
         console.warn('[advisorStreamService] keyword fallback failed:', err.message);
         return '';
-            speech_text: `The registrar information I have is not verified from the BMU profile document right now. Please check the official profile document or ask me to search that document directly.`,
-            display_markdown: `The registrar information I have is not verified from the BMU profile document right now.\n\nPlease check the official profile document or ask me to search that document directly.`,
-
-async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
-            suggested_actions: [{ label: 'Search the BMU profile document', action: 'search_profile_doc' }],
-        const existing = await Advisor.getConversationByToken(sessionToken);
-        if (existing) return existing;
-            confidence: 0.4
-    return await Advisor.createConversation({
-        studentId,
-        voiceEnabled: voiceEnabled !== false
-    });
+    }
 }
 
 /**
