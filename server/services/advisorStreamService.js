@@ -251,6 +251,19 @@ function _buildOfficeHolderSafeReply(question, ragContext) {
         };
     }
 
+    if (roleLabel === 'Registrar') {
+        return {
+            speech_text: 'The registrar information I have is not verified from the BMU profile document right now. Please check the official profile document or ask me to search that document directly.',
+            display_markdown: 'The registrar information I have is not verified from the BMU profile document right now.\n\nPlease check the official profile document or ask me to search that document directly.',
+            topic_slug: null,
+            citations,
+            suggested_actions: [{ label: 'Search the BMU profile document', action: 'search_profile_doc' }],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.4
+        };
+    }
+
     return {
         speech_text: `I do not have a verified BMU document line naming the current ${roleLabel.toLowerCase()} right now. I can connect you to a human advisor for confirmation.`,
         display_markdown: `I do not have a verified BMU document line naming the current ${roleLabel.toLowerCase()} right now.\n\nI can connect you to a human advisor for confirmation.`,
