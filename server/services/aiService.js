@@ -916,7 +916,7 @@ ${officialUpdates}
                 },
                 { 
                     headers: { 'Content-Type': 'application/json' },
-                    timeout: 15000
+                    timeout: parseInt(process.env.OLLAMA_EMBED_TIMEOUT_MS || '120000', 10)
                 }
             );
 
