@@ -498,8 +498,6 @@ async function _fetchRagContext(question) {
 
     if (!retrievalService) return await _keywordFallback(question);
 
-                }
-            }
         timed(
             retrievalService.retrieve(question, { limit: 5 })
                 .then(r => r?.context || '')
