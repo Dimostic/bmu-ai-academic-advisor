@@ -35,25 +35,48 @@ catch (err) { console.warn('[advisorService] retrievalService unavailable:', err
 
 const { query } = require('../../config/db');
 
+function _isSpecificProgrammeCourseQuery(question) {
+    const q = String(question || '').toLowerCase();
+    if (!/(course|courses|curriculum|units?)/i.test(q)) return false;
+
+    // Generic "courses offered at BMU" should map to programme listings.
+    if (/(all\s+courses|courses\s+offered|offer\w*\s+courses|list\s+courses)/i.test(q)
+        && !/(in|for|under|within)\s+(the\s+)?(department|faculty|school|programme|program|discipline)/i.test(q)) {
+        return false;
+    }
+
+    // Specific scope (department/faculty/programme/discipline/level) means
+    // student-course level listing is expected.
+    if (/(in|for|under|within)\s+(the\s+)?(department|faculty|school|programme|program|discipline)/i.test(q)) return true;
+    if (/\b(100|200|300|400|500|600)\s*level\b/i.test(q)) return true;
+    if (/\b(medicine|nursing|pharmacy|anatomy|physiology|biochemistry|medical\s+laboratory|mls|public\s+health|radiography|dentistry)\b/i.test(q)) return true;
+
+    return false;
+}
+
 async function _resolvePriorityDocumentIds(question) {
     try {
         const q = String(question || '').toLowerCase();
         const patterns = [];
+        const isSpecificCourseQuery = _isSpecificProgrammeCourseQuery(q);
+        const isGenericCoursesAsProgrammes = /(course|courses)/i.test(q) && !isSpecificCourseQuery;
 
         // Fees should anchor to BMU fee structure.
         if (/(fee|fees|tuition|cost|payment|indigene|non[-\s]?indigene)/i.test(q)) {
             patterns.push('%fee structure%');
             patterns.push('%fees%');
         }
-        // Courses/faculties/departments should anchor to Student Courses doc.
-        if (/(course|courses|curriculum|department|departments|faculty|faculties)/i.test(q)) {
+        // Only specific discipline/programme course queries should anchor to Student Courses doc.
+        if (isSpecificCourseQuery || /(department|departments|faculty|faculties)/i.test(q)) {
             patterns.push('%student courses%');
             patterns.push('%course%');
         }
-        // Programmes/about-BMU questions should include the BMU profile doc.
-        if (/(programme|programmes|program|profile|about bmu|bmu profile)/i.test(q)) {
+        // "Courses offered" and "programmes" are treated as synonyms by default.
+        if (/(programme|programmes|program|profile|about bmu|bmu profile)/i.test(q) || isGenericCoursesAsProgrammes) {
             patterns.push('%brief profile%');
             patterns.push('%profile%');
+            patterns.push('%programme%');
+            patterns.push('%programmes%');
         }
         // Office-holder identity questions should prioritize profile/governance docs.
         if (/(who\s+is|name\s+of|current)/i.test(q) && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor)/i.test(q)) {
