@@ -80,16 +80,59 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
     };
 
     const re = rolePatterns[normalizedRole];
-    if (!re) return null;
-
     const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    const line = lines.find(entry => re.test(entry));
-    if (!line) return null;
+    if (re) {
+        const line = lines.find(entry => re.test(entry));
+        if (line) {
+            const match = line.match(re);
+            if (match && match[1]) {
+                const candidate = String(match[1]).replace(/\s+/g, ' ').trim().replace(/[,;.]+$/, '').trim();
+                if (candidate) return candidate;
+            }
+        }
+    }
 
-    const match = line.match(re);
-    if (!match || !match[1]) return null;
+    const roleTokenMap = {
+        'vice-chancellor': /vice[-\s]?chancellor|\bvc\b/i,
+        'registrar': /\bregistrar\b/i,
+        'bursar': /\bbursar\b/i,
+        'dean': /\bdean\b/i,
+        'chancellor': /\bchancellor\b/i,
+        'librarian': /university\s+librarian|\blibrarian\b/i
+    };
+    const roleToken = roleTokenMap[normalizedRole];
+    if (!roleToken) return null;
 
-    return String(match[1]).replace(/\s+/g, ' ').trim().replace(/[,;.]+$/, '').trim();
+    const nameLike = /\b(?:prof(?:essor)?\.?|dr\.?|mr\.?|mrs\.?|ms\.?|miss|pharm\.?|arc\.?|engr\.?|chief|alh\.?|pastor)\b/i;
+    const obviousNoise = /^(role|office|position|designation|department|faculty|school|unit)\b/i;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!roleToken.test(line)) continue;
+
+        const sameLine = line
+            .replace(roleToken, '')
+            .replace(/^\s*[:\-–]+\s*/, '')
+            .trim()
+            .replace(/[,;.]+$/, '')
+            .trim();
+
+        if (sameLine && !obviousNoise.test(sameLine) && /[a-z]/i.test(sameLine)) {
+            if (sameLine.length >= 4 && (nameLike.test(sameLine) || /^[A-Z][A-Za-z\s.'-]{3,}$/.test(sameLine))) {
+                return sameLine;
+            }
+        }
+
+        for (let j = i + 1; j <= Math.min(i + 2, lines.length - 1); j++) {
+            const nextLine = String(lines[j] || '').trim().replace(/[,;.]+$/, '').trim();
+            if (!nextLine || obviousNoise.test(nextLine)) continue;
+            if (nameLike.test(nextLine) || /^[A-Z][A-Za-z\s.'-]{3,}$/.test(nextLine)) {
+                return nextLine;
+            }
+        }
+    }
+
+    return null;
 }
 
 function _isSpecificProgrammeCourseQuery(question) {
@@ -179,7 +222,42 @@ async function _getOfficeHolderDocumentContext(question) {
             return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${roleLabel}: ${roleName}`;
         }
 
-        return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${String(profileDoc.content_text || '').slice(0, 2400).trim()}`;
+        const fullText = String(profileDoc.content_text || '');
+        const roleNeedleMap = {
+            'Vice-Chancellor': /vice[-\s]?chancellor|\bvc\b/i,
+            'Registrar': /\bregistrar\b/i,
+            'Bursar': /\bbursar\b/i,
+            'Dean': /\bdean\b/i,
+            'Chancellor': /\bchancellor\b/i,
+            'Librarian': /university\s+librarian|\blibrarian\b/i
+        };
+        const needle = roleNeedleMap[roleLabel];
+        if (needle && fullText) {
+            const lower = fullText.toLowerCase();
+            const roleText = String(needle).replace(/^\//, '').replace(/\/[a-z]*$/i, '');
+            const roleWords = roleText
+                .split('|')
+                .map(s => s.replace(/[^a-z\s-]/gi, '').trim())
+                .filter(Boolean)
+                .sort((a, b) => b.length - a.length);
+
+            let idx = -1;
+            for (const w of roleWords) {
+                idx = lower.indexOf(w.toLowerCase());
+                if (idx >= 0) break;
+            }
+
+            if (idx >= 0) {
+                const start = Math.max(0, idx - 400);
+                const end = Math.min(fullText.length, idx + 1800);
+                const snippet = fullText.slice(start, end).trim();
+                if (snippet) {
+                    return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${snippet}`;
+                }
+            }
+        }
+
+        return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${fullText.slice(0, 2400).trim()}`;
     } catch (err) {
         console.warn('[advisorStreamService] _getOfficeHolderDocumentContext error:', err.message);
         return '';
