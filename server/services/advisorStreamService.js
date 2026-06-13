@@ -66,7 +66,7 @@ async function _getProfileDocumentContent() {
 }
 
 function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
-    const text = String(profileText || '');
+    const text = String(profileText || '').replace(/<[^>]+>/g, ' ');
     if (!text.trim()) return null;
 
     const normalizedRole = String(roleLabel || '').trim().toLowerCase();
@@ -214,15 +214,6 @@ async function _getOfficeHolderDocumentContext(question) {
     try {
         const q = String(question || '').toLowerCase();
         const roleLabel = _detectOfficeRoleLabel(q);
-        const profileDoc = await _getProfileDocumentContent();
-        if (!profileDoc) return '';
-
-        const roleName = _extractOfficeHolderFromProfileDoc(roleLabel, profileDoc.content_text);
-        if (roleName) {
-            return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${roleLabel}: ${roleName}`;
-        }
-
-        const fullText = String(profileDoc.content_text || '');
         const roleNeedleMap = {
             'Vice-Chancellor': /vice[-\s]?chancellor|\bvc\b/i,
             'Registrar': /\bregistrar\b/i,
@@ -232,6 +223,40 @@ async function _getOfficeHolderDocumentContext(question) {
             'Librarian': /university\s+librarian|\blibrarian\b/i
         };
         const needle = roleNeedleMap[roleLabel];
+
+        const profileDoc = await _getProfileDocumentContent();
+        const docCandidates = [];
+        if (profileDoc) docCandidates.push(profileDoc);
+
+        const rows = await query(
+            `SELECT id, title, category, content_text
+             FROM documents
+             WHERE is_active = TRUE
+               AND content_text IS NOT NULL
+               AND (
+                    LOWER(title) LIKE '%profile%'
+                 OR LOWER(title) LIKE '%brief%'
+                 OR LOWER(title) LIKE '%management%'
+                 OR LOWER(title) LIKE '%principal%'
+                 OR LOWER(title) LIKE '%governance%'
+               )
+             ORDER BY id DESC
+             LIMIT 20`
+        );
+        for (const row of rows) {
+            if (!docCandidates.some(d => d.id === row.id)) docCandidates.push(row);
+        }
+
+        for (const doc of docCandidates) {
+            const roleName = _extractOfficeHolderFromProfileDoc(roleLabel, doc.content_text);
+            if (roleName) {
+                return `--- ${doc.title || 'Profile of BMU'} (${doc.category || 'general'}) ---\n${roleLabel}: ${roleName}`;
+            }
+        }
+
+        const snippetDoc = docCandidates[0];
+        if (!snippetDoc) return '';
+        const fullText = String(snippetDoc.content_text || '').replace(/<[^>]+>/g, ' ');
         if (needle && fullText) {
             const lower = fullText.toLowerCase();
             const roleText = String(needle).replace(/^\//, '').replace(/\/[a-z]*$/i, '');
@@ -252,12 +277,12 @@ async function _getOfficeHolderDocumentContext(question) {
                 const end = Math.min(fullText.length, idx + 1800);
                 const snippet = fullText.slice(start, end).trim();
                 if (snippet) {
-                    return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${snippet}`;
+                    return `--- ${snippetDoc.title || 'Profile of BMU'} (${snippetDoc.category || 'general'}) ---\n${snippet}`;
                 }
             }
         }
 
-        return `--- ${profileDoc.title || 'Profile of BMU'} (${profileDoc.category || 'general'}) ---\n${fullText.slice(0, 2400).trim()}`;
+        return `--- ${snippetDoc.title || 'Profile of BMU'} (${snippetDoc.category || 'general'}) ---\n${fullText.slice(0, 2400).trim()}`;
     } catch (err) {
         console.warn('[advisorStreamService] _getOfficeHolderDocumentContext error:', err.message);
         return '';
