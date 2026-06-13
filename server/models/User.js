@@ -502,6 +502,47 @@ class User {
         const result = await query(sql, [role, promptLimit, id]);
         return result.affectedRows > 0;
     }
+
+    // Get prompt quota settings and usage for a specific user
+    static async getPromptQuota(userId) {
+        const rows = await query(
+            `SELECT id, role,
+                    daily_prompt_limit, daily_prompt_count,
+                    monthly_prompt_limit, monthly_prompt_count
+             FROM users
+             WHERE id = ?
+             LIMIT 1`,
+            [userId]
+        );
+        return rows[0] || null;
+    }
+
+    // Update daily/monthly prompt limits for a user
+    static async updatePromptLimits(userId, { dailyPromptLimit, monthlyPromptLimit }) {
+        const updates = [];
+        const params = [];
+
+        if (dailyPromptLimit !== undefined && dailyPromptLimit !== null) {
+            updates.push('daily_prompt_limit = ?');
+            params.push(dailyPromptLimit);
+        }
+
+        if (monthlyPromptLimit !== undefined && monthlyPromptLimit !== null) {
+            updates.push('monthly_prompt_limit = ?');
+            params.push(monthlyPromptLimit);
+        }
+
+        if (!updates.length) return false;
+
+        params.push(userId);
+        const result = await query(
+            `UPDATE users
+             SET ${updates.join(', ')}, updated_at = NOW()
+             WHERE id = ?`,
+            params
+        );
+        return result.affectedRows > 0;
+    }
 }
 
 module.exports = User;

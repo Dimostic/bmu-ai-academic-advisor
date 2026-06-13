@@ -672,6 +672,81 @@ router.put('/users/:id/role', authenticateToken, requireAdmin, async (req, res) 
     }
 });
 
+// Get a user's prompt quota and usage (superadmin only)
+router.get('/users/:id/prompt-quota', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const userId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(userId) || userId <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid user id' });
+        }
+
+        const quota = await User.getPromptQuota(userId);
+        if (!quota) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        return res.json({ success: true, quota });
+    } catch (error) {
+        console.error('Get prompt quota error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to fetch prompt quota' });
+    }
+});
+
+// Update a user's prompt limits (superadmin only)
+router.put('/users/:id/prompt-limits', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const userId = parseInt(req.params.id, 10);
+        const dailyRaw = req.body?.dailyPromptLimit;
+        const monthlyRaw = req.body?.monthlyPromptLimit;
+
+        if (!Number.isInteger(userId) || userId <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid user id' });
+        }
+
+        const updates = {};
+        if (dailyRaw !== undefined) {
+            const v = parseInt(dailyRaw, 10);
+            if (!Number.isInteger(v) || v < -1) {
+                return res.status(400).json({ success: false, error: 'dailyPromptLimit must be -1 or greater' });
+            }
+            updates.dailyPromptLimit = v;
+        }
+
+        if (monthlyRaw !== undefined) {
+            const v = parseInt(monthlyRaw, 10);
+            if (!Number.isInteger(v) || v < -1) {
+                return res.status(400).json({ success: false, error: 'monthlyPromptLimit must be -1 or greater' });
+            }
+            updates.monthlyPromptLimit = v;
+        }
+
+        if (!Object.keys(updates).length) {
+            return res.status(400).json({ success: false, error: 'Provide dailyPromptLimit and/or monthlyPromptLimit' });
+        }
+
+        const ok = await User.updatePromptLimits(userId, updates);
+        if (!ok) {
+            return res.status(404).json({ success: false, error: 'User not found or no changes made' });
+        }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'USER_PROMPT_LIMITS_UPDATED',
+            entityType: 'user',
+            entityId: userId,
+            details: updates,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        const quota = await User.getPromptQuota(userId);
+        return res.json({ success: true, message: 'Prompt limits updated', quota });
+    } catch (error) {
+        console.error('Update prompt limits error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update prompt limits' });
+    }
+});
+
 // Delete user - with proper permission checks
 router.delete('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {

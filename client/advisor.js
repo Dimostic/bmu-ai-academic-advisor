@@ -208,6 +208,31 @@
         setTimeout(() => el.remove(), 4200);
     }
 
+    async function copyText(text, successMessage = 'Copied to clipboard') {
+        const value = String(text || '').trim();
+        if (!value) {
+            toast('Nothing to copy', 'error');
+            return;
+        }
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = value;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+            toast(successMessage);
+        } catch (_) {
+            toast('Could not copy text', 'error');
+        }
+    }
+
     // ---------- Avatar state machine ----------
     // The "expression" is a high-level mood the advisor wears; the
     // "state" is what it's doing right now (idle / listening / thinking /
@@ -547,7 +572,25 @@
     function addStudentBubble(text) {
         const el = document.createElement('article');
         el.className = 'bubble bubble--student';
-        el.innerHTML = `<header>You</header><div class="bubble-body">${escapeHtml(text)}</div>`;
+        el.innerHTML = `
+            <header>You</header>
+            <div class="bubble-body">${escapeHtml(text)}</div>
+            <div class="bubble-quick-actions">
+                <button type="button" class="quick-action-btn" data-action="copy-prompt">
+                    <i class="fa-regular fa-copy"></i> Copy prompt
+                </button>
+                <button type="button" class="quick-action-btn" data-action="reapply-prompt">
+                    <i class="fa-solid fa-rotate-right"></i> Reapply
+                </button>
+            </div>
+        `;
+        el.querySelector('[data-action="copy-prompt"]')?.addEventListener('click', () => {
+            copyText(text, 'Prompt copied');
+        });
+        el.querySelector('[data-action="reapply-prompt"]')?.addEventListener('click', () => {
+            questionInput.value = String(text || '');
+            askNow();
+        });
         transcript.appendChild(el);
         scrollToBottom();
     }
@@ -582,15 +625,33 @@
         const body = escapeHtml(text || '');
         el.innerHTML = `
             <header><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(window.ADVISOR_NAME || 'Dr. Tari')}</header>
-            <div class="bubble-body">${body}</div>`;
+            <div class="bubble-body">${body}</div>
+            <div class="bubble-quick-actions">
+                <button type="button" class="quick-action-btn" data-action="copy-response">
+                    <i class="fa-regular fa-copy"></i> Copy response
+                </button>
+            </div>`;
+        el.querySelector('[data-action="copy-response"]')?.addEventListener('click', () => {
+            copyText(text || '', 'Response copied');
+        });
         transcript.appendChild(el);
         return el;
     }
 
     function fillBubbleMeta(bubble, { citations, suggested_actions, speech_text, audio_url, message_id }) {
         if (message_id) bubble.el.dataset.messageId = String(message_id);
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'quick-action-btn';
+        copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy response';
+        copyBtn.addEventListener('click', () => {
+            copyText(bubble.body?.textContent || speech_text || '', 'Response copied');
+        });
+        bubble.actions.appendChild(copyBtn);
+
         if (Array.isArray(suggested_actions) && suggested_actions.length) {
             bubble.actions.innerHTML = '';
+            bubble.actions.appendChild(copyBtn);
             for (const a of suggested_actions) {
                 const b = document.createElement('button');
                 b.type = 'button';

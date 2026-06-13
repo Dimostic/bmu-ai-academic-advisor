@@ -731,6 +731,21 @@
         wireCreateUserForm();
         let filter = 'all';
         let searchText = '';
+        const canManagePromptLimits = user?.role === 'superadmin';
+
+        function renderPromptLimitControls(u) {
+            if (!canManagePromptLimits) return '';
+            const daily = Number.isFinite(Number(u.daily_prompt_limit)) ? Number(u.daily_prompt_limit) : 10;
+            const monthly = Number.isFinite(Number(u.monthly_prompt_limit)) ? Number(u.monthly_prompt_limit) : 100;
+            return `
+                <div class="prompt-limit-controls" data-user-id="${u.id}">
+                    <input type="number" data-field="daily" min="-1" value="${daily}" title="Daily limit (-1 for unlimited)" />
+                    <input type="number" data-field="monthly" min="-1" value="${monthly}" title="Monthly limit (-1 for unlimited)" />
+                    <button class="btn btn-primary btn-sm" data-act="set-limits" data-id="${u.id}">Save</button>
+                </div>
+            `;
+        }
+
         async function load() {
             try {
                 const params = new URLSearchParams({ limit: '200' });
@@ -759,7 +774,7 @@
                         if (Number(limit) === -1) return '∞';
                         return `${Number(used || 0)} / ${Number(limit)}`;
                     };
-                    return [
+                    const row = [
                         `<div><strong>${escapeHtml(fullName)}</strong>
                           <div style="color:var(--muted); font-size:.82rem;">${escapeHtml(u.email)}</div></div>`,
                         escapeHtml(u.role || 'student'),
@@ -769,9 +784,15 @@
                         escapeHtml(formatDate(u.createdAt || u.created_at)),
                         userActions(u, status)
                     ];
+                    if (canManagePromptLimits) {
+                        row.push(renderPromptLimitControls(u));
+                    }
+                    return row;
                 });
+                const headers = ['User', 'Role', 'Status', 'Today', 'This month', 'Joined', 'Actions'];
+                if (canManagePromptLimits) headers.push('Prompt limits');
                 document.getElementById('userList').innerHTML = table(
-                    ['User', 'Role', 'Status', 'Today', 'This month', 'Joined', 'Actions'], rows
+                    headers, rows
                 );
                 attachUserActions();
             } catch (err) {
@@ -807,6 +828,19 @@
                     else if (act === 'reject')  { if (!confirm('Reject this account?')) return; await api('/api/users/admin/users/' + id + '/reject', { method: 'POST' }); }
                     else if (act === 'deactivate') { await api('/api/admin/users/' + id + '/status', { method: 'PUT', body: { isActive: false } }); }
                     else if (act === 'reactivate') { await api('/api/admin/users/' + id + '/status', { method: 'PUT', body: { isActive: true  } }); }
+                    else if (act === 'set-limits') {
+                        const wrap = btn.closest('.prompt-limit-controls');
+                        const daily = parseInt(wrap?.querySelector('input[data-field="daily"]')?.value, 10);
+                        const monthly = parseInt(wrap?.querySelector('input[data-field="monthly"]')?.value, 10);
+                        if (!Number.isInteger(daily) || daily < -1 || !Number.isInteger(monthly) || monthly < -1) {
+                            toast('Limits must be integers and at least -1', 'error');
+                            return;
+                        }
+                        await api('/api/admin/users/' + id + '/prompt-limits', {
+                            method: 'PUT',
+                            body: { dailyPromptLimit: daily, monthlyPromptLimit: monthly }
+                        });
+                    }
                     toast('Done'); load();
                 } catch (err) { toast(err.message, 'error'); }
             });

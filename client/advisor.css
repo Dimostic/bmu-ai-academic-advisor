@@ -252,6 +252,57 @@ html[data-theme="dark"] .avatar-stage {
 }
 .action-buttons button:hover { background: var(--accent); color: #fff; }
 
+.bubble-quick-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.quick-action-btn {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.quick-action-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.bubble--student .quick-action-btn {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #fff;
+}
+
+.bubble--student .quick-action-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.prompt-limit-controls {
+    display: grid;
+    grid-template-columns: 64px 64px auto;
+    gap: 6px;
+    align-items: center;
+    min-width: 230px;
+}
+
+.prompt-limit-controls input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 0.82rem;
+}
+
 /* -------- Composer -------- */
 .composer {
     display: flex; align-items: center; gap: 8px; padding: 12px 14px;
