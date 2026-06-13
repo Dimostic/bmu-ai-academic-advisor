@@ -15,6 +15,40 @@ const FAQCategory = require('../models/FAQCategory');
 const Document = require('../models/Document');
 const aiService = require('./aiService');
 
+function _classifyCourseIntent(question) {
+    const q = String(question || '').toLowerCase();
+    if (!/(course|courses|curriculum|units?)/i.test(q)) {
+        return { mode: 'neutral', query: q };
+    }
+
+    const hasSpecificScope = /(in|for|under|within)\s+(the\s+)?(department|faculty|school|programme|program|discipline)/i.test(q)
+        || /\b(100|200|300|400|500|600)\s*level\b/i.test(q)
+        || /\b(medicine|nursing|pharmacy|anatomy|physiology|biochemistry|medical\s+laboratory|mls|public\s+health|radiography|dentistry)\b/i.test(q);
+
+    // Generic "courses offered at BMU" should resolve toward programme-style FAQs.
+    const isGenericProgrammeQuery = /(all\s+courses|courses\s+offered|offer\w*\s+courses|list\s+courses)/i.test(q)
+        && !hasSpecificScope;
+
+    if (isGenericProgrammeQuery) {
+        return {
+            mode: 'programme',
+            query: q.replace(/\bcourses?\b/g, 'programme')
+        };
+    }
+
+    if (hasSpecificScope) {
+        return {
+            mode: 'specific_course',
+            query: `${q} student courses`
+        };
+    }
+
+    return {
+        mode: 'generic_course',
+        query: q.replace(/\bcourses?\b/g, 'programme')
+    };
+}
+
 // Q&A generation phase configurations
 const QA_GENERATION_PHASES = {
     // Phase 1: Foundational/Definitional questions
@@ -322,10 +356,12 @@ class FAQService {
 
         const startTime = Date.now();
         const threshold = options.threshold || settings.faq_similarity_threshold;
+        const courseIntent = _classifyCourseIntent(userQuery);
+        const searchQuery = courseIntent.query || userQuery;
 
         // === QUERY VALIDATION ===
         // Reject very short or ambiguous queries that are prone to false matches
-        const normalizedQuery = userQuery.trim().toLowerCase();
+        const normalizedQuery = String(searchQuery || userQuery).trim().toLowerCase();
         const wordCount = normalizedQuery.split(/\s+/).filter(w => w.length > 1).length;
         
         // STRICT thresholds to prevent hallucination from bad FAQ matches
@@ -352,7 +388,7 @@ class FAQService {
 
         try {
             // Generate embedding for user query
-            const queryEmbedding = await aiService.generateEmbedding(userQuery, true);
+            const queryEmbedding = await aiService.generateEmbedding(searchQuery, true);
             if (!queryEmbedding || queryEmbedding.length === 0) return null;
 
             // Load FAQ embeddings
@@ -372,7 +408,7 @@ class FAQService {
             }
 
             if (!bestMatch) {
-                console.log(`[FAQService] No FAQ match above threshold ${(effectiveThreshold * 100).toFixed(0)}% for: "${userQuery.substring(0, 50)}..." (${wordCount} words)`);
+                console.log(`[FAQService] No FAQ match above threshold ${(effectiveThreshold * 100).toFixed(0)}% for: "${searchQuery.substring(0, 50)}..." (${wordCount} words, intent=${courseIntent.mode})`);
                 return null;
             }
 
@@ -383,7 +419,7 @@ class FAQService {
             const responseTime = Date.now() - startTime;
             
             // Log the match for debugging with full details
-            console.log(`[FAQService] FAQ match: "${userQuery.substring(0, 40)}..." → "${fullQA.question.substring(0, 40)}..." (${(bestScore * 100).toFixed(1)}% ≥ ${(effectiveThreshold * 100).toFixed(0)}% threshold)`);
+            console.log(`[FAQService] FAQ match: "${searchQuery.substring(0, 40)}..." → "${fullQA.question.substring(0, 40)}..." (${(bestScore * 100).toFixed(1)}% ≥ ${(effectiveThreshold * 100).toFixed(0)}% threshold, intent=${courseIntent.mode})`);
 
             return {
                 cachedQA: fullQA,
