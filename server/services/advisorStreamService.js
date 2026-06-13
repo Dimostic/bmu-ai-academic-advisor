@@ -340,25 +340,51 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     if (!text.trim()) return null;
 
     const patterns = {
-        'Vice-Chancellor': /^\s*[-•]?\s*(?:current\s+)?vice[-\s]?chancellor\s*[:\-]\s*([^\n\r;]{3,180})/im,
-        'Registrar': /^\s*[-•]?\s*registrar\s*[:\-]\s*([^\n\r;]{3,180})/im,
-        'Bursar': /^\s*[-•]?\s*bursar\s*[:\-]\s*([^\n\r;]{3,180})/im,
-        'Dean': /^\s*[-•]?\s*dean\s*[:\-]\s*([^\n\r;]{3,180})/im,
-        'Chancellor': /^\s*[-•]?\s*chancellor\s*[:\-]\s*([^\n\r;]{3,180})/im,
-        'Librarian': /^\s*[-•]?\s*(?:university\s+)?librarian\s*[:\-]\s*([^\n\r;]{3,180})/im
+        'Vice-Chancellor': /^\s*[-•]?\s*(?:current\s+)?vice[-\s]?chancellor\s*[:\-]\s*([^\n\r;]{3,220})/im,
+        'Registrar': /^\s*[-•]?\s*registrar\s*[:\-]\s*([^\n\r;]{3,220})/im,
+        'Bursar': /^\s*[-•]?\s*bursar\s*[:\-]\s*([^\n\r;]{3,220})/im,
+        'Dean': /^\s*[-•]?\s*dean\s*[:\-]\s*([^\n\r;]{3,220})/im,
+        'Chancellor': /^\s*[-•]?\s*chancellor\s*[:\-]\s*([^\n\r;]{3,220})/im,
+        'Librarian': /^\s*[-•]?\s*(?:university\s+)?librarian\s*[:\-]\s*([^\n\r;]{3,220})/im
+    };
+    const loosePatterns = {
+        'Vice-Chancellor': /(?:^|\s)(?:current\s+)?vice[-\s]?chancellor\s*[:\-]\s*([^\n\r]{3,260})/i,
+        'Registrar': /(?:^|\s)registrar\s*[:\-]\s*([^\n\r]{3,260})/i,
+        'Bursar': /(?:^|\s)bursar\s*[:\-]\s*([^\n\r]{3,260})/i,
+        'Dean': /(?:^|\s)dean\s*[:\-]\s*([^\n\r]{3,260})/i,
+        'Chancellor': /(?:^|\s)chancellor\s*[:\-]\s*([^\n\r]{3,260})/i,
+        'Librarian': /(?:^|\s)(?:university\s+)?librarian\s*[:\-]\s*([^\n\r]{3,260})/i
+    };
+
+    const stopAtNextRole = (value) => String(value || '').replace(
+        /\s+(?=(?:deputy\s+vice[-\s]?chancellor|vice[-\s]?chancellor|registrar|bursar|(?:university\s+)?librarian|governing\s+council|meetings?\s+schedule|principal\s+officers|senate|university\s+council)\b).*$/i,
+        ''
+    ).trim();
+
+    const tryNormalize = (raw) => {
+        const clipped = stopAtNextRole(raw);
+        return _normalizePersonName(clipped);
     };
 
     const re = patterns[roleLabel];
-    if (!re) return null;
-    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    const line = lines.find(entry => re.test(entry));
-    if (!line) return null;
-    const m = line.match(re);
-    if (!m || !m[1]) return null;
+    if (re) {
+        const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        const line = lines.find(entry => re.test(entry));
+        if (line) {
+            const m = line.match(re);
+            const candidate = tryNormalize(m && m[1]);
+            if (candidate) return candidate;
+        }
+    }
 
-    const candidate = _normalizePersonName(m[1]);
-    if (!candidate) return null;
-    return candidate;
+    const loose = loosePatterns[roleLabel];
+    if (loose) {
+        const m = text.match(loose);
+        const candidate = tryNormalize(m && m[1]);
+        if (candidate) return candidate;
+    }
+
+    return null;
 }
 
 function _extractCitationsFromContext(ragContext) {
@@ -387,7 +413,11 @@ function _extractRoleExcerptFromContext(roleLabel, ragContext) {
     const m = text.match(re);
     if (!m || !m[0]) return null;
 
-    const excerpt = String(m[0]).replace(/\s+/g, ' ').replace(/^[\s,:;\-]+|[\s,:;\-]+$/g, '').trim();
+    let excerpt = String(m[0]).replace(/\s+/g, ' ').replace(/^[\s,:;\-]+|[\s,:;\-]+$/g, '').trim();
+    excerpt = excerpt.replace(
+        /\s+(?=(?:deputy\s+vice[-\s]?chancellor|vice[-\s]?chancellor|registrar|bursar|(?:university\s+)?librarian|governing\s+council|meetings?\s+schedule|principal\s+officers|senate|university\s+council)\b).*$/i,
+        ''
+    ).trim();
     if (excerpt.length < 12) return null;
     return excerpt;
 }
