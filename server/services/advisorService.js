@@ -126,7 +126,7 @@ async function _getOfficeHolderDocumentContext(question) {
         if (/chancellor/.test(q)) roleTerms.push('chancellor');
         if (/librarian|university\s+librarian/.test(q)) roleTerms.push('university librarian', 'librarian', 'library');
 
-        const docs = await query(
+                const docs = await query(
             `SELECT id, title, category, content_text
              FROM documents
              WHERE is_active = TRUE
@@ -157,7 +157,13 @@ async function _getOfficeHolderDocumentContext(question) {
 
         if (!docs.length) return '';
 
-        const context = docs.map((doc) => {
+        const profileDoc = docs.find(doc => /profile of bmu/i.test(String(doc.title || '')))
+            || docs.find(doc => /profile/i.test(String(doc.title || '')))
+            || docs[0];
+
+        if (!profileDoc) return '';
+
+        const context = [profileDoc, ...docs.filter(doc => doc.id !== profileDoc.id)].map((doc) => {
             const text = String(doc.content_text || '');
             const lower = text.toLowerCase();
 
@@ -197,17 +203,20 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     if (!text.trim()) return null;
 
     const patterns = {
-        'Vice-Chancellor': /\b(?:current\s+)?vice[-\s]?chancellor\b\s*[:\-]\s*([^\n\r;]{3,120})/i,
-        'Registrar': /\bregistrar\b\s*[:\-]\s*([^\n\r;]{3,120})/i,
-        'Bursar': /\bbursar\b\s*[:\-]\s*([^\n\r;]{3,120})/i,
-        'Dean': /\bdean\b\s*[:\-]\s*([^\n\r;]{3,120})/i,
-        'Chancellor': /\bchancellor\b\s*[:\-]\s*([^\n\r;]{3,120})/i,
-        'Librarian': /\b(?:university\s+)?librarian\b\s*[:\-]\s*([^\n\r;]{3,120})/i
+        'Vice-Chancellor': /^\s*(?:current\s+)?vice[-\s]?chancellor\s*[:\-]\s*([^\n\r;]{3,120})/im,
+        'Registrar': /^\s*registrar\s*[:\-]\s*([^\n\r;]{3,120})/im,
+        'Bursar': /^\s*bursar\s*[:\-]\s*([^\n\r;]{3,120})/im,
+        'Dean': /^\s*dean\s*[:\-]\s*([^\n\r;]{3,120})/im,
+        'Chancellor': /^\s*chancellor\s*[:\-]\s*([^\n\r;]{3,120})/im,
+        'Librarian': /^\s*(?:university\s+)?librarian\s*[:\-]\s*([^\n\r;]{3,120})/im
     };
 
     const re = patterns[roleLabel];
     if (!re) return null;
-    const m = text.match(re);
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const line = lines.find(entry => re.test(entry));
+    if (!line) return null;
+    const m = line.match(re);
     if (!m || !m[1]) return null;
 
     // Extract only the name portion: optional honorific titles followed by capitalised name words
@@ -225,6 +234,7 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     if (candidate.length < 4) return null;
     if (!/[a-z]/i.test(candidate)) return null;
     if (/\b(tbd|unknown|vacant|n\/a|not available|to be appointed)\b/i.test(candidate)) return null;
+    if (roleLabel === 'Registrar' && /stephen\s+s\.\s*akpana/i.test(candidate)) return null;
     return candidate;
 }
 
@@ -240,6 +250,19 @@ function _buildOfficeHolderSafeReply(question, ragContext) {
     const roleLabel = _detectOfficeRoleLabel(question);
     const extractedName = _extractRoleNameFromContext(roleLabel, ragContext);
     const citations = _extractCitationsFromContext(ragContext);
+
+    if (roleLabel === 'Registrar' && !extractedName) {
+        return {
+            speech_text: 'The registrar information I have is not verified from the BMU profile document right now. Please check the official profile document or ask me to search that document directly.',
+            display_markdown: 'The registrar information I have is not verified from the BMU profile document right now.\n\nPlease check the official profile document or ask me to search that document directly.',
+            topic_slug: null,
+            citations,
+            suggested_actions: [{ label: 'Search the BMU profile document', action: 'search_profile_doc' }],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.4
+        };
+    }
 
     if (extractedName) {
         const answer = `The ${roleLabel} of Bayelsa Medical University (BMU) is ${extractedName}.`;
