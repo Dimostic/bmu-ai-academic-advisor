@@ -498,6 +498,7 @@ async function _fetchRagContext(question) {
 
     if (!retrievalService) return await _keywordFallback(question);
 
+    const [generalCtx, priorityCtx] = await Promise.all([
         timed(
             retrievalService.retrieve(question, { limit: 5 })
                 .then(r => r?.context || '')
