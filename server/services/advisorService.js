@@ -360,10 +360,36 @@ function _extractCitationsFromContext(ragContext) {
     return [...new Set(titles)].slice(0, 3).map(title => ({ title, source: 'BMU document context' }));
 }
 
+function _extractRoleExcerptFromContext(roleLabel, ragContext) {
+    const text = String(ragContext || '').replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+
+    const patterns = {
+        'Vice-Chancellor': /(?:vice[-\s]?chancellor|\bvc\b)[^.\n\r]{0,220}/i,
+        'Registrar': /\bregistrar\b[^.\n\r]{0,220}/i,
+        'Bursar': /\bbursar\b[^.\n\r]{0,220}/i,
+        'Dean': /\bdean\b[^.\n\r]{0,220}/i,
+        'Chancellor': /\bchancellor\b[^.\n\r]{0,220}/i,
+        'Librarian': /(?:university\s+librarian|\blibrarian\b)[^.\n\r]{0,220}/i
+    };
+
+    const re = patterns[roleLabel];
+    if (!re) return null;
+    const m = text.match(re);
+    if (!m || !m[0]) return null;
+
+    const excerpt = String(m[0]).replace(/\s+/g, ' ').replace(/^[\s,:;\-]+|[\s,:;\-]+$/g, '').trim();
+    if (excerpt.length < 12) return null;
+    return excerpt;
+}
+
 function _buildOfficeHolderSafeReply(question, ragContext) {
     const roleLabel = _detectOfficeRoleLabel(question);
     const extractedName = _extractRoleNameFromContext(roleLabel, ragContext);
+    const roleExcerpt = _extractRoleExcerptFromContext(roleLabel, ragContext);
     const citations = _extractCitationsFromContext(ragContext);
+    const roleAction = `search_profile_doc:${roleLabel.toLowerCase().replace(/[^a-z]+/g, '_')}`;
+    const roleSearchLabel = `Search the BMU profile document for ${roleLabel}`;
 
     if (extractedName) {
         const answer = `The ${roleLabel} of Bayelsa Medical University (BMU) is ${extractedName}.`;
@@ -379,12 +405,26 @@ function _buildOfficeHolderSafeReply(question, ragContext) {
         };
     }
 
+    if (roleExcerpt) {
+        const answer = `From the BMU profile document, I found this ${roleLabel.toLowerCase()} excerpt: ${roleExcerpt}.`;
+        return {
+            speech_text: answer,
+            display_markdown: `From the BMU profile document, I found this **${roleLabel.toLowerCase()}** excerpt:\n\n${roleExcerpt}`,
+            topic_slug: null,
+            citations,
+            suggested_actions: [{ label: roleSearchLabel, action: roleAction }],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.55
+        };
+    }
+
     return {
         speech_text: `The ${roleLabel.toLowerCase()} information I have is not verified from the BMU profile document right now. Please check the official profile document or ask me to search that document directly.`,
         display_markdown: `The ${roleLabel.toLowerCase()} information I have is not verified from the BMU profile document right now.\n\nPlease check the official profile document or ask me to search that document directly.`,
         topic_slug: null,
         citations,
-        suggested_actions: [{ label: 'Search the BMU profile document', action: 'search_profile_doc' }],
+        suggested_actions: [{ label: roleSearchLabel, action: roleAction }],
         follow_up_questions: [],
         needs_escalation: false,
         confidence: 0.4

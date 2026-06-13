@@ -666,6 +666,7 @@
                 // handleAction; everything else asks the literal label.
                 b.addEventListener('click', () => {
                     if (a.action === 'escalate_to_human' ||
+                        (typeof a.action === 'string' && a.action.startsWith('search_profile_doc')) ||
                         a.action === 'start_study_plan' ||
                         (typeof a.action === 'string' && a.action.startsWith('open_url:'))) {
                         handleAction(a.action);
@@ -787,6 +788,13 @@
         if (!action) return;
         if (action === 'escalate_to_human') {
             openEscalation();
+        } else if (typeof action === 'string' && action.startsWith('search_profile_doc')) {
+            const payload = action.includes(':') ? action.slice(action.indexOf(':') + 1) : '';
+            const roleText = payload
+                ? payload.replace(/_/g, ' ').trim()
+                : 'requested official';
+            questionInput.value = `Search the BMU profile document for the current ${roleText} of BMU.`;
+            askNow();
         } else if (action === 'start_study_plan') {
             toast('Study plans coming soon.');
         } else if (action.startsWith('open_topic:')) {
