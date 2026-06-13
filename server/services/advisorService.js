@@ -525,6 +525,18 @@ async function _fetchRagContext(question) {
     return await _keywordFallback(question);
 }
 
+async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
+    if (sessionToken) {
+        const existing = await Advisor.getConversationByToken(sessionToken);
+        if (existing) return existing;
+    }
+
+    return await Advisor.createConversation({
+        studentId,
+        voiceEnabled: voiceEnabled !== false
+    });
+}
+
 /**
  * Build the recent-history array passed to the LLM.
  * Reverses to chronological order and trims to HISTORY_TURNS items.

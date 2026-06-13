@@ -548,6 +548,18 @@ async function _fetchRagContext(question) {
     return await _keywordFallback(question);
 }
 
+async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
+    if (sessionToken) {
+        const existing = await Advisor.getConversationByToken(sessionToken);
+        if (existing) return existing;
+    }
+
+    return await Advisor.createConversation({
+        studentId,
+        voiceEnabled: voiceEnabled !== false
+    });
+}
+
 async function _buildHistory(conversationId) {
     const rows = await Advisor.getRecentMessages(conversationId, HISTORY_TURNS * 2);
     return rows.reverse().map(r => ({
