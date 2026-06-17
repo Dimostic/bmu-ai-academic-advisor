@@ -206,11 +206,35 @@ function isIgnorableCalendarLine(line) {
 }
 
 function buildEntryFromActivityAndDate(activityText, dateText, fallbackYear) {
-    const activity = normalizeText(activityText);
+    const activity = normalizeActivityText(activityText);
     if (!activity || activity.length < 3) return null;
     const dateRange = extractDateRangeFromText(dateText, fallbackYear);
     if (!dateRange || !dateRange.start) return null;
     return createCalendarEntry(activity, dateRange.start, dateRange.end);
+}
+
+function normalizeActivityText(value) {
+    let text = normalizeText(value);
+    if (!text) return text;
+
+    // Keep primary activity sentence; drop trailing operational notes.
+    const sentences = text.split(/\.\s+/).map(part => normalizeText(part)).filter(Boolean);
+    if (sentences.length > 1) {
+        const second = sentences[1].toLowerCase();
+        if (/^(after\s+which|portal\s+will|note\b|n\.b\.|nb\b|penalty\b|deadline\b)/i.test(second)) {
+            text = sentences[0];
+        }
+    }
+
+    // Insert missing spaces in common glued tokens from DOCX extraction.
+    text = text
+        .replace(/\s+portal\s+will\b.*$/i, '')
+        .replace(/(\d{2,3}[A-Z])(Students\b)/g, '$1 $2')
+        .replace(/\(for\s*\(for\b/gi, '(for ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    return text;
 }
 
 function isIgnorableActivityText(activity) {
@@ -338,6 +362,7 @@ function extractEntryFromLine(line, fallbackYear) {
     }
 
     if (!activity || !startRaw) return null;
+    activity = normalizeActivityText(activity);
     if (activity.length < 3) return null;
 
     const dateRange = extractDateRangeFromText(endRaw ? `${startRaw} - ${endRaw}` : startRaw, fallbackYear);
