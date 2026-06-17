@@ -202,8 +202,8 @@ html[data-theme="dark"] .avatar-stage {
 }
 
 /* SVG avatar element animations */
-#avatarSvg .eye { transition: ry .12s linear; transform-origin: center; }
-#avatarSvg.blink .eye { ry: 0.5; }
+#avatarSvg .eye { transition: transform .12s linear; transform-box: fill-box; transform-origin: center; }
+#avatarSvg.blink .eye { transform: scaleY(0.08); }
 #avatarSvg.listening #listenRing { opacity: 1; animation: spin 6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); transform-origin: 100px 120px; } }
 
@@ -366,7 +366,7 @@ html[data-theme="dark"] .avatar-stage {
 }
 .history-list .item:hover { background: #f0f7f4; border-color: var(--line); }
 .history-list .item .title { font-size: .9rem; font-weight: 600; margin-bottom: 2px; }
-.history-list .item .when { font-size: .78rem; color: var(--muted); }
+.history-list .item .when { font-size: .82rem; color: #50656d; font-weight: 500; }
 
 /* -------- Modal -------- */
 .modal {
@@ -375,7 +375,7 @@ html[data-theme="dark"] .avatar-stage {
     width: calc(100vw - 16px);
     box-shadow: 0 20px 60px rgba(0,0,0,.25);
 }
-.modal::backdrop { background: rgba(15, 61, 62, .35); backdrop-filter: blur(2px); }
+.modal::backdrop { background: rgba(15, 61, 62, .35); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 .modal form { padding: 24px; display: flex; flex-direction: column; gap: 12px; }
 .modal h2 { margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; }
 .modal label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
@@ -454,7 +454,7 @@ html[data-theme="dark"] .avatar-stage {
 .handbook-results .faq summary::-webkit-details-marker { display: none; }
 .handbook-results .faq summary::before { content: '\f054'; font-family: 'Font Awesome 6 Free'; font-weight: 900; font-size: .7rem; color: var(--muted); transition: transform .15s; }
 .handbook-results .faq[open] summary::before { transform: rotate(90deg); }
-.handbook-results .faq .answer { margin-top: 10px; font-size: .92rem; line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.handbook-results .faq .answer { margin-top: 10px; font-size: .95rem; line-height: 1.68; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .handbook-results .faq .sources { margin-top: 8px; font-size: .78rem; color: var(--muted); }
 .handbook-results .faq .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 .handbook-results .faq .actions button {
@@ -594,6 +594,7 @@ html[data-theme="dark"] .bubble--student {
 }
 html[data-theme="dark"] .bubble--advisor { background: var(--bg-elev); }
 html[data-theme="dark"] .mic-btn { background: var(--bg-elev); color: var(--accent); }
+html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
 
 /* ========================================================================
    Mobile advisor interaction model
@@ -687,7 +688,24 @@ html[data-theme="dark"] .mic-btn { background: var(--bg-elev); color: var(--acce
     }
 
     .history-pane {
-        display: none;
+        display: flex;
+        position: fixed;
+        top: calc(var(--mobile-topbar-h, 64px) + 8px);
+        right: 8px;
+        width: min(92vw, 380px);
+        max-height: calc(100vh - var(--mobile-topbar-h, 64px) - 16px);
+        z-index: 46;
+        border: 1px solid var(--line);
+        transform: translateX(110%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform .2s ease, opacity .2s ease;
+    }
+
+    .history-pane.is-open {
+        transform: translateX(0);
+        opacity: 1;
+        pointer-events: auto;
     }
 
     body.is-speaking .bubble--advisor.is-speaking-focus {

@@ -622,10 +622,10 @@
     function addAdvisorHistoryBubble(text) {
         const el = document.createElement('article');
         el.className = 'bubble bubble--advisor';
-        const body = escapeHtml(text || '');
+        const body = escapeHtml(formatAssistantDisplayText(text || ''));
         el.innerHTML = `
             <header><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(window.ADVISOR_NAME || 'Dr. Tari')}</header>
-            <div class="bubble-body">${body}</div>
+            <div class="bubble-body">${body.replace(/\n/g, '<br/>')}</div>
             <div class="bubble-quick-actions">
                 <button type="button" class="quick-action-btn" data-action="copy-response">
                     <i class="fa-regular fa-copy"></i> Copy response
@@ -1311,6 +1311,7 @@
                     sessionToken: state.sessionToken,
                     voiceEnabled: true,
                     inputMode: 'text',
+                    responseStyle: 'concise_conversational',
                     advisorGender: getAdvisorGender()
                 })
             });
@@ -1415,7 +1416,7 @@
                 // user sees a tidy final answer even when intermediate
                 // tokens contained formatting characters.
                 if (final.reply?.display_markdown) {
-                    bubble.body.textContent = final.reply.display_markdown;
+                    bubble.body.textContent = formatAssistantDisplayText(final.reply.display_markdown);
                 }
                 fillBubbleMeta(bubble, {
                     citations:         final.reply?.citations || [],
@@ -1642,8 +1643,23 @@
             escalateDlg.setAttribute('open', '');
         }
     }
+    function closeEscalationDialog() {
+        const form = document.getElementById('escalateForm');
+        if (typeof escalateDlg.close === 'function') escalateDlg.close();
+        else escalateDlg.removeAttribute('open');
+        form?.reset();
+    }
+    document.getElementById('escalateCancelBtn')?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        closeEscalationDialog();
+    });
     document.getElementById('escalateForm').addEventListener('submit', async (ev) => {
-        if (ev.submitter && ev.submitter.value === 'cancel') return;
+        const submitterValue = ev.submitter?.value || document.activeElement?.value;
+        if (submitterValue === 'cancel') {
+            ev.preventDefault();
+            closeEscalationDialog();
+            return;
+        }
         ev.preventDefault();
         const form = ev.currentTarget;
         const fd = new FormData(form);
@@ -1657,8 +1673,7 @@
         try {
             const data = await api('/api/advisor/escalate', { method: 'POST', body: payload });
             toast(`Sent to ${data.assignedTo}. Reference: #${data.escalationId}`);
-            escalateDlg.close();
-            form.reset();
+            closeEscalationDialog();
         } catch (err) {
             toast(err.message || 'Could not send your message.', 'error');
         }
@@ -1666,15 +1681,42 @@
 
     // ---------- History sidebar ----------
     historyToggle?.addEventListener('click', async () => {
+        if (isMobileLayout()) {
+            historyPane.classList.remove('hidden');
+            historyPane.classList.toggle('is-open');
+            if (historyPane.classList.contains('is-open')) await loadHistoryList();
+            return;
+        }
         historyPane.classList.toggle('hidden');
         if (!historyPane.classList.contains('hidden')) await loadHistoryList();
     });
-    historyClose?.addEventListener('click', () => historyPane.classList.add('hidden'));
+    historyClose?.addEventListener('click', () => {
+        if (isMobileLayout()) {
+            historyPane.classList.remove('is-open');
+            return;
+        }
+        historyPane.classList.add('hidden');
+    });
     if (state.token) {
         historyToggle?.classList.remove('hidden');
-        historyPane.classList.remove('hidden');
-        loadHistoryList().catch(() => {});
+        if (isMobileLayout()) {
+            historyPane.classList.remove('hidden');
+            historyPane.classList.remove('is-open');
+        } else {
+            historyPane.classList.remove('hidden');
+            loadHistoryList().catch(() => {});
+        }
     }
+
+    window.addEventListener('resize', () => {
+        if (!state.token) return;
+        if (isMobileLayout()) {
+            historyPane.classList.remove('hidden');
+            historyPane.classList.remove('is-open');
+        } else {
+            historyPane.classList.remove('hidden');
+        }
+    });
 
     // ---------- Form ----------
     composer.addEventListener('submit', (ev) => { ev.preventDefault(); askNow(); });
@@ -1841,6 +1883,47 @@
     // ---------- Helpers ----------
     function scrollToBottom() { transcript.scrollTop = transcript.scrollHeight; }
     function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    function formatAssistantDisplayText(text) {
+        const raw = String(text || '').replace(/\r/g, '').trim();
+        if (!raw) return '';
+
+        // Trim common over-formal openings to keep text mode concise.
+        let cleaned = raw.replace(/^(sure|certainly|absolutely|of course|thanks for asking)[,\s!]+(i(?:'| a)m\s+(?:happy|glad)\s+to\s+help[,\s!]*)?/i, '');
+        cleaned = cleaned.replace(/^(dear\s+student|my\s+dear\s+student|hello\s+there)[,\s!]+/i, '');
+        cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+        const lines = cleaned.split('\n');
+        const out = [];
+        for (const line of lines) {
+            const t = line.trim();
+            if (!t) {
+                out.push('');
+                continue;
+            }
+            const isList = /^([-*]|\d+\.)\s+/.test(t);
+            if (isList || t.length <= 240) {
+                out.push(t);
+                continue;
+            }
+
+            // Break dense paragraphs into shorter chunks by sentence.
+            const sentences = t.match(/[^.!?]+[.!?]*/g) || [t];
+            let buf = '';
+            for (const s of sentences) {
+                const next = (buf ? `${buf} ${s.trim()}` : s.trim()).trim();
+                if (next.length > 220 && buf) {
+                    out.push(buf.trim());
+                    buf = s.trim();
+                } else {
+                    buf = next;
+                }
+            }
+            if (buf) out.push(buf.trim());
+        }
+
+        return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    }
 
     /** Pick a mood for the avatar from a finished reply. */
     function pickMood({ needsEscalation, speech }) {
