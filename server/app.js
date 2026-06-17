@@ -145,6 +145,9 @@ app.get('/handbook', (req, res) => {
 app.get('/change-password', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/change-password.html'));
 });
+app.get('/reset-password', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/reset-password.html'));
+});
 app.get('/verify-email', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/verify-email.html'));
 });
@@ -278,6 +281,8 @@ app.get('*', (req, res, next) => {
     if (req.path.startsWith('/advisor'))  return res.sendFile(path.join(__dirname, '../client/advisor.html'));
     if (req.path.startsWith('/login'))    return res.sendFile(path.join(__dirname, '../client/login.html'));
     if (req.path.startsWith('/register')) return res.sendFile(path.join(__dirname, '../client/register.html'));
+    if (req.path.startsWith('/reset-password')) return res.sendFile(path.join(__dirname, '../client/reset-password.html'));
+    if (req.path.startsWith('/verify-email')) return res.sendFile(path.join(__dirname, '../client/verify-email.html'));
     // Default: marketing landing.
     res.sendFile(path.join(__dirname, '../client/landing.html'));
 });

@@ -79,11 +79,21 @@
                 </label>
                 <label>
                     Password
-                    <input type="password" name="password" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters" />
+                    <div class="password-field">
+                        <input type="password" id="registerPassword" name="password" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters" />
+                        <button type="button" class="password-toggle" data-target="registerPassword" aria-label="Show password" aria-pressed="false">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
                 </label>
                 <label>
                     Confirm password
-                    <input type="password" name="confirmPassword" required autocomplete="new-password" minlength="8" placeholder="Repeat your password" />
+                    <div class="password-field">
+                        <input type="password" id="registerConfirmPassword" name="confirmPassword" required autocomplete="new-password" minlength="8" placeholder="Repeat your password" />
+                        <button type="button" class="password-toggle" data-target="registerConfirmPassword" aria-label="Show password" aria-pressed="false">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
                 </label>
 
                 <fieldset class="advisor-pick" aria-label="Choose your advisor">
@@ -136,6 +146,22 @@
         const errorBox = document.getElementById('errorBox');
         const successBox = document.getElementById('successBox');
         const submitBtn = document.getElementById('submitBtn');
+
+        document.querySelectorAll('.password-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById(btn.dataset.target);
+                if (!input) return;
+                const show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.classList.toggle('fa-eye', !show);
+                    icon.classList.toggle('fa-eye-slash', show);
+                }
+            });
+        });
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();

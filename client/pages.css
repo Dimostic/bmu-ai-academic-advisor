@@ -148,6 +148,29 @@
     width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
     font: inherit;
 }
+.password-field {
+    position: relative;
+}
+.password-field input {
+    padding-right: 44px;
+}
+.password-toggle {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    display: inline-grid;
+    place-items: center;
+    cursor: pointer;
+}
+.password-toggle:hover { color: var(--accent); background: rgba(26,130,112,.08); }
+.password-toggle:focus { outline: none; box-shadow: 0 0 0 2px rgba(26,130,112,.2); }
 .auth-form input:focus, .auth-form select:focus, .auth-form textarea:focus {
     outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26,130,112,.18);
 }

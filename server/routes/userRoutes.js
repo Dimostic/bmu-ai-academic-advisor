@@ -204,7 +204,7 @@ router.post('/resend-verification', async (req, res) => {
 
         // Send verification email
         const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-        const verifyUrl = `${baseUrl}/#/verify-email?token=${verificationToken}`;
+        const verifyUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
         
         await emailService.sendVerificationEmail({
             to: email,
@@ -453,7 +453,7 @@ router.post('/forgot-password', passwordResetRequestValidation, async (req, res)
 
         // Send email with reset link (do not reveal if it fails)
         const appBaseUrl = (process.env.APP_BASE_URL || '').trim() || `${req.protocol}://${req.get('host')}`;
-        const resetUrl = `${appBaseUrl}/#/reset?token=${resetToken}`;
+        const resetUrl = `${appBaseUrl}/reset-password?token=${resetToken}`;
 
         try {
             await emailService.sendPasswordResetEmail({

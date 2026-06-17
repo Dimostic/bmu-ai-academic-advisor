@@ -156,6 +156,19 @@
 
     <script>
     (() => {
+        // Backward compatibility for older emailed hash links.
+        const h = String(window.location.hash || '');
+        if (h.startsWith('#/reset')) {
+            const q = h.includes('?') ? h.split('?')[1] : '';
+            window.location.replace('/reset-password' + (q ? '?' + q : ''));
+            return;
+        }
+        if (h.startsWith('#/verify-email')) {
+            const q = h.includes('?') ? h.split('?')[1] : '';
+            window.location.replace('/verify-email' + (q ? '?' + q : ''));
+            return;
+        }
+
         // If a session token already exists, skip the landing page and go to /advisor.
         const tok = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
         if (tok) {

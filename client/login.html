@@ -46,7 +46,12 @@
                 </label>
                 <label>
                     Password
-                    <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••" minlength="6" />
+                    <div class="password-field">
+                        <input type="password" id="loginPassword" name="password" required autocomplete="current-password" placeholder="••••••••" minlength="6" />
+                        <button type="button" class="password-toggle" data-target="loginPassword" aria-label="Show password" aria-pressed="false">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
                 </label>
 
                 <fieldset class="advisor-pick" aria-label="Choose your advisor">
@@ -112,6 +117,22 @@
         const form = document.getElementById('loginForm');
         const errorBox = document.getElementById('errorBox');
         const submitBtn = document.getElementById('submitBtn');
+
+        document.querySelectorAll('.password-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById(btn.dataset.target);
+                if (!input) return;
+                const show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.classList.toggle('fa-eye', !show);
+                    icon.classList.toggle('fa-eye-slash', show);
+                }
+            });
+        });
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
