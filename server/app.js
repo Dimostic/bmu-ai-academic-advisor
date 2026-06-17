@@ -17,10 +17,12 @@ const faqRoutes = require('./routes/faqRoutes');
 const vcReportRoutes = require('./routes/vcReportRoutes');
 const vcDocumentRoutes = require('./routes/vcDocumentRoutes');
 const advisorRoutes = require('./routes/advisorRoutes');
+const { authenticateToken, requireAdmin } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SOURCES_DIR = path.join(__dirname, '../sources');
+const CALENDAR_OVERRIDES_FILE = path.join(SOURCES_DIR, 'academic-calendar-overrides.json');
 
 function buildPublicationRecord(name, stat) {
     const ext = path.extname(name).slice(1).toLowerCase();
@@ -38,6 +40,153 @@ function buildPublicationRecord(name, stat) {
         newestYear,
         viewUrl: `/api/publications/file?name=${encodeURIComponent(name)}`,
         downloadUrl: `/api/publications/file?name=${encodeURIComponent(name)}&download=1`
+    };
+}
+
+function makeStableEntryId(prefix, activity, startDate, endDate) {
+    const raw = `${prefix}|${activity}|${startDate}|${endDate || ''}`;
+    return Buffer.from(raw, 'utf8').toString('base64').replace(/[+/=]/g, '').slice(0, 20);
+}
+
+function inferSemester(activity, startDateIso) {
+    const text = String(activity || '').toLowerCase();
+    if (/second\s+semester/.test(text)) return 'second';
+    if (/first\s+semester/.test(text)) return 'first';
+
+    const start = new Date(startDateIso);
+    if (Number.isNaN(start.getTime())) return 'first';
+    const month = start.getMonth() + 1;
+    return (month >= 10 || month <= 3) ? 'first' : 'second';
+}
+
+function formatShortDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function validateSemester(value) {
+    const normalized = String(value || '').toLowerCase().trim();
+    if (normalized === 'first' || normalized === 'second') return normalized;
+    return null;
+}
+
+async function readCalendarOverrides() {
+    try {
+        const raw = await fs.promises.readFile(CALENDAR_OVERRIDES_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .filter(item => item && item.id && item.activity && item.startDate)
+            .map(item => ({
+                id: String(item.id),
+                activity: normalizeText(item.activity),
+                startDate: new Date(item.startDate).toISOString(),
+                endDate: item.endDate ? new Date(item.endDate).toISOString() : null,
+                semester: validateSemester(item.semester) || inferSemester(item.activity, item.startDate),
+                createdAt: item.createdAt || null,
+                updatedAt: item.updatedAt || null
+            }));
+    } catch (error) {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+    }
+}
+
+async function writeCalendarOverrides(overrides) {
+    const payload = JSON.stringify(overrides, null, 2);
+    await fs.promises.writeFile(CALENDAR_OVERRIDES_FILE, payload, 'utf8');
+}
+
+function parseAdminDateInput(raw, fieldName) {
+    const parsed = new Date(String(raw || '').trim());
+    if (Number.isNaN(parsed.getTime())) {
+        throw new Error(`Invalid ${fieldName}`);
+    }
+    return parsed.toISOString();
+}
+
+function formatCalendarEntry(entry, source) {
+    const start = new Date(entry.startDate);
+    const end = entry.endDate ? new Date(entry.endDate) : null;
+    return {
+        id: entry.id,
+        source,
+        editable: source === 'admin',
+        activity: entry.activity,
+        semester: validateSemester(entry.semester) || inferSemester(entry.activity, entry.startDate),
+        startDate: entry.startDate,
+        endDate: entry.endDate,
+        startLabel: formatShortDate(entry.startDate),
+        endLabel: entry.endDate ? formatShortDate(entry.endDate) : '',
+        dateLabel: end
+            ? `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+            : start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+        monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
+        monthLabel: start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    };
+}
+
+function mergeCalendarEntries(parsedEntries, adminEntries) {
+    const fromDoc = parsedEntries.map(item => {
+        const id = `doc_${makeStableEntryId('doc', item.activity, item.startDate, item.endDate)}`;
+        return formatCalendarEntry({ ...item, id, semester: inferSemester(item.activity, item.startDate) }, 'document');
+    });
+
+    const fromAdmin = adminEntries.map(item => {
+        const semester = validateSemester(item.semester) || inferSemester(item.activity, item.startDate);
+        return formatCalendarEntry({ ...item, semester }, 'admin');
+    });
+
+    const merged = [...fromDoc, ...fromAdmin];
+    merged.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+    return merged;
+}
+
+function buildCurrentMonthCalendar(entries) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const monthIndex = now.getMonth();
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const byDay = {};
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+        byDay[day] = [];
+    }
+
+    for (const entry of entries) {
+        const start = new Date(entry.startDate);
+        const end = entry.endDate ? new Date(entry.endDate) : new Date(entry.startDate);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+
+        const startClamp = new Date(Math.max(start.getTime(), new Date(year, monthIndex, 1).getTime()));
+        const endClamp = new Date(Math.min(end.getTime(), new Date(year, monthIndex, daysInMonth, 23, 59, 59).getTime()));
+        if (endClamp < startClamp) continue;
+
+        const cursor = new Date(startClamp.getFullYear(), startClamp.getMonth(), startClamp.getDate());
+        while (cursor <= endClamp) {
+            if (cursor.getMonth() === monthIndex && cursor.getFullYear() === year) {
+                const day = cursor.getDate();
+                byDay[day].push({
+                    id: entry.id,
+                    activity: entry.activity,
+                    semester: entry.semester,
+                    startLabel: entry.startLabel,
+                    endLabel: entry.endLabel
+                });
+            }
+            cursor.setDate(cursor.getDate() + 1);
+        }
+    }
+
+    return {
+        year,
+        month: monthIndex + 1,
+        monthLabel: new Date(year, monthIndex, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+        firstWeekday: new Date(year, monthIndex, 1).getDay(),
+        daysInMonth,
+        byDay
     };
 }
 
@@ -661,12 +810,20 @@ app.get('/api/publications/academic-calendar', async (req, res) => {
             fileStats,
             /(academic\s*)?calendar|sessional\s*calendar/i
         );
-        const entries = calendar ? await parseAcademicCalendarEntries(calendar) : [];
+        const parsedEntries = calendar ? await parseAcademicCalendarEntries(calendar) : [];
+        const adminEntries = await readCalendarOverrides();
+        const entries = mergeCalendarEntries(parsedEntries, adminEntries);
+        const firstSemesterEntries = entries.filter(item => item.semester === 'first');
+        const secondSemesterEntries = entries.filter(item => item.semester === 'second');
+        const currentMonthCalendar = buildCurrentMonthCalendar(entries);
 
         res.json({
             success: true,
             calendar,
             entries,
+            firstSemesterEntries,
+            secondSemesterEntries,
+            currentMonthCalendar,
             totalFiles: fileStats.length,
             generatedAt: new Date().toISOString()
         });
@@ -676,6 +833,102 @@ app.get('/api/publications/academic-calendar', async (req, res) => {
             success: false,
             error: 'Could not load academic calendar.'
         });
+    }
+});
+
+app.post('/api/publications/academic-calendar/entries', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const activity = normalizeText(req.body?.activity);
+        if (!activity || activity.length < 3) {
+            return res.status(400).json({ success: false, error: 'Activity is required' });
+        }
+
+        const startDate = parseAdminDateInput(req.body?.startDate, 'start date');
+        const endDate = req.body?.endDate ? parseAdminDateInput(req.body?.endDate, 'end date') : null;
+        if (endDate && new Date(endDate) < new Date(startDate)) {
+            return res.status(400).json({ success: false, error: 'End date cannot be before start date' });
+        }
+
+        const semester = validateSemester(req.body?.semester) || inferSemester(activity, startDate);
+        const overrides = await readCalendarOverrides();
+        const id = `adm_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+        const now = new Date().toISOString();
+
+        const created = {
+            id,
+            activity,
+            startDate,
+            endDate,
+            semester,
+            createdAt: now,
+            updatedAt: now
+        };
+
+        overrides.push(created);
+        await writeCalendarOverrides(overrides);
+
+        res.status(201).json({
+            success: true,
+            entry: formatCalendarEntry(created, 'admin')
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: `Could not add calendar entry: ${error.message}` });
+    }
+});
+
+app.put('/api/publications/academic-calendar/entries/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        const overrides = await readCalendarOverrides();
+        const index = overrides.findIndex(item => item.id === id);
+        if (index < 0) {
+            return res.status(404).json({ success: false, error: 'Entry not found or not editable' });
+        }
+
+        const existing = overrides[index];
+        const activity = req.body?.activity ? normalizeText(req.body.activity) : existing.activity;
+        if (!activity || activity.length < 3) {
+            return res.status(400).json({ success: false, error: 'Activity is required' });
+        }
+
+        const startDate = req.body?.startDate ? parseAdminDateInput(req.body.startDate, 'start date') : existing.startDate;
+        const endDate = req.body?.endDate === '' ? null : (req.body?.endDate ? parseAdminDateInput(req.body.endDate, 'end date') : existing.endDate);
+        if (endDate && new Date(endDate) < new Date(startDate)) {
+            return res.status(400).json({ success: false, error: 'End date cannot be before start date' });
+        }
+
+        const semester = validateSemester(req.body?.semester) || inferSemester(activity, startDate);
+        const updated = {
+            ...existing,
+            activity,
+            startDate,
+            endDate,
+            semester,
+            updatedAt: new Date().toISOString()
+        };
+
+        overrides[index] = updated;
+        await writeCalendarOverrides(overrides);
+
+        res.json({ success: true, entry: formatCalendarEntry(updated, 'admin') });
+    } catch (error) {
+        res.status(500).json({ success: false, error: `Could not update calendar entry: ${error.message}` });
+    }
+});
+
+app.delete('/api/publications/academic-calendar/entries/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        const overrides = await readCalendarOverrides();
+        const filtered = overrides.filter(item => item.id !== id);
+        if (filtered.length === overrides.length) {
+            return res.status(404).json({ success: false, error: 'Entry not found or not editable' });
+        }
+
+        await writeCalendarOverrides(filtered);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: `Could not delete calendar entry: ${error.message}` });
     }
 });
 

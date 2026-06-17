@@ -16,15 +16,15 @@
         .calendar-page {
             max-width: 1240px;
             margin: 0 auto;
-            padding: 24px 20px 40px;
+            padding: 24px 18px 38px;
         }
         .calendar-hero {
-            background: linear-gradient(130deg, #0f3d3e 0%, #16575a 52%, #1a8270 100%);
+            background: linear-gradient(125deg, #0f3d3e 0%, #16575a 55%, #1a8270 100%);
             border-radius: 18px;
             color: #fff;
-            padding: 30px 28px;
+            padding: 28px 24px;
             box-shadow: var(--shadow);
-            margin-bottom: 18px;
+            margin-bottom: 16px;
             position: relative;
             overflow: hidden;
         }
@@ -36,56 +36,56 @@
             right: -80px;
             top: -100px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(123,220,181,.33), transparent 70%);
-            pointer-events: none;
+            background: radial-gradient(circle, rgba(123,220,181,.32), transparent 70%);
         }
         .calendar-hero h1 {
             margin: 0;
-            font-size: clamp(1.5rem, 3vw, 2.1rem);
-            letter-spacing: .01em;
+            font-size: clamp(1.42rem, 3vw, 2rem);
         }
         .calendar-hero p {
             margin: 8px 0 0;
-            opacity: .93;
             max-width: 780px;
-            line-height: 1.6;
+            line-height: 1.58;
+            opacity: .92;
         }
         .calendar-meta {
-            margin-top: 14px;
-            font-size: .84rem;
-            opacity: .9;
+            margin-top: 12px;
             display: flex;
-            flex-wrap: wrap;
             gap: 12px;
+            flex-wrap: wrap;
+            font-size: .84rem;
+            opacity: .88;
         }
 
-        .calendar-layout {
+        .layout {
             display: grid;
             grid-template-columns: 320px 1fr;
-            gap: 16px;
-            align-items: start;
+            gap: 14px;
         }
-        @media (max-width: 980px) {
-            .calendar-layout {
-                grid-template-columns: 1fr;
-            }
+        @media (max-width: 1040px) {
+            .layout { grid-template-columns: 1fr; }
         }
 
-        .calendar-panel {
+        .panel {
             background: var(--bg-elev);
+            border: 1px solid rgba(26,130,112,.14);
             border-radius: 16px;
             box-shadow: var(--shadow);
-            border: 1px solid rgba(26,130,112,.12);
             overflow: hidden;
         }
-        .calendar-panel .head {
-            padding: 16px;
+        .panel-head {
+            padding: 14px 16px;
             border-bottom: 1px solid var(--line);
-            background: linear-gradient(180deg, rgba(26,130,112,.08), rgba(26,130,112,0));
+            background: linear-gradient(180deg, rgba(26,130,112,.09), rgba(26,130,112,0));
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
         }
-        .calendar-panel .head h2 {
+        .panel-head h2 {
             margin: 0;
-            font-size: 1.04rem;
+            font-size: 1rem;
             color: var(--bg-deep);
             display: flex;
             align-items: center;
@@ -93,14 +93,13 @@
         }
 
         .file-meta {
-            padding: 14px 16px 16px;
-            display: flex;
-            flex-direction: column;
+            padding: 12px 14px 14px;
+            display: grid;
             gap: 8px;
         }
         .file-row {
             display: grid;
-            grid-template-columns: 82px 1fr;
+            grid-template-columns: 78px 1fr;
             gap: 8px;
             font-size: .86rem;
         }
@@ -108,122 +107,242 @@
         .file-row .v { color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
         .file-actions {
             display: flex;
-            gap: 10px;
             flex-wrap: wrap;
+            gap: 8px;
             margin-top: 6px;
         }
-        .file-actions .btn { padding: 8px 12px; font-size: .88rem; }
+        .file-actions .btn { padding: 8px 11px; font-size: .84rem; }
 
-        .timeline-wrap {
-            padding: 8px 14px 14px;
-            max-height: calc(100vh - 180px);
-            overflow: auto;
-        }
-        .mini-cal-wrap {
-            padding: 12px 14px 4px;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 10px;
+        .calendar-shell {
+            padding: 12px;
             border-bottom: 1px solid var(--line);
-            background: rgba(15,61,62,.015);
         }
-        .mini-month {
+        .month-title {
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--bg-deep);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .month-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
             border: 1px solid var(--line);
             border-radius: 10px;
             overflow: hidden;
-            background: #fff;
         }
-        .mini-month-title {
-            padding: 8px 10px;
-            font-size: .8rem;
-            font-weight: 700;
-            color: var(--bg-deep);
+        .day-head {
             background: rgba(26,130,112,.08);
-            border-bottom: 1px solid var(--line);
-        }
-        .mini-weekdays,
-        .mini-days {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-        }
-        .mini-weekdays span {
-            padding: 4px 0;
-            text-align: center;
-            font-size: .68rem;
             color: var(--muted);
-            border-bottom: 1px solid var(--line);
-        }
-        .mini-day {
-            min-height: 24px;
             font-size: .7rem;
             text-align: center;
-            padding: 4px 0;
-            border-right: 1px solid rgba(0,0,0,.04);
-            border-bottom: 1px solid rgba(0,0,0,.04);
+            padding: 6px 2px;
+            border-bottom: 1px solid var(--line);
+            font-weight: 600;
+        }
+        .day-cell {
+            min-height: 42px;
+            border-right: 1px solid rgba(0,0,0,.05);
+            border-bottom: 1px solid rgba(0,0,0,.05);
+            padding: 5px 3px;
+            font-size: .79rem;
+            text-align: center;
+            background: #fff;
             color: var(--text);
+            cursor: pointer;
             position: relative;
         }
-        .mini-day:nth-child(7n) { border-right: 0; }
-        .mini-day.empty {
+        .day-cell:nth-child(7n) { border-right: 0; }
+        .day-cell.empty {
+            cursor: default;
             background: rgba(0,0,0,.02);
             color: transparent;
         }
-        .mini-day.has-event {
-            background: rgba(26,130,112,.12);
+        .day-cell.has-event {
+            background: rgba(26,130,112,.15);
             font-weight: 700;
+            color: #0f5244;
         }
-        .mini-day .count {
+        .day-cell.selected {
+            outline: 2px solid #188a72;
+            outline-offset: -2px;
+        }
+        .event-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #188a72;
             position: absolute;
-            right: 2px;
-            top: 1px;
-            font-size: .56rem;
-            color: #0d5f50;
+            right: 4px;
+            top: 4px;
         }
-        .month-block {
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            margin-bottom: 10px;
-            overflow: hidden;
-            background: rgba(15,61,62,.01);
+
+        .day-detail {
+            padding: 12px 14px 14px;
+            max-height: 230px;
+            overflow: auto;
         }
-        .month-title {
-            padding: 10px 12px;
-            font-weight: 700;
+        .day-detail h3 {
+            margin: 0 0 7px;
+            font-size: .95rem;
             color: var(--bg-deep);
-            background: rgba(26,130,112,.08);
-            border-bottom: 1px solid var(--line);
         }
-        .entry {
+        .activity-list {
             display: grid;
-            grid-template-columns: 148px 1fr;
-            gap: 10px;
-            padding: 10px 12px;
-            border-bottom: 1px dashed var(--line);
+            gap: 7px;
         }
-        .entry:last-child { border-bottom: none; }
-        .entry .date {
-            font-size: .84rem;
+        .activity-item {
+            padding: 8px 10px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            font-size: .85rem;
+            line-height: 1.45;
+            background: rgba(15,61,62,.02);
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .section-gap {
+            margin-top: 14px;
+        }
+        .head-tools {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .seg {
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: #fff;
+            padding: 7px 11px;
+            font-size: .82rem;
+            cursor: pointer;
+        }
+        .seg.active {
+            background: #188a72;
+            color: #fff;
+            border-color: #188a72;
+        }
+        .admin-tools {
+            display: none;
+            gap: 8px;
+            align-items: center;
+        }
+        .admin-tools.show { display: flex; }
+
+        .table-wrap {
+            padding: 12px;
+            overflow-x: auto;
+        }
+        .calendar-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 720px;
+            font-size: .86rem;
+        }
+        .calendar-table th,
+        .calendar-table td {
+            border: 1px solid var(--line);
+            padding: 9px 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .calendar-table th {
+            background: rgba(26,130,112,.09);
             color: var(--bg-deep);
             font-weight: 700;
         }
-        .entry .activity {
-            font-size: .9rem;
-            line-height: 1.45;
-            color: var(--text);
+        .calendar-table td.sn { width: 56px; text-align: center; }
+        .calendar-table td.date { width: 132px; white-space: nowrap; }
+        .calendar-table td.actions { width: 148px; }
+        .row-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
         }
-        @media (max-width: 680px) {
-            .entry {
-                grid-template-columns: 1fr;
-                gap: 4px;
-            }
+        .btn-mini {
+            border: 1px solid var(--line);
+            background: #fff;
+            border-radius: 8px;
+            font-size: .75rem;
+            padding: 5px 8px;
+            cursor: pointer;
         }
 
         .empty-state {
-            padding: 24px;
-            text-align: center;
+            padding: 20px;
             color: var(--muted);
+            text-align: center;
             line-height: 1.6;
         }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 60;
+        }
+        .modal.show { display: flex; }
+        .modal-card {
+            width: min(520px, 100%);
+            background: var(--bg-elev);
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+        .modal-head {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-body {
+            padding: 12px 14px 14px;
+            display: grid;
+            gap: 10px;
+        }
+        .modal-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        @media (max-width: 700px) {
+            .modal-grid { grid-template-columns: 1fr; }
+        }
+        .input,
+        .select,
+        .textarea {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 9px 10px;
+            font-size: .9rem;
+            background: var(--bg-main);
+            color: var(--text);
+        }
+        .textarea { min-height: 82px; resize: vertical; }
+        .modal-foot {
+            padding: 10px 14px 14px;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            border-top: 1px solid var(--line);
+        }
+        .muted { color: var(--muted); font-size: .82rem; }
     </style>
 </head>
 <body>
@@ -247,8 +366,8 @@
         <section class="calendar-hero">
             <h1><i class="fa-solid fa-calendar-days"></i> Annual Academic Calendar</h1>
             <p>
-                View the official academic calendar directly in this window, with all scheduled activities organized by date.
-                When a new calendar file is uploaded by admin to the sources folder, this page updates automatically.
+                View activities in a structured semester table and a clickable current-month calendar.
+                Dates with activities are highlighted and reveal details when selected.
             </p>
             <div class="calendar-meta">
                 <span><i class="fa-solid fa-rotate"></i> Auto-updated from official source file</span>
@@ -256,50 +375,175 @@
             </div>
         </section>
 
-        <section class="calendar-layout">
-            <article class="calendar-panel" id="filePanel">
-                <div class="head"><h2><i class="fa-solid fa-file-word"></i> Calendar File</h2></div>
+        <section class="layout">
+            <article class="panel">
+                <div class="panel-head"><h2><i class="fa-solid fa-file-word"></i> Calendar File</h2></div>
                 <div class="file-meta" id="fileMeta">Loading file information...</div>
             </article>
 
-            <article class="calendar-panel">
-                <div class="head"><h2><i class="fa-solid fa-list-check"></i> Activities by Date</h2></div>
-                <div class="mini-cal-wrap" id="monthGridWrap">Loading monthly view...</div>
-                <div class="timeline-wrap" id="timelineWrap">Loading activities...</div>
+            <article class="panel">
+                <div class="panel-head">
+                    <h2><i class="fa-solid fa-calendar-day"></i> Current Month Activity Calendar</h2>
+                    <div class="toolbar" id="semesterToolbar"></div>
+                </div>
+                <div class="calendar-shell" id="monthCalendarWrap">Loading calendar...</div>
+                <div class="day-detail" id="dayDetailWrap">Select a highlighted date to view activities.</div>
             </article>
         </section>
+
+        <section class="panel section-gap">
+            <div class="panel-head">
+                <h2><i class="fa-solid fa-table"></i> Semester Activity Tables</h2>
+                <div class="head-tools">
+                    <div class="toolbar" id="tableFilterToolbar"></div>
+                    <div class="admin-tools" id="adminTools">
+                        <button class="btn btn-primary" id="addEntryBtn"><i class="fa-solid fa-plus"></i> Add New</button>
+                    </div>
+                </div>
+            </div>
+            <div id="tableMount"></div>
+        </section>
     </main>
+
+    <div class="modal" id="entryModal">
+        <div class="modal-card">
+            <div class="modal-head">
+                <strong id="modalTitle">Add Calendar Entry</strong>
+                <button class="btn-mini" id="closeModalBtn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <label>
+                    <span class="muted">Activity</span>
+                    <textarea class="textarea" id="entryActivity" placeholder="Activity description"></textarea>
+                </label>
+                <div class="modal-grid">
+                    <label>
+                        <span class="muted">Start Date</span>
+                        <input type="date" class="input" id="entryStartDate" />
+                    </label>
+                    <label>
+                        <span class="muted">End Date (optional)</span>
+                        <input type="date" class="input" id="entryEndDate" />
+                    </label>
+                </div>
+                <label>
+                    <span class="muted">Semester</span>
+                    <select class="select" id="entrySemester">
+                        <option value="first">First Semester</option>
+                        <option value="second">Second Semester</option>
+                    </select>
+                </label>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-ghost" id="cancelModalBtn">Cancel</button>
+                <button class="btn btn-primary" id="saveEntryBtn">Save</button>
+            </div>
+        </div>
+    </div>
 
     <script>
     (() => {
         const authSlot = document.getElementById('authSlot');
         const generatedAt = document.getElementById('generatedAt');
         const fileMeta = document.getElementById('fileMeta');
-        const monthGridWrap = document.getElementById('monthGridWrap');
-        const timelineWrap = document.getElementById('timelineWrap');
+        const monthCalendarWrap = document.getElementById('monthCalendarWrap');
+        const dayDetailWrap = document.getElementById('dayDetailWrap');
+        const semesterToolbar = document.getElementById('semesterToolbar');
+        const tableFilterToolbar = document.getElementById('tableFilterToolbar');
+        const tableMount = document.getElementById('tableMount');
+        const adminTools = document.getElementById('adminTools');
+
+        const entryModal = document.getElementById('entryModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const addEntryBtn = document.getElementById('addEntryBtn');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const cancelModalBtn = document.getElementById('cancelModalBtn');
+        const saveEntryBtn = document.getElementById('saveEntryBtn');
+        const entryActivity = document.getElementById('entryActivity');
+        const entryStartDate = document.getElementById('entryStartDate');
+        const entryEndDate = document.getElementById('entryEndDate');
+        const entrySemester = document.getElementById('entrySemester');
 
         const token = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
         let user = null;
         try { user = JSON.parse(localStorage.getItem('bmu_user') || 'null'); } catch (_) {}
+        const isAdmin = !!token && (user?.role === 'admin' || user?.role === 'superadmin');
 
-        if (token) {
-            const name = (user?.firstName || user?.first_name || user?.email || 'You').toString().split(' ')[0];
-            authSlot.innerHTML = `
-                <span class="link-muted" title="${escapeHtml(user?.email || '')}">
-                    <i class="fa-solid fa-user"></i> ${escapeHtml(name)}
-                </span>
-                <button id="logoutBtn" class="btn btn-ghost"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</button>`;
-            document.getElementById('logoutBtn')?.addEventListener('click', () => {
-                localStorage.removeItem('bmu_token');
-                localStorage.removeItem('bmu_user');
-                sessionStorage.removeItem('bmu_token');
-                location.replace('/');
-            });
-        } else {
-            authSlot.innerHTML = `<a href="/login" class="btn btn-ghost">Sign in</a>`;
+        const state = {
+            data: null,
+            tableView: 'both',
+            semesterView: 'both',
+            selectedDay: null,
+            editingEntry: null
+        };
+
+        initAuth();
+        initFilters();
+        initModal();
+        loadCalendar();
+
+        function initAuth() {
+            if (token) {
+                const name = (user?.firstName || user?.first_name || user?.email || 'You').toString().split(' ')[0];
+                authSlot.innerHTML = `
+                    <span class="link-muted" title="${escapeHtml(user?.email || '')}">
+                        <i class="fa-solid fa-user"></i> ${escapeHtml(name)}
+                    </span>
+                    <button id="logoutBtn" class="btn btn-ghost"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</button>`;
+                document.getElementById('logoutBtn')?.addEventListener('click', () => {
+                    localStorage.removeItem('bmu_token');
+                    localStorage.removeItem('bmu_user');
+                    sessionStorage.removeItem('bmu_token');
+                    location.replace('/');
+                });
+            } else {
+                authSlot.innerHTML = `<a href="/login" class="btn btn-ghost">Sign in</a>`;
+            }
+
+            if (isAdmin) {
+                adminTools.classList.add('show');
+            }
         }
 
-        loadCalendar();
+        function initFilters() {
+            semesterToolbar.innerHTML = renderSegButtons('semester', [
+                { id: 'both', label: 'Both Semesters' },
+                { id: 'first', label: 'First' },
+                { id: 'second', label: 'Second' }
+            ], state.semesterView);
+
+            tableFilterToolbar.innerHTML = renderSegButtons('table', [
+                { id: 'both', label: 'Show Both Tables' },
+                { id: 'first', label: 'First Table' },
+                { id: 'second', label: 'Second Table' }
+            ], state.tableView);
+
+            semesterToolbar.addEventListener('click', (e) => {
+                const button = e.target.closest('button[data-id]');
+                if (!button) return;
+                state.semesterView = button.dataset.id;
+                initFilters();
+                renderCurrentMonthCalendar();
+            });
+
+            tableFilterToolbar.addEventListener('click', (e) => {
+                const button = e.target.closest('button[data-id]');
+                if (!button) return;
+                state.tableView = button.dataset.id;
+                initFilters();
+                renderTables();
+            });
+        }
+
+        function initModal() {
+            addEntryBtn?.addEventListener('click', () => openEntryModal(null));
+            closeModalBtn?.addEventListener('click', closeEntryModal);
+            cancelModalBtn?.addEventListener('click', closeEntryModal);
+            saveEntryBtn?.addEventListener('click', onSaveEntry);
+            entryModal.addEventListener('click', (e) => {
+                if (e.target === entryModal) closeEntryModal();
+            });
+        }
 
         async function loadCalendar() {
             try {
@@ -307,13 +551,16 @@
                 const data = await response.json();
                 if (!response.ok || !data.success) throw new Error(data.error || 'Could not load calendar');
 
+                state.data = data;
                 generatedAt.innerHTML = `<i class="fa-solid fa-clock"></i> Updated ${formatDate(data.generatedAt)}`;
                 renderFileMeta(data.calendar);
-                renderTimeline(data.entries || []);
-            } catch (err) {
-                fileMeta.innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>${escapeHtml(err.message || 'Could not load calendar file.')}</div>`;
-                monthGridWrap.innerHTML = `<div class="empty-state">No monthly calendar available.</div>`;
-                timelineWrap.innerHTML = `<div class="empty-state">No activities are available right now.</div>`;
+                renderCurrentMonthCalendar();
+                renderTables();
+            } catch (error) {
+                fileMeta.innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>${escapeHtml(error.message || 'Could not load calendar.')}</div>`;
+                monthCalendarWrap.innerHTML = `<div class="empty-state">Could not load current month calendar.</div>`;
+                dayDetailWrap.innerHTML = `<div class="empty-state">Could not load day activities.</div>`;
+                tableMount.innerHTML = `<div class="empty-state">Could not load tables.</div>`;
             }
         }
 
@@ -322,6 +569,7 @@
                 fileMeta.innerHTML = `<div class="empty-state">No academic calendar file found in sources.</div>`;
                 return;
             }
+
             fileMeta.innerHTML = `
                 <div class="file-row"><div class="k">File</div><div class="v">${escapeHtml(file.name)}</div></div>
                 <div class="file-row"><div class="k">Format</div><div class="v">.${escapeHtml(file.ext || 'docx')}</div></div>
@@ -332,76 +580,243 @@
                 </div>`;
         }
 
-        function renderTimeline(entries) {
-            if (!entries.length) {
-                monthGridWrap.innerHTML = `<div class="empty-state">No activities were extracted, so monthly highlights are not available yet.</div>`;
-                timelineWrap.innerHTML = `<div class="empty-state">We could not extract date-based activities from the current calendar file yet. Please ensure the Word document uses lines like <strong>Date - Activity</strong> or <strong>Activity: Date</strong>.</div>`;
+        function renderCurrentMonthCalendar() {
+            const cal = state.data?.currentMonthCalendar;
+            if (!cal) {
+                monthCalendarWrap.innerHTML = `<div class="empty-state">No current month calendar available.</div>`;
                 return;
             }
 
-            const ordered = buildMonthGroups(entries);
-            renderMonthGrid(ordered);
+            const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const cells = [];
+            for (let i = 0; i < cal.firstWeekday; i += 1) {
+                cells.push('<button class="day-cell empty" disabled>&nbsp;</button>');
+            }
 
-            timelineWrap.innerHTML = ordered.map(group => `
-                <section class="month-block">
-                    <div class="month-title">${escapeHtml(group.label)}</div>
-                    ${group.items.map(item => `
-                        <div class="entry">
-                            <div class="date">${escapeHtml(item.dateLabel || '')}</div>
-                            <div class="activity">${escapeHtml(item.activity || '')}</div>
+            for (let day = 1; day <= cal.daysInMonth; day += 1) {
+                const dayItems = filterBySemester(cal.byDay[String(day)] || []);
+                const hasEvent = dayItems.length > 0;
+                const selectedClass = state.selectedDay === day ? ' selected' : '';
+                const className = `day-cell${hasEvent ? ' has-event' : ''}${selectedClass}`;
+                cells.push(`<button class="${className}" data-day="${day}">${day}${hasEvent ? '<span class="event-dot"></span>' : ''}</button>`);
+            }
+
+            monthCalendarWrap.innerHTML = `
+                <div class="month-title">
+                    <span>${escapeHtml(cal.monthLabel)}</span>
+                    <span class="muted">Tap any highlighted date to view activities</span>
+                </div>
+                <div class="month-grid">
+                    ${labels.map(label => `<div class="day-head">${label}</div>`).join('')}
+                    ${cells.join('')}
+                </div>`;
+
+            monthCalendarWrap.querySelectorAll('.day-cell[data-day]').forEach(button => {
+                button.addEventListener('click', () => {
+                    state.selectedDay = Number(button.dataset.day);
+                    renderCurrentMonthCalendar();
+                    renderDayDetail();
+                });
+            });
+
+            renderDayDetail();
+        }
+
+        function renderDayDetail() {
+            const cal = state.data?.currentMonthCalendar;
+            if (!cal || !state.selectedDay) {
+                dayDetailWrap.innerHTML = `Select a highlighted date to view activities.`;
+                return;
+            }
+
+            const items = filterBySemester(cal.byDay[String(state.selectedDay)] || []);
+            const label = `${cal.monthLabel} ${state.selectedDay}`;
+            if (!items.length) {
+                dayDetailWrap.innerHTML = `<h3>${escapeHtml(label)}</h3><div class="muted">No activities on this date for the selected semester filter.</div>`;
+                return;
+            }
+
+            dayDetailWrap.innerHTML = `
+                <h3>${escapeHtml(label)} (${items.length})</h3>
+                <div class="activity-list">
+                    ${items.map(item => `
+                        <div class="activity-item">
+                            <strong>${escapeHtml(item.activity)}</strong><br/>
+                            <span class="muted">${escapeHtml(item.startLabel)}${item.endLabel ? ` - ${escapeHtml(item.endLabel)}` : ''} · ${item.semester === 'first' ? 'First Semester' : 'Second Semester'}</span>
                         </div>
                     `).join('')}
-                </section>
+                </div>`;
+        }
+
+        function renderTables() {
+            const first = state.data?.firstSemesterEntries || [];
+            const second = state.data?.secondSemesterEntries || [];
+
+            const shouldShowFirst = state.tableView === 'both' || state.tableView === 'first';
+            const shouldShowSecond = state.tableView === 'both' || state.tableView === 'second';
+
+            const blocks = [];
+            if (shouldShowFirst) blocks.push(renderSemesterBlock('First Semester', first, 'first'));
+            if (shouldShowSecond) blocks.push(renderSemesterBlock('Second Semester', second, 'second'));
+            tableMount.innerHTML = blocks.join('') || `<div class="empty-state">No table selected.</div>`;
+
+            tableMount.querySelectorAll('[data-edit-id]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const entry = findEntry(btn.dataset.editId);
+                    if (entry) openEntryModal(entry);
+                });
+            });
+
+            tableMount.querySelectorAll('[data-delete-id]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    await onDeleteEntry(btn.dataset.deleteId);
+                });
+            });
+        }
+
+        function renderSemesterBlock(title, entries, semesterKey) {
+            return `
+                <div class="table-wrap">
+                    <h3 style="margin:0 0 8px;color:var(--bg-deep);font-size:.98rem;">${escapeHtml(title)}</h3>
+                    ${entries.length ? renderTable(entries, semesterKey) : `<div class="empty-state">No ${escapeHtml(title.toLowerCase())} entries available.</div>`}
+                </div>`;
+        }
+
+        function renderTable(entries, semesterKey) {
+            const showActions = isAdmin;
+            return `
+                <table class="calendar-table">
+                    <thead>
+                        <tr>
+                            <th>S/N</th>
+                            <th>Activity</th>
+                            <th>Start Date</th>
+                            <th>End Date</th>
+                            ${showActions ? '<th>Actions</th>' : ''}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${entries.map((entry, idx) => `
+                            <tr>
+                                <td class="sn">${idx + 1}</td>
+                                <td>${escapeHtml(entry.activity || '')}</td>
+                                <td class="date">${escapeHtml(entry.startLabel || '')}</td>
+                                <td class="date">${escapeHtml(entry.endLabel || '-')}</td>
+                                ${showActions ? renderActions(entry, semesterKey) : ''}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+        }
+
+        function renderActions(entry) {
+            if (!entry.editable) {
+                return `<td class="actions"><span class="muted">Source: Document</span></td>`;
+            }
+            return `
+                <td class="actions">
+                    <div class="row-actions">
+                        <button class="btn-mini" data-edit-id="${escapeAttr(entry.id)}"><i class="fa-solid fa-pen"></i> Edit</button>
+                        <button class="btn-mini" data-delete-id="${escapeAttr(entry.id)}"><i class="fa-solid fa-trash"></i> Delete</button>
+                    </div>
+                </td>`;
+        }
+
+        function openEntryModal(entry) {
+            if (!isAdmin) return;
+            state.editingEntry = entry || null;
+            modalTitle.textContent = entry ? 'Edit Calendar Entry' : 'Add Calendar Entry';
+            entryActivity.value = entry?.activity || '';
+            entryStartDate.value = toDateInput(entry?.startDate || '');
+            entryEndDate.value = toDateInput(entry?.endDate || '');
+            entrySemester.value = entry?.semester || 'first';
+            entryModal.classList.add('show');
+        }
+
+        function closeEntryModal() {
+            entryModal.classList.remove('show');
+            state.editingEntry = null;
+        }
+
+        async function onSaveEntry() {
+            if (!isAdmin || !token) return;
+            const payload = {
+                activity: entryActivity.value.trim(),
+                startDate: entryStartDate.value,
+                endDate: entryEndDate.value || '',
+                semester: entrySemester.value
+            };
+
+            if (!payload.activity || !payload.startDate) {
+                alert('Activity and start date are required.');
+                return;
+            }
+
+            const editing = !!state.editingEntry;
+            const url = editing
+                ? `/api/publications/academic-calendar/entries/${encodeURIComponent(state.editingEntry.id)}`
+                : '/api/publications/academic-calendar/entries';
+            const method = editing ? 'PUT' : 'POST';
+
+            try {
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Save failed');
+                }
+
+                closeEntryModal();
+                await loadCalendar();
+            } catch (error) {
+                alert(error.message || 'Could not save entry.');
+            }
+        }
+
+        async function onDeleteEntry(id) {
+            if (!isAdmin || !token) return;
+            if (!confirm('Delete this calendar entry?')) return;
+
+            try {
+                const response = await fetch(`/api/publications/academic-calendar/entries/${encodeURIComponent(id)}`, {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.error || 'Delete failed');
+                await loadCalendar();
+            } catch (error) {
+                alert(error.message || 'Could not delete entry.');
+            }
+        }
+
+        function findEntry(id) {
+            const all = state.data?.entries || [];
+            return all.find(item => item.id === id) || null;
+        }
+
+        function filterBySemester(items) {
+            if (state.semesterView === 'both') return items;
+            return items.filter(item => item.semester === state.semesterView);
+        }
+
+        function renderSegButtons(kind, options, active) {
+            return options.map(option => `
+                <button class="seg${active === option.id ? ' active' : ''}" data-kind="${kind}" data-id="${option.id}">${escapeHtml(option.label)}</button>
             `).join('');
         }
 
-        function buildMonthGroups(entries) {
-            const groups = new Map();
-            for (const item of entries) {
-                const key = item.monthKey || 'unsorted';
-                if (!groups.has(key)) groups.set(key, { key, label: item.monthLabel || 'Unsorted', items: [] });
-                groups.get(key).items.push(item);
-            }
-            return Array.from(groups.values()).sort((a, b) => a.key.localeCompare(b.key));
-        }
-
-        function renderMonthGrid(groups) {
-            const weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-            monthGridWrap.innerHTML = groups.slice(0, 12).map(group => {
-                const first = group.items[0] ? new Date(group.items[0].startDate) : null;
-                if (!first || Number.isNaN(first.getTime())) return '';
-
-                const year = first.getFullYear();
-                const monthIndex = first.getMonth();
-                const firstWeekday = new Date(year, monthIndex, 1).getDay();
-                const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-
-                const dayCounts = new Map();
-                for (const item of group.items) {
-                    const d = new Date(item.startDate);
-                    if (Number.isNaN(d.getTime())) continue;
-                    const day = d.getDate();
-                    dayCounts.set(day, (dayCounts.get(day) || 0) + 1);
-                }
-
-                const cells = [];
-                for (let i = 0; i < firstWeekday; i += 1) {
-                    cells.push('<div class="mini-day empty">&nbsp;</div>');
-                }
-                for (let day = 1; day <= daysInMonth; day += 1) {
-                    const count = dayCounts.get(day) || 0;
-                    const hasEventClass = count ? ' has-event' : '';
-                    const countBadge = count ? `<span class="count">${count}</span>` : '';
-                    cells.push(`<div class="mini-day${hasEventClass}" title="${count ? `${count} activit${count > 1 ? 'ies' : 'y'}` : 'No activity'}">${day}${countBadge}</div>`);
-                }
-
-                return `
-                    <section class="mini-month">
-                        <div class="mini-month-title">${escapeHtml(group.label)}</div>
-                        <div class="mini-weekdays">${weekdayLabels.map(d => `<span>${d}</span>`).join('')}</div>
-                        <div class="mini-days">${cells.join('')}</div>
-                    </section>`;
-            }).join('') || `<div class="empty-state">No monthly data available.</div>`;
+        function toDateInput(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return '';
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         }
 
         function formatDate(iso) {
