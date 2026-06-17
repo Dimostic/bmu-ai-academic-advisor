@@ -51,6 +51,123 @@ function pickLatestPublication(list, pattern) {
     return matches[0];
 }
 
+function parseDateCandidate(raw, fallbackYear) {
+    if (!raw) return null;
+    const cleaned = String(raw)
+        .replace(/(\d)(st|nd|rd|th)\b/gi, '$1')
+        .replace(/[,]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const slash = cleaned.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (slash) {
+        let year = Number(slash[3]);
+        if (year < 100) year += 2000;
+        const day = Number(slash[1]);
+        const month = Number(slash[2]);
+        const d = new Date(year, month - 1, day);
+        if (!Number.isNaN(d.getTime())) return d;
+    }
+
+    let parsed = new Date(cleaned);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+
+    if (/^[A-Za-z]+\s+\d{1,2}$/.test(cleaned) && fallbackYear) {
+        parsed = new Date(`${cleaned} ${fallbackYear}`);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    if (/^\d{1,2}\s+[A-Za-z]+$/.test(cleaned) && fallbackYear) {
+        parsed = new Date(`${cleaned} ${fallbackYear}`);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    return null;
+}
+
+function extractEntryFromLine(line, fallbackYear) {
+    const months = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+    const dateExpr = `(?:\\d{1,2}[\\/\\-]\\d{1,2}[\\/\\-]\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)?\\s+${months}(?:\\s+\\d{2,4})?|${months}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:\\s+\\d{2,4})?)`;
+    const rangeExpr = `(${dateExpr})(?:\\s*(?:-|–|—|to)\\s*(${dateExpr}))?`;
+
+    const p1 = new RegExp(`^(.+?)\\s*[:\\-–—]\\s*${rangeExpr}$`, 'i');
+    const p2 = new RegExp(`^${rangeExpr}\\s*[:\\-–—]\\s*(.+)$`, 'i');
+
+    let activity = null;
+    let startRaw = null;
+    let endRaw = null;
+
+    let m = line.match(p1);
+    if (m) {
+        activity = m[1].trim();
+        startRaw = m[2]?.trim();
+        endRaw = m[3]?.trim() || null;
+    }
+
+    if (!activity) {
+        m = line.match(p2);
+        if (m) {
+            startRaw = m[1]?.trim();
+            endRaw = m[2]?.trim() || null;
+            activity = m[3]?.trim() || '';
+        }
+    }
+
+    if (!activity || !startRaw) return null;
+    if (activity.length < 3) return null;
+
+    const start = parseDateCandidate(startRaw, fallbackYear);
+    if (!start) return null;
+    const end = endRaw ? parseDateCandidate(endRaw, fallbackYear) : null;
+
+    return {
+        activity,
+        startDate: start.toISOString(),
+        endDate: end ? end.toISOString() : null,
+        dateLabel: end
+            ? `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+            : start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+        monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
+        monthLabel: start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    };
+}
+
+async function parseAcademicCalendarEntries(calendarFile) {
+    const filePath = path.join(SOURCES_DIR, calendarFile.name);
+    const ext = String(calendarFile.ext || '').toLowerCase();
+    let lines = [];
+
+    if (ext === 'docx') {
+        try {
+            const mammoth = require('mammoth');
+            const out = await mammoth.extractRawText({ path: filePath });
+            lines = String(out.value || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        } catch (err) {
+            console.warn('Could not parse DOCX calendar:', err.message);
+        }
+    }
+
+    const fallbackYear = calendarFile.newestYear || new Date().getFullYear();
+    const parsed = [];
+
+    for (const line of lines) {
+        const entry = extractEntryFromLine(line, fallbackYear);
+        if (entry) parsed.push(entry);
+    }
+
+    // Deduplicate noisy repeated lines in extracted text.
+    const seen = new Set();
+    const unique = parsed.filter((item) => {
+        const key = `${item.activity}__${item.startDate}__${item.endDate || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
+    unique.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+    return unique;
+}
+
 // Trust nginx reverse proxy (required for correct client IP + express-rate-limit behind proxy)
 if (process.env.NODE_ENV === 'production') {
     // 1 hop: nginx -> node
@@ -164,8 +281,11 @@ app.get('/login', (req, res) => {
 app.get('/register', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/register.html'));
 });
-app.get('/calendar-yearbook', (req, res) => {
+app.get('/academic-calendar', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/calendar-yearbook.html'));
+});
+app.get('/calendar-yearbook', (req, res) => {
+    res.redirect(302, '/academic-calendar');
 });
 app.get('/advisor', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/advisor.html'));
@@ -248,10 +368,10 @@ app.use((req, res, next) => {
     next();
 });
 
-// Public file catalogue for annual publications (calendar/yearbook).
-// Reads from /sources on every request so staff can replace files each
-// session without redeploying code.
-app.get('/api/publications/annual', async (req, res) => {
+// Academic calendar feed.
+// Reads from /sources on every request so admins can upload the new
+// session calendar and have it appear automatically.
+app.get('/api/publications/academic-calendar', async (req, res) => {
     try {
         const dirItems = await fs.promises.readdir(SOURCES_DIR, { withFileTypes: true });
         const fileNames = dirItems.filter(d => d.isFile()).map(d => d.name);
@@ -265,23 +385,20 @@ app.get('/api/publications/annual', async (req, res) => {
             fileStats,
             /(academic\s*)?calendar|sessional\s*calendar/i
         );
-        const yearbook = pickLatestPublication(
-            fileStats,
-            /yearbook|handbook/i
-        );
+        const entries = calendar ? await parseAcademicCalendarEntries(calendar) : [];
 
         res.json({
             success: true,
             calendar,
-            yearbook,
+            entries,
             totalFiles: fileStats.length,
             generatedAt: new Date().toISOString()
         });
     } catch (error) {
-        console.error('Annual publications listing error:', error.message);
+        console.error('Academic calendar listing error:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Could not load annual publications.'
+            error: 'Could not load academic calendar.'
         });
     }
 });
@@ -374,7 +491,8 @@ app.get('*', (req, res, next) => {
     if (req.path.startsWith('/advisor'))  return res.sendFile(path.join(__dirname, '../client/advisor.html'));
     if (req.path.startsWith('/login'))    return res.sendFile(path.join(__dirname, '../client/login.html'));
     if (req.path.startsWith('/register')) return res.sendFile(path.join(__dirname, '../client/register.html'));
-    if (req.path.startsWith('/calendar-yearbook')) return res.sendFile(path.join(__dirname, '../client/calendar-yearbook.html'));
+    if (req.path.startsWith('/academic-calendar')) return res.sendFile(path.join(__dirname, '../client/calendar-yearbook.html'));
+    if (req.path.startsWith('/calendar-yearbook')) return res.redirect(302, '/academic-calendar');
     if (req.path.startsWith('/reset-password')) return res.sendFile(path.join(__dirname, '../client/reset-password.html'));
     if (req.path.startsWith('/verify-email')) return res.sendFile(path.join(__dirname, '../client/verify-email.html'));
     // Default: marketing landing.
