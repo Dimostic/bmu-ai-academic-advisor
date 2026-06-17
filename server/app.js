@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
+const XLSX = require('xlsx');
+const mammoth = require('mammoth');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // Import routes
@@ -18,11 +20,21 @@ const vcReportRoutes = require('./routes/vcReportRoutes');
 const vcDocumentRoutes = require('./routes/vcDocumentRoutes');
 const advisorRoutes = require('./routes/advisorRoutes');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
+const { uploadDocument, handleUploadError } = require('./middleware/upload');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SOURCES_DIR = path.join(__dirname, '../sources');
 const CALENDAR_OVERRIDES_FILE = path.join(SOURCES_DIR, 'academic-calendar-overrides.json');
+
+const EMPTY_CALENDAR_CONFIG = {
+    version: 2,
+    customEntries: [],
+    editedDocumentEntries: {},
+    deletedDocumentEntryIds: [],
+    hideDocumentEntries: false,
+    sessionLabel: ''
+};
 
 function buildPublicationRecord(name, stat) {
     const ext = path.extname(name).slice(1).toLowerCase();
@@ -76,26 +88,79 @@ async function readCalendarOverrides() {
     try {
         const raw = await fs.promises.readFile(CALENDAR_OVERRIDES_FILE, 'utf8');
         const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return [];
-        return parsed
-            .filter(item => item && item.id && item.activity && item.startDate)
-            .map(item => ({
-                id: String(item.id),
-                activity: normalizeText(item.activity),
-                startDate: new Date(item.startDate).toISOString(),
-                endDate: item.endDate ? new Date(item.endDate).toISOString() : null,
-                semester: validateSemester(item.semester) || inferSemester(item.activity, item.startDate),
-                createdAt: item.createdAt || null,
-                updatedAt: item.updatedAt || null
-            }));
+
+        // Backward compatible with earlier array-only storage.
+        if (Array.isArray(parsed)) {
+            return {
+                ...EMPTY_CALENDAR_CONFIG,
+                customEntries: parsed
+                    .filter(item => item && item.id && item.activity && item.startDate)
+                    .map(item => normalizeOverrideEntry(item))
+            };
+        }
+
+        if (!parsed || typeof parsed !== 'object') {
+            return { ...EMPTY_CALENDAR_CONFIG };
+        }
+
+        const customEntries = Array.isArray(parsed.customEntries)
+            ? parsed.customEntries.filter(item => item && item.id && item.activity && item.startDate).map(item => normalizeOverrideEntry(item))
+            : [];
+
+        const editedDocumentEntries = {};
+        if (parsed.editedDocumentEntries && typeof parsed.editedDocumentEntries === 'object') {
+            for (const [id, value] of Object.entries(parsed.editedDocumentEntries)) {
+                if (!id || !value || !value.activity || !value.startDate) continue;
+                editedDocumentEntries[id] = {
+                    activity: normalizeText(value.activity),
+                    startDate: new Date(value.startDate).toISOString(),
+                    endDate: value.endDate ? new Date(value.endDate).toISOString() : null,
+                    semester: validateSemester(value.semester) || inferSemester(value.activity, value.startDate),
+                    session: normalizeText(value.session || '')
+                };
+            }
+        }
+
+        const deletedDocumentEntryIds = Array.isArray(parsed.deletedDocumentEntryIds)
+            ? parsed.deletedDocumentEntryIds.map(id => String(id)).filter(Boolean)
+            : [];
+
+        return {
+            version: 2,
+            customEntries,
+            editedDocumentEntries,
+            deletedDocumentEntryIds,
+            hideDocumentEntries: !!parsed.hideDocumentEntries,
+            sessionLabel: normalizeText(parsed.sessionLabel || '')
+        };
     } catch (error) {
-        if (error.code === 'ENOENT') return [];
+        if (error.code === 'ENOENT') return { ...EMPTY_CALENDAR_CONFIG };
         throw error;
     }
 }
 
-async function writeCalendarOverrides(overrides) {
-    const payload = JSON.stringify(overrides, null, 2);
+function normalizeOverrideEntry(item) {
+    return {
+        id: String(item.id),
+        activity: normalizeText(item.activity),
+        startDate: new Date(item.startDate).toISOString(),
+        endDate: item.endDate ? new Date(item.endDate).toISOString() : null,
+        semester: validateSemester(item.semester) || inferSemester(item.activity, item.startDate),
+        session: normalizeText(item.session || ''),
+        createdAt: item.createdAt || null,
+        updatedAt: item.updatedAt || null
+    };
+}
+
+async function writeCalendarOverrides(config) {
+    const payload = JSON.stringify({
+        version: 2,
+        customEntries: config.customEntries || [],
+        editedDocumentEntries: config.editedDocumentEntries || {},
+        deletedDocumentEntryIds: config.deletedDocumentEntryIds || [],
+        hideDocumentEntries: !!config.hideDocumentEntries,
+        sessionLabel: normalizeText(config.sessionLabel || '')
+    }, null, 2);
     await fs.promises.writeFile(CALENDAR_OVERRIDES_FILE, payload, 'utf8');
 }
 
@@ -113,9 +178,10 @@ function formatCalendarEntry(entry, source) {
     return {
         id: entry.id,
         source,
-        editable: source === 'admin',
+        editable: true,
         activity: entry.activity,
         semester: validateSemester(entry.semester) || inferSemester(entry.activity, entry.startDate),
+        session: normalizeText(entry.session || ''),
         startDate: entry.startDate,
         endDate: entry.endDate,
         startLabel: formatShortDate(entry.startDate),
@@ -128,13 +194,34 @@ function formatCalendarEntry(entry, source) {
     };
 }
 
-function mergeCalendarEntries(parsedEntries, adminEntries) {
-    const fromDoc = parsedEntries.map(item => {
+function mergeCalendarEntries(parsedEntries, config) {
+    const deletedDocIds = new Set(config.deletedDocumentEntryIds || []);
+    const edits = config.editedDocumentEntries || {};
+
+    const fromDocRaw = parsedEntries.map(item => {
         const id = `doc_${makeStableEntryId('doc', item.activity, item.startDate, item.endDate)}`;
-        return formatCalendarEntry({ ...item, id, semester: inferSemester(item.activity, item.startDate) }, 'document');
+        return { ...item, id, semester: inferSemester(item.activity, item.startDate), session: normalizeText(config.sessionLabel || '') };
     });
 
-    const fromAdmin = adminEntries.map(item => {
+    const fromDoc = config.hideDocumentEntries
+        ? []
+        : fromDocRaw
+            .filter(item => !deletedDocIds.has(item.id))
+            .map(item => {
+                const patched = edits[item.id]
+                    ? {
+                        ...item,
+                        activity: normalizeText(edits[item.id].activity || item.activity),
+                        startDate: edits[item.id].startDate || item.startDate,
+                        endDate: edits[item.id].endDate === undefined ? item.endDate : edits[item.id].endDate,
+                        semester: validateSemester(edits[item.id].semester) || item.semester,
+                        session: normalizeText(edits[item.id].session || item.session || '')
+                    }
+                    : item;
+                return formatCalendarEntry(patched, 'document');
+            });
+
+    const fromAdmin = (config.customEntries || []).map(item => {
         const semester = validateSemester(item.semester) || inferSemester(item.activity, item.startDate);
         return formatCalendarEntry({ ...item, semester }, 'admin');
     });
@@ -188,6 +275,170 @@ function buildCurrentMonthCalendar(entries) {
         daysInMonth,
         byDay
     };
+}
+
+function normalizeSessionLabel(value) {
+    const text = normalizeText(value || '');
+    if (!text) return '';
+    const slash = text.match(/\b(20\d{2})\s*[\/\-]\s*(20\d{2})\b/);
+    if (slash) return `${slash[1]}/${slash[2]}`;
+    const pair = text.match(/\b(20\d{2})\b.*\b(20\d{2})\b/);
+    if (pair) return `${pair[1]}/${pair[2]}`;
+    return text;
+}
+
+function detectSessionFromFilename(name) {
+    const text = String(name || '');
+    const match = text.match(/(20\d{2})\D+(20\d{2})/);
+    if (!match) return '';
+    return `${match[1]}/${match[2]}`;
+}
+
+function parseDateForImport(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const d = new Date(`${value}T00:00:00`);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+
+    const slashDmy = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (slashDmy) {
+        let year = Number(slashDmy[3]);
+        if (year < 100) year += 2000;
+        const date = new Date(year, Number(slashDmy[2]) - 1, Number(slashDmy[1]));
+        return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function parseSemesterForImport(raw, activity, startDate) {
+    const val = validateSemester(raw);
+    if (val) return val;
+    return inferSemester(activity, startDate);
+}
+
+function parseImportedRowsFromWorkbook(filePath) {
+    const workbook = XLSX.readFile(filePath, { cellDates: false });
+    const rows = [];
+    let sessionLabel = '';
+
+    workbook.SheetNames.forEach((sheetName) => {
+        const sheet = workbook.Sheets[sheetName];
+        const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        const sheetSemester = /second/i.test(sheetName) ? 'second' : (/first/i.test(sheetName) ? 'first' : null);
+
+        for (const row of jsonRows) {
+            const activity = normalizeText(
+                row.Activity || row.activity || row['Activities'] || row['activities'] || row['Event'] || row['event'] || ''
+            );
+            const startRaw = row['Start Date'] || row['Start'] || row.start || row.startDate || row['Date Start'] || '';
+            const endRaw = row['End Date'] || row['End'] || row.end || row.endDate || row['Date End'] || '';
+            const sessionRaw = row['Academic Session'] || row['Session'] || row.session || '';
+            const semesterRaw = row['Semester'] || row.semester || sheetSemester || '';
+            if (!activity) continue;
+
+            const startDate = parseDateForImport(startRaw);
+            if (!startDate) continue;
+            const endDate = endRaw ? parseDateForImport(endRaw) : null;
+            const semester = parseSemesterForImport(semesterRaw, activity, startDate);
+            const session = normalizeSessionLabel(sessionRaw || sessionLabel);
+            if (session && !sessionLabel) sessionLabel = session;
+
+            rows.push({ activity, startDate, endDate, semester, session });
+        }
+    });
+
+    return { rows, sessionLabel };
+}
+
+function extractTextFromTag(fragment, tagName) {
+    const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'gi');
+    const out = [];
+    let m;
+    while ((m = regex.exec(fragment)) !== null) {
+        out.push(normalizeText(String(m[1]).replace(/<[^>]+>/g, ' ')));
+    }
+    return out;
+}
+
+async function parseImportedRowsFromDocx(filePath) {
+    const html = await mammoth.convertToHtml({ path: filePath });
+    const safeHtml = String(html.value || '');
+    const rowMatches = safeHtml.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+    const rows = [];
+    let sessionLabel = '';
+    let currentSemester = null;
+
+    const semesterHint = stripHtmlTags(safeHtml.slice(0, 5000));
+    if (/202\d\s*[\/\-]\s*202\d/.test(semesterHint)) {
+        sessionLabel = normalizeSessionLabel(semesterHint.match(/20\d{2}\s*[\/\-]\s*20\d{2}/)?.[0] || '');
+    }
+
+    for (const row of rowMatches) {
+        const cells = extractTextFromTag(row, 'td').concat(extractTextFromTag(row, 'th')).filter(Boolean);
+        if (!cells.length) continue;
+
+        const merged = cells.join(' ').toLowerCase();
+        if (/first\s+semester/.test(merged)) currentSemester = 'first';
+        if (/second\s+semester/.test(merged)) currentSemester = 'second';
+
+        if (cells.length < 3) continue;
+        const maybeActivity = normalizeText(cells[1] || cells[0]);
+        const maybeStart = cells[2] || cells[1] || '';
+        const maybeEnd = cells[3] || '';
+        if (!maybeActivity || /^activities?$/i.test(maybeActivity)) continue;
+
+        const startDate = parseDateForImport(maybeStart);
+        if (!startDate) continue;
+        const endDate = maybeEnd ? parseDateForImport(maybeEnd) : null;
+
+        const sessionInRow = normalizeSessionLabel(cells.find(v => /20\d{2}\s*[\/\-]\s*20\d{2}/.test(v)) || '');
+        if (sessionInRow && !sessionLabel) sessionLabel = sessionInRow;
+
+        rows.push({
+            activity: maybeActivity,
+            startDate,
+            endDate,
+            semester: parseSemesterForImport(cells.find(v => /semester/i.test(v)) || currentSemester || '', maybeActivity, startDate),
+            session: sessionInRow || sessionLabel
+        });
+    }
+
+    return { rows, sessionLabel };
+}
+
+async function parseImportedCalendarFile(filePath, originalName) {
+    const ext = path.extname(String(originalName || filePath)).toLowerCase();
+    if (ext === '.xlsx' || ext === '.xls' || ext === '.csv') {
+        return parseImportedRowsFromWorkbook(filePath);
+    }
+    if (ext === '.docx') {
+        return parseImportedRowsFromDocx(filePath);
+    }
+    throw new Error('Unsupported import format. Use .xlsx, .xls, .csv, or .docx');
+}
+
+function createTemplateWorkbookBuffer() {
+    const workbook = XLSX.utils.book_new();
+    const headers = ['Serial Number', 'Activity', 'Start Date', 'End Date', 'Academic Session', 'Semester'];
+    const firstRows = [
+        headers,
+        [1, 'Arrival of Newly Admitted Students', '2026-10-12', '2026-10-12', '2026/2027', 'first'],
+        [2, 'Registration and Course Enrolment', '2026-10-12', '2026-10-20', '2026/2027', 'first']
+    ];
+    const secondRows = [
+        headers,
+        [1, 'Resumption - Second Semester', '2027-04-07', '2027-04-07', '2026/2027', 'second'],
+        [2, 'Second Semester Examinations', '2027-06-29', '2027-07-10', '2026/2027', 'second']
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(firstRows), 'First Semester');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(secondRows), 'Second Semester');
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
 function pickLatestPublication(list, pattern) {
@@ -811,8 +1062,8 @@ app.get('/api/publications/academic-calendar', async (req, res) => {
             /(academic\s*)?calendar|sessional\s*calendar/i
         );
         const parsedEntries = calendar ? await parseAcademicCalendarEntries(calendar) : [];
-        const adminEntries = await readCalendarOverrides();
-        const entries = mergeCalendarEntries(parsedEntries, adminEntries);
+        const config = await readCalendarOverrides();
+        const entries = mergeCalendarEntries(parsedEntries, config);
         const firstSemesterEntries = entries.filter(item => item.semester === 'first');
         const secondSemesterEntries = entries.filter(item => item.semester === 'second');
         const currentMonthCalendar = buildCurrentMonthCalendar(entries);
@@ -824,6 +1075,7 @@ app.get('/api/publications/academic-calendar', async (req, res) => {
             firstSemesterEntries,
             secondSemesterEntries,
             currentMonthCalendar,
+            sessionLabel: normalizeSessionLabel(config.sessionLabel || detectSessionFromFilename(calendar?.name || '')),
             totalFiles: fileStats.length,
             generatedAt: new Date().toISOString()
         });
@@ -850,7 +1102,7 @@ app.post('/api/publications/academic-calendar/entries', authenticateToken, requi
         }
 
         const semester = validateSemester(req.body?.semester) || inferSemester(activity, startDate);
-        const overrides = await readCalendarOverrides();
+        const config = await readCalendarOverrides();
         const id = `adm_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
         const now = new Date().toISOString();
 
@@ -860,12 +1112,14 @@ app.post('/api/publications/academic-calendar/entries', authenticateToken, requi
             startDate,
             endDate,
             semester,
+            session: normalizeSessionLabel(req.body?.session || config.sessionLabel || ''),
             createdAt: now,
             updatedAt: now
         };
 
-        overrides.push(created);
-        await writeCalendarOverrides(overrides);
+        config.customEntries.push(created);
+        if (created.session && !config.sessionLabel) config.sessionLabel = created.session;
+        await writeCalendarOverrides(config);
 
         res.status(201).json({
             success: true,
@@ -879,38 +1133,70 @@ app.post('/api/publications/academic-calendar/entries', authenticateToken, requi
 app.put('/api/publications/academic-calendar/entries/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const id = String(req.params.id || '').trim();
-        const overrides = await readCalendarOverrides();
-        const index = overrides.findIndex(item => item.id === id);
-        if (index < 0) {
-            return res.status(404).json({ success: false, error: 'Entry not found or not editable' });
+        const config = await readCalendarOverrides();
+        const customIndex = config.customEntries.findIndex(item => item.id === id);
+
+        let existing = null;
+        let mode = null;
+        if (customIndex >= 0) {
+            existing = config.customEntries[customIndex];
+            mode = 'custom';
+        } else if (id.startsWith('doc_')) {
+            existing = config.editedDocumentEntries[id] || null;
+            mode = 'document';
+        } else {
+            return res.status(404).json({ success: false, error: 'Entry not found' });
         }
 
-        const existing = overrides[index];
         const activity = req.body?.activity ? normalizeText(req.body.activity) : existing.activity;
         if (!activity || activity.length < 3) {
             return res.status(400).json({ success: false, error: 'Activity is required' });
         }
 
-        const startDate = req.body?.startDate ? parseAdminDateInput(req.body.startDate, 'start date') : existing.startDate;
-        const endDate = req.body?.endDate === '' ? null : (req.body?.endDate ? parseAdminDateInput(req.body.endDate, 'end date') : existing.endDate);
+        const startDate = req.body?.startDate
+            ? parseAdminDateInput(req.body.startDate, 'start date')
+            : (existing?.startDate || null);
+        if (!startDate) {
+            return res.status(400).json({ success: false, error: 'Start date is required when editing document entries' });
+        }
+
+        const endDate = req.body?.endDate === ''
+            ? null
+            : (req.body?.endDate ? parseAdminDateInput(req.body.endDate, 'end date') : (existing?.endDate || null));
         if (endDate && new Date(endDate) < new Date(startDate)) {
             return res.status(400).json({ success: false, error: 'End date cannot be before start date' });
         }
 
         const semester = validateSemester(req.body?.semester) || inferSemester(activity, startDate);
+        const session = normalizeSessionLabel(req.body?.session || existing?.session || config.sessionLabel || '');
         const updated = {
-            ...existing,
+            ...(existing || {}),
+            id,
             activity,
             startDate,
             endDate,
             semester,
+            session,
             updatedAt: new Date().toISOString()
         };
 
-        overrides[index] = updated;
-        await writeCalendarOverrides(overrides);
+        if (mode === 'custom') {
+            config.customEntries[customIndex] = updated;
+        } else {
+            config.editedDocumentEntries[id] = {
+                activity,
+                startDate,
+                endDate,
+                semester,
+                session
+            };
+            config.deletedDocumentEntryIds = config.deletedDocumentEntryIds.filter(x => x !== id);
+        }
 
-        res.json({ success: true, entry: formatCalendarEntry(updated, 'admin') });
+        if (session && !config.sessionLabel) config.sessionLabel = session;
+        await writeCalendarOverrides(config);
+
+        res.json({ success: true, entry: formatCalendarEntry(updated, mode === 'custom' ? 'admin' : 'document') });
     } catch (error) {
         res.status(500).json({ success: false, error: `Could not update calendar entry: ${error.message}` });
     }
@@ -919,16 +1205,97 @@ app.put('/api/publications/academic-calendar/entries/:id', authenticateToken, re
 app.delete('/api/publications/academic-calendar/entries/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const id = String(req.params.id || '').trim();
-        const overrides = await readCalendarOverrides();
-        const filtered = overrides.filter(item => item.id !== id);
-        if (filtered.length === overrides.length) {
-            return res.status(404).json({ success: false, error: 'Entry not found or not editable' });
+        const config = await readCalendarOverrides();
+
+        const beforeCustom = config.customEntries.length;
+        config.customEntries = config.customEntries.filter(item => item.id !== id);
+        const removedCustom = beforeCustom !== config.customEntries.length;
+
+        let removed = removedCustom;
+        if (!removed && id.startsWith('doc_')) {
+            if (!config.deletedDocumentEntryIds.includes(id)) {
+                config.deletedDocumentEntryIds.push(id);
+            }
+            delete config.editedDocumentEntries[id];
+            removed = true;
         }
 
-        await writeCalendarOverrides(filtered);
+        if (!removed) {
+            return res.status(404).json({ success: false, error: 'Entry not found' });
+        }
+
+        await writeCalendarOverrides(config);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: `Could not delete calendar entry: ${error.message}` });
+    }
+});
+
+app.get('/api/publications/academic-calendar/template', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const fileBuffer = createTemplateWorkbookBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="academic-calendar-template.xlsx"');
+        res.send(fileBuffer);
+    } catch (error) {
+        res.status(500).json({ success: false, error: `Could not generate template: ${error.message}` });
+    }
+});
+
+app.post('/api/publications/academic-calendar/import', authenticateToken, requireAdmin, uploadDocument.single('file'), handleUploadError, async (req, res) => {
+    let uploadedPath = null;
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No file uploaded' });
+        }
+
+        uploadedPath = req.file.path;
+        const mode = String(req.body?.mode || 'replace').toLowerCase(); // replace | merge
+        const parsed = await parseImportedCalendarFile(uploadedPath, req.file.originalname);
+        if (!parsed.rows.length) {
+            return res.status(400).json({ success: false, error: 'No valid calendar rows found in uploaded file' });
+        }
+
+        const config = await readCalendarOverrides();
+        const sessionLabel = normalizeSessionLabel(req.body?.session || parsed.sessionLabel || config.sessionLabel || detectSessionFromFilename(req.file.originalname));
+
+        const now = new Date().toISOString();
+        const importedEntries = parsed.rows.map((row, idx) => ({
+            id: `adm_imp_${Date.now().toString(36)}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+            activity: normalizeText(row.activity),
+            startDate: row.startDate,
+            endDate: row.endDate || null,
+            semester: validateSemester(row.semester) || inferSemester(row.activity, row.startDate),
+            session: normalizeSessionLabel(row.session || sessionLabel),
+            createdAt: now,
+            updatedAt: now
+        }));
+
+        if (mode === 'replace') {
+            config.customEntries = importedEntries;
+            config.editedDocumentEntries = {};
+            config.deletedDocumentEntryIds = [];
+            config.hideDocumentEntries = true;
+        } else {
+            config.customEntries = [...config.customEntries, ...importedEntries];
+        }
+
+        if (sessionLabel) config.sessionLabel = sessionLabel;
+        await writeCalendarOverrides(config);
+
+        res.json({
+            success: true,
+            importedCount: importedEntries.length,
+            mode,
+            sessionLabel: config.sessionLabel,
+            hideDocumentEntries: config.hideDocumentEntries
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: `Could not import calendar file: ${error.message}` });
+    } finally {
+        if (uploadedPath) {
+            fs.promises.unlink(uploadedPath).catch(() => null);
+        }
     }
 });
 

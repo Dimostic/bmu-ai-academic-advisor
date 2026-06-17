@@ -237,6 +237,20 @@
             align-items: center;
         }
         .admin-tools.show { display: flex; }
+        .import-tools {
+            display: none;
+            padding: 10px 12px 0;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .import-tools.show { display: flex; }
+        .import-tools .select,
+        .import-tools .input {
+            max-width: 200px;
+            font-size: .82rem;
+            padding: 7px 8px;
+        }
 
         .table-wrap {
             padding: 12px;
@@ -397,9 +411,19 @@
                 <div class="head-tools">
                     <div class="toolbar" id="tableFilterToolbar"></div>
                     <div class="admin-tools" id="adminTools">
+                        <button class="btn btn-ghost" id="downloadTemplateBtn"><i class="fa-solid fa-file-excel"></i> Template</button>
                         <button class="btn btn-primary" id="addEntryBtn"><i class="fa-solid fa-plus"></i> Add New</button>
                     </div>
                 </div>
+            </div>
+            <div class="import-tools" id="importTools">
+                <input type="file" class="input" id="importFileInput" accept=".xlsx,.xls,.csv,.docx" />
+                <select class="select" id="importModeSelect">
+                    <option value="replace">Replace Current Calendar</option>
+                    <option value="merge">Merge with Existing</option>
+                </select>
+                <input type="text" class="input" id="importSessionInput" placeholder="Academic Session (e.g. 2026/2027)" />
+                <button class="btn btn-primary" id="importUploadBtn"><i class="fa-solid fa-upload"></i> Import File</button>
             </div>
             <div id="tableMount"></div>
         </section>
@@ -452,6 +476,12 @@
         const tableFilterToolbar = document.getElementById('tableFilterToolbar');
         const tableMount = document.getElementById('tableMount');
         const adminTools = document.getElementById('adminTools');
+        const importTools = document.getElementById('importTools');
+        const downloadTemplateBtn = document.getElementById('downloadTemplateBtn');
+        const importFileInput = document.getElementById('importFileInput');
+        const importModeSelect = document.getElementById('importModeSelect');
+        const importSessionInput = document.getElementById('importSessionInput');
+        const importUploadBtn = document.getElementById('importUploadBtn');
 
         const entryModal = document.getElementById('entryModal');
         const modalTitle = document.getElementById('modalTitle');
@@ -502,6 +532,9 @@
 
             if (isAdmin) {
                 adminTools.classList.add('show');
+                importTools.classList.add('show');
+                downloadTemplateBtn?.addEventListener('click', downloadTemplate);
+                importUploadBtn?.addEventListener('click', uploadImportFile);
             }
         }
 
@@ -554,6 +587,9 @@
                 state.data = data;
                 generatedAt.innerHTML = `<i class="fa-solid fa-clock"></i> Updated ${formatDate(data.generatedAt)}`;
                 renderFileMeta(data.calendar);
+                if (importSessionInput && !importSessionInput.value) {
+                    importSessionInput.value = data.sessionLabel || '';
+                }
                 renderCurrentMonthCalendar();
                 renderTables();
             } catch (error) {
@@ -710,9 +746,6 @@
         }
 
         function renderActions(entry) {
-            if (!entry.editable) {
-                return `<td class="actions"><span class="muted">Source: Document</span></td>`;
-            }
             return `
                 <td class="actions">
                     <div class="row-actions">
@@ -744,7 +777,8 @@
                 activity: entryActivity.value.trim(),
                 startDate: entryStartDate.value,
                 endDate: entryEndDate.value || '',
-                semester: entrySemester.value
+                semester: entrySemester.value,
+                session: importSessionInput?.value?.trim() || ''
             };
 
             if (!payload.activity || !payload.startDate) {
@@ -793,6 +827,64 @@
                 await loadCalendar();
             } catch (error) {
                 alert(error.message || 'Could not delete entry.');
+            }
+        }
+
+        async function downloadTemplate() {
+            if (!isAdmin || !token) return;
+            try {
+                const response = await fetch('/api/publications/academic-calendar/template', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.error || 'Could not download template');
+                }
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'academic-calendar-template.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                alert(error.message || 'Could not download template.');
+            }
+        }
+
+        async function uploadImportFile() {
+            if (!isAdmin || !token) return;
+            const file = importFileInput?.files?.[0];
+            if (!file) {
+                alert('Please select an Excel or Word file first.');
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('mode', importModeSelect?.value || 'replace');
+                formData.append('session', importSessionInput?.value?.trim() || '');
+
+                const response = await fetch('/api/publications/academic-calendar/import', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Import failed');
+                }
+
+                alert(`Imported ${data.importedCount} entries (${data.mode}).`);
+                importFileInput.value = '';
+                if (data.sessionLabel) importSessionInput.value = data.sessionLabel;
+                await loadCalendar();
+            } catch (error) {
+                alert(error.message || 'Could not import file.');
             }
         }
 
