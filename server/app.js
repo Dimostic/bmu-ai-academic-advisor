@@ -51,6 +51,9 @@ function pickLatestPublication(list, pattern) {
     return matches[0];
 }
 
+const DATE_MONTHS_PATTERN = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const DATE_EXPR_PATTERN = `(?:\\d{1,2}[\\/\\-]\\d{1,2}[\\/\\-]\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)?\\s+${DATE_MONTHS_PATTERN}(?:,?\\s+\\d{2,4})?|${DATE_MONTHS_PATTERN}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{2,4})?)`;
+
 function parseDateCandidate(raw, fallbackYear) {
     if (!raw) return null;
     const cleaned = String(raw)
@@ -69,8 +72,25 @@ function parseDateCandidate(raw, fallbackYear) {
         if (!Number.isNaN(d.getTime())) return d;
     }
 
+    const hasExplicitYear = /\b(19|20)\d{2}\b/.test(cleaned);
+    const cleanedNoWeekday = cleaned.replace(/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday),?\s+/i, '');
+
+    if (!hasExplicitYear && fallbackYear) {
+        if (/^[A-Za-z]+\s+\d{1,2}$/.test(cleanedNoWeekday) || /^\d{1,2}\s+[A-Za-z]+$/.test(cleanedNoWeekday)) {
+            const withYear = new Date(`${cleanedNoWeekday} ${fallbackYear}`);
+            if (!Number.isNaN(withYear.getTime())) return withYear;
+        }
+    }
+
     let parsed = new Date(cleaned);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
+    if (!Number.isNaN(parsed.getTime())) {
+        if (!hasExplicitYear && fallbackYear && parsed.getFullYear() < 2010) {
+            const corrected = new Date(parsed);
+            corrected.setFullYear(fallbackYear);
+            return corrected;
+        }
+        return parsed;
+    }
 
     if (/^[A-Za-z]+\s+\d{1,2}$/.test(cleaned) && fallbackYear) {
         parsed = new Date(`${cleaned} ${fallbackYear}`);
@@ -85,13 +105,199 @@ function parseDateCandidate(raw, fallbackYear) {
     return null;
 }
 
+function toDateLabel(start, end) {
+    const format = { month: 'short', day: 'numeric', year: 'numeric' };
+    if (end) {
+        return `${start.toLocaleDateString(undefined, format)} - ${end.toLocaleDateString(undefined, format)}`;
+    }
+    return start.toLocaleDateString(undefined, format);
+}
+
+function createCalendarEntry(activity, start, end) {
+    return {
+        activity,
+        startDate: start.toISOString(),
+        endDate: end ? end.toISOString() : null,
+        dateLabel: toDateLabel(start, end),
+        monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
+        monthLabel: start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    };
+}
+
+function extractMonthYearTokens(raw) {
+    const monthMatch = String(raw || '').match(new RegExp(DATE_MONTHS_PATTERN, 'i'));
+    const yearMatch = String(raw || '').match(/\b(20\d{2}|19\d{2})\b/);
+    return {
+        month: monthMatch ? monthMatch[0] : null,
+        year: yearMatch ? yearMatch[1] : null
+    };
+}
+
+function pickBestDateToken(raw) {
+    const text = String(raw || '');
+    const tokens = text.match(new RegExp(DATE_EXPR_PATTERN, 'ig')) || [];
+    if (!tokens.length) return null;
+
+    const withYear = tokens.filter(token => /\b(19|20)\d{2}\b/.test(token));
+    const pool = withYear.length ? withYear : tokens;
+    pool.sort((a, b) => b.length - a.length);
+    return pool[0];
+}
+
+function resolvePartialDate(raw, referenceRaw, fallbackYear) {
+    const cleaned = normalizeText(raw);
+    const ref = normalizeText(referenceRaw);
+    if (!cleaned) return null;
+
+    const dayOnly = cleaned.match(/^(\d{1,2})(?:st|nd|rd|th)?$/i);
+    if (dayOnly) {
+        const refTokens = extractMonthYearTokens(ref);
+        if (!refTokens.month) return null;
+        return parseDateCandidate(`${dayOnly[1]} ${refTokens.month} ${refTokens.year || fallbackYear}`, fallbackYear);
+    }
+
+    const dayMonth = cleaned.match(new RegExp(`^(\\d{1,2})(?:st|nd|rd|th)?\\s+(${DATE_MONTHS_PATTERN})$`, 'i'));
+    if (dayMonth) {
+        const refTokens = extractMonthYearTokens(ref);
+        return parseDateCandidate(`${dayMonth[1]} ${dayMonth[2]} ${refTokens.year || fallbackYear}`, fallbackYear);
+    }
+
+    return null;
+}
+
+function extractDateRangeFromText(rawText, fallbackYear) {
+    const text = normalizeText(String(rawText || '').replace(/\.$/, ''));
+    if (!text) return null;
+
+    const rangeMatch = text.match(/^(.+?)\s*(?:-|–|—|\bto\b)\s*(.+)$/i);
+    if (rangeMatch) {
+        const startRaw = normalizeText(rangeMatch[1]);
+        const endRaw = normalizeText(rangeMatch[2]);
+
+        const endToken = pickBestDateToken(endRaw) || endRaw;
+        const startToken = pickBestDateToken(startRaw) || startRaw;
+
+        let start = parseDateCandidate(startToken, fallbackYear) || resolvePartialDate(startToken, endToken, fallbackYear);
+        let end = parseDateCandidate(endToken, fallbackYear) || resolvePartialDate(endToken, startToken, fallbackYear);
+
+        if (start && end) return { start, end };
+        if (start && !end) return { start, end: null };
+    }
+
+    const singleToken = pickBestDateToken(text) || text;
+    const single = parseDateCandidate(singleToken, fallbackYear);
+    if (single) return { start: single, end: null };
+
+    return null;
+}
+
+function isLikelyDateLine(line) {
+    const text = normalizeText(line);
+    if (!text) return false;
+    if (new RegExp(DATE_EXPR_PATTERN, 'i').test(text)) return true;
+    if (/\b\d{1,2}(?:st|nd|rd|th)?\s*(?:-|–|—|to)\s*\d{1,2}(?:st|nd|rd|th)?\b/i.test(text)) return true;
+    if (/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(text) && /\d/.test(text)) return true;
+    return false;
+}
+
+function isIgnorableCalendarLine(line) {
+    const text = normalizeText(line).toLowerCase();
+    return !text || /^(s\/?n|activities|dates|first semester|second semester|first semester highlights|second semester rundown)$/i.test(text);
+}
+
+function buildEntryFromActivityAndDate(activityText, dateText, fallbackYear) {
+    const activity = normalizeText(activityText);
+    if (!activity || activity.length < 3) return null;
+    const dateRange = extractDateRangeFromText(dateText, fallbackYear);
+    if (!dateRange || !dateRange.start) return null;
+    return createCalendarEntry(activity, dateRange.start, dateRange.end);
+}
+
+function isIgnorableActivityText(activity) {
+    const text = normalizeText(activity).toLowerCase();
+    if (!text) return true;
+    if (/^(s\/?n|activities|dates)$/.test(text)) return true;
+    if (/^s\/?n\s*[:\-]/.test(text)) return true;
+    if (/activities\s*[-:|]+\s*dates/.test(text)) return true;
+    return false;
+}
+
+function normalizeText(value) {
+    return String(value || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function decodeHtmlEntities(value) {
+    return String(value || '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'");
+}
+
+function stripHtmlTags(value) {
+    return normalizeText(decodeHtmlEntities(String(value || '').replace(/<[^>]+>/g, ' ')));
+}
+
+function collectDocxHtmlLines(html) {
+    const lines = [];
+    const safeHtml = String(html || '');
+
+    const rowMatches = safeHtml.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+    for (const row of rowMatches) {
+        const cells = [];
+        const cellMatches = row.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || [];
+        for (const cell of cellMatches) {
+            const text = stripHtmlTags(cell);
+            if (text) cells.push(text);
+        }
+        if (!cells.length) continue;
+        if (cells.length >= 2) {
+            lines.push(`${cells[0]} :: ${cells.slice(1).join(' - ')}`);
+        } else {
+            lines.push(cells[0]);
+        }
+    }
+
+    const listMatches = safeHtml.match(/<li[\s\S]*?<\/li>/gi) || [];
+    for (const li of listMatches) {
+        const text = stripHtmlTags(li);
+        if (text) lines.push(text);
+    }
+
+    const paragraphMatches = safeHtml.match(/<p[\s\S]*?<\/p>/gi) || [];
+    for (const p of paragraphMatches) {
+        const text = stripHtmlTags(p);
+        if (text) lines.push(text);
+    }
+
+    return lines;
+}
+
+function uniqueStrings(values) {
+    const seen = new Set();
+    const out = [];
+    for (const value of values) {
+        const key = normalizeText(value).toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push(normalizeText(value));
+    }
+    return out;
+}
+
 function extractEntryFromLine(line, fallbackYear) {
-    const months = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-    const dateExpr = `(?:\\d{1,2}[\\/\\-]\\d{1,2}[\\/\\-]\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)?\\s+${months}(?:\\s+\\d{2,4})?|${months}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:\\s+\\d{2,4})?)`;
+    const dateExpr = DATE_EXPR_PATTERN;
     const rangeExpr = `(${dateExpr})(?:\\s*(?:-|–|—|to)\\s*(${dateExpr}))?`;
 
-    const p1 = new RegExp(`^(.+?)\\s*[:\\-–—]\\s*${rangeExpr}$`, 'i');
-    const p2 = new RegExp(`^${rangeExpr}\\s*[:\\-–—]\\s*(.+)$`, 'i');
+    const p1 = new RegExp(`^(.+?)\\s*(?::|\\-|–|—|::)\\s*${rangeExpr}$`, 'i');
+    const p2 = new RegExp(`^${rangeExpr}\\s*(?::|\\-|–|—|::)\\s*(.+)$`, 'i');
+    const p3 = new RegExp(`^${rangeExpr}\\s+(.+)$`, 'i');
+    const p4 = new RegExp(`^(.+?)\\s+(?:on|by|from)\\s+${rangeExpr}$`, 'i');
 
     let activity = null;
     let startRaw = null;
@@ -113,23 +319,40 @@ function extractEntryFromLine(line, fallbackYear) {
         }
     }
 
+    if (!activity) {
+        m = line.match(p3);
+        if (m) {
+            startRaw = m[1]?.trim();
+            endRaw = m[2]?.trim() || null;
+            activity = m[3]?.trim() || '';
+        }
+    }
+
+    if (!activity) {
+        m = line.match(p4);
+        if (m) {
+            activity = m[1]?.trim() || '';
+            startRaw = m[2]?.trim();
+            endRaw = m[3]?.trim() || null;
+        }
+    }
+
     if (!activity || !startRaw) return null;
     if (activity.length < 3) return null;
 
-    const start = parseDateCandidate(startRaw, fallbackYear);
-    if (!start) return null;
-    const end = endRaw ? parseDateCandidate(endRaw, fallbackYear) : null;
+    const dateRange = extractDateRangeFromText(endRaw ? `${startRaw} - ${endRaw}` : startRaw, fallbackYear);
+    if (!dateRange || !dateRange.start) return null;
+    return createCalendarEntry(activity, dateRange.start, dateRange.end);
+}
 
-    return {
-        activity,
-        startDate: start.toISOString(),
-        endDate: end ? end.toISOString() : null,
-        dateLabel: end
-            ? `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
-            : start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
-        monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
-        monthLabel: start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-    };
+function splitCandidateLines(line) {
+    const normalized = normalizeText(line);
+    if (!normalized) return [];
+    const chunks = normalized
+        .split(/\s+(?:\||•|;|\u2022)\s+/)
+        .map(part => normalizeText(part))
+        .filter(Boolean);
+    return chunks.length ? chunks : [normalized];
 }
 
 async function parseAcademicCalendarEntries(calendarFile) {
@@ -141,7 +364,10 @@ async function parseAcademicCalendarEntries(calendarFile) {
         try {
             const mammoth = require('mammoth');
             const out = await mammoth.extractRawText({ path: filePath });
-            lines = String(out.value || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            const rawLines = String(out.value || '').split(/\r?\n/).map(l => normalizeText(l)).filter(Boolean);
+            const htmlOut = await mammoth.convertToHtml({ path: filePath });
+            const htmlLines = collectDocxHtmlLines(htmlOut.value || '');
+            lines = uniqueStrings([...rawLines, ...htmlLines]);
         } catch (err) {
             console.warn('Could not parse DOCX calendar:', err.message);
         }
@@ -150,14 +376,39 @@ async function parseAcademicCalendarEntries(calendarFile) {
     const fallbackYear = calendarFile.newestYear || new Date().getFullYear();
     const parsed = [];
 
-    for (const line of lines) {
-        const entry = extractEntryFromLine(line, fallbackYear);
-        if (entry) parsed.push(entry);
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        if (isIgnorableCalendarLine(line)) continue;
+
+        const candidates = splitCandidateLines(line);
+        let consumedNextLine = false;
+
+        for (const candidate of candidates) {
+            const entry = extractEntryFromLine(candidate, fallbackYear);
+            if (entry) {
+                parsed.push(entry);
+                continue;
+            }
+
+            if (isLikelyDateLine(candidate)) continue;
+
+            const nextLine = lines[i + 1];
+            if (nextLine && isLikelyDateLine(nextLine)) {
+                const paired = buildEntryFromActivityAndDate(candidate, nextLine, fallbackYear);
+                if (paired) {
+                    parsed.push(paired);
+                    consumedNextLine = true;
+                }
+            }
+        }
+
+        if (consumedNextLine) i += 1;
     }
 
     // Deduplicate noisy repeated lines in extracted text.
     const seen = new Set();
     const unique = parsed.filter((item) => {
+        if (isIgnorableActivityText(item.activity)) return false;
         const key = `${item.activity}__${item.startDate}__${item.endDate || ''}`;
         if (seen.has(key)) return false;
         seen.add(key);

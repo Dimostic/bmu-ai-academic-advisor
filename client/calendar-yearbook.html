@@ -119,6 +119,66 @@
             max-height: calc(100vh - 180px);
             overflow: auto;
         }
+        .mini-cal-wrap {
+            padding: 12px 14px 4px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 10px;
+            border-bottom: 1px solid var(--line);
+            background: rgba(15,61,62,.015);
+        }
+        .mini-month {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .mini-month-title {
+            padding: 8px 10px;
+            font-size: .8rem;
+            font-weight: 700;
+            color: var(--bg-deep);
+            background: rgba(26,130,112,.08);
+            border-bottom: 1px solid var(--line);
+        }
+        .mini-weekdays,
+        .mini-days {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+        }
+        .mini-weekdays span {
+            padding: 4px 0;
+            text-align: center;
+            font-size: .68rem;
+            color: var(--muted);
+            border-bottom: 1px solid var(--line);
+        }
+        .mini-day {
+            min-height: 24px;
+            font-size: .7rem;
+            text-align: center;
+            padding: 4px 0;
+            border-right: 1px solid rgba(0,0,0,.04);
+            border-bottom: 1px solid rgba(0,0,0,.04);
+            color: var(--text);
+            position: relative;
+        }
+        .mini-day:nth-child(7n) { border-right: 0; }
+        .mini-day.empty {
+            background: rgba(0,0,0,.02);
+            color: transparent;
+        }
+        .mini-day.has-event {
+            background: rgba(26,130,112,.12);
+            font-weight: 700;
+        }
+        .mini-day .count {
+            position: absolute;
+            right: 2px;
+            top: 1px;
+            font-size: .56rem;
+            color: #0d5f50;
+        }
         .month-block {
             border: 1px solid var(--line);
             border-radius: 12px;
@@ -204,6 +264,7 @@
 
             <article class="calendar-panel">
                 <div class="head"><h2><i class="fa-solid fa-list-check"></i> Activities by Date</h2></div>
+                <div class="mini-cal-wrap" id="monthGridWrap">Loading monthly view...</div>
                 <div class="timeline-wrap" id="timelineWrap">Loading activities...</div>
             </article>
         </section>
@@ -214,6 +275,7 @@
         const authSlot = document.getElementById('authSlot');
         const generatedAt = document.getElementById('generatedAt');
         const fileMeta = document.getElementById('fileMeta');
+        const monthGridWrap = document.getElementById('monthGridWrap');
         const timelineWrap = document.getElementById('timelineWrap');
 
         const token = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
@@ -250,6 +312,7 @@
                 renderTimeline(data.entries || []);
             } catch (err) {
                 fileMeta.innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>${escapeHtml(err.message || 'Could not load calendar file.')}</div>`;
+                monthGridWrap.innerHTML = `<div class="empty-state">No monthly calendar available.</div>`;
                 timelineWrap.innerHTML = `<div class="empty-state">No activities are available right now.</div>`;
             }
         }
@@ -271,20 +334,13 @@
 
         function renderTimeline(entries) {
             if (!entries.length) {
+                monthGridWrap.innerHTML = `<div class="empty-state">No activities were extracted, so monthly highlights are not available yet.</div>`;
                 timelineWrap.innerHTML = `<div class="empty-state">We could not extract date-based activities from the current calendar file yet. Please ensure the Word document uses lines like <strong>Date - Activity</strong> or <strong>Activity: Date</strong>.</div>`;
                 return;
             }
 
-            const groups = new Map();
-            for (const item of entries) {
-                const key = item.monthKey || 'unsorted';
-                if (!groups.has(key)) groups.set(key, { label: item.monthLabel || 'Unsorted', items: [] });
-                groups.get(key).items.push(item);
-            }
-
-            const ordered = Array.from(groups.entries())
-                .sort((a, b) => a[0].localeCompare(b[0]))
-                .map(([, value]) => value);
+            const ordered = buildMonthGroups(entries);
+            renderMonthGrid(ordered);
 
             timelineWrap.innerHTML = ordered.map(group => `
                 <section class="month-block">
@@ -297,6 +353,55 @@
                     `).join('')}
                 </section>
             `).join('');
+        }
+
+        function buildMonthGroups(entries) {
+            const groups = new Map();
+            for (const item of entries) {
+                const key = item.monthKey || 'unsorted';
+                if (!groups.has(key)) groups.set(key, { key, label: item.monthLabel || 'Unsorted', items: [] });
+                groups.get(key).items.push(item);
+            }
+            return Array.from(groups.values()).sort((a, b) => a.key.localeCompare(b.key));
+        }
+
+        function renderMonthGrid(groups) {
+            const weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+            monthGridWrap.innerHTML = groups.slice(0, 12).map(group => {
+                const first = group.items[0] ? new Date(group.items[0].startDate) : null;
+                if (!first || Number.isNaN(first.getTime())) return '';
+
+                const year = first.getFullYear();
+                const monthIndex = first.getMonth();
+                const firstWeekday = new Date(year, monthIndex, 1).getDay();
+                const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+
+                const dayCounts = new Map();
+                for (const item of group.items) {
+                    const d = new Date(item.startDate);
+                    if (Number.isNaN(d.getTime())) continue;
+                    const day = d.getDate();
+                    dayCounts.set(day, (dayCounts.get(day) || 0) + 1);
+                }
+
+                const cells = [];
+                for (let i = 0; i < firstWeekday; i += 1) {
+                    cells.push('<div class="mini-day empty">&nbsp;</div>');
+                }
+                for (let day = 1; day <= daysInMonth; day += 1) {
+                    const count = dayCounts.get(day) || 0;
+                    const hasEventClass = count ? ' has-event' : '';
+                    const countBadge = count ? `<span class="count">${count}</span>` : '';
+                    cells.push(`<div class="mini-day${hasEventClass}" title="${count ? `${count} activit${count > 1 ? 'ies' : 'y'}` : 'No activity'}">${day}${countBadge}</div>`);
+                }
+
+                return `
+                    <section class="mini-month">
+                        <div class="mini-month-title">${escapeHtml(group.label)}</div>
+                        <div class="mini-weekdays">${weekdayLabels.map(d => `<span>${d}</span>`).join('')}</div>
+                        <div class="mini-days">${cells.join('')}</div>
+                    </section>`;
+            }).join('') || `<div class="empty-state">No monthly data available.</div>`;
         }
 
         function formatDate(iso) {
