@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f3d3e" />
+    <meta name="description" content="Bayelsa Medical University annual academic calendar and yearbook." />
+    <title>BMU Annual Calendar & Yearbook</title>
+    <script src="theme.js"></script>
+    <link rel="icon" type="image/png" href="bmulogo.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="advisor.css" />
+    <link rel="stylesheet" href="pages.css" />
+    <style>
+        .annual-page {
+            max-width: 1240px;
+            margin: 0 auto;
+            padding: 24px 20px 40px;
+        }
+        .annual-hero {
+            background: linear-gradient(130deg, #0f3d3e 0%, #16575a 50%, #1a8270 100%);
+            border-radius: 18px;
+            color: #fff;
+            padding: 30px 28px;
+            box-shadow: var(--shadow);
+            margin-bottom: 18px;
+            position: relative;
+            overflow: hidden;
+        }
+        .annual-hero::after {
+            content: '';
+            position: absolute;
+            width: 240px;
+            height: 240px;
+            right: -60px;
+            top: -80px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(123,220,181,.28), transparent 70%);
+            pointer-events: none;
+        }
+        .annual-hero h1 {
+            margin: 0;
+            font-size: clamp(1.45rem, 3vw, 2rem);
+            letter-spacing: .01em;
+        }
+        .annual-hero p {
+            margin: 8px 0 0;
+            opacity: .92;
+            max-width: 760px;
+            line-height: 1.6;
+        }
+        .annual-meta {
+            margin-top: 14px;
+            font-size: .84rem;
+            opacity: .86;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .annual-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+        @media (max-width: 980px) {
+            .annual-grid { grid-template-columns: 1fr; }
+        }
+
+        .pub-card {
+            background: var(--bg-elev);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(26,130,112,.12);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 520px;
+        }
+        .pub-head {
+            padding: 16px 16px 12px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(26,130,112,.08), rgba(26,130,112,0));
+        }
+        .pub-head h2 {
+            margin: 0;
+            font-size: 1.06rem;
+            color: var(--bg-deep);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pub-head p {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: .88rem;
+            line-height: 1.5;
+        }
+
+        .pub-body {
+            padding: 14px 16px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+        }
+        .pub-row {
+            display: grid;
+            grid-template-columns: 88px 1fr;
+            gap: 8px;
+            font-size: .86rem;
+        }
+        .pub-row .k { color: var(--muted); }
+        .pub-row .v { color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
+
+        .pub-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 2px;
+        }
+        .pub-actions .btn {
+            padding: 8px 12px;
+            font-size: .88rem;
+        }
+
+        .pub-preview {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: rgba(15,61,62,.02);
+            min-height: 260px;
+            overflow: hidden;
+            margin-top: 2px;
+        }
+        .pub-preview iframe {
+            width: 100%;
+            height: 320px;
+            border: 0;
+            background: #fff;
+        }
+        .pub-placeholder {
+            min-height: 260px;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            padding: 20px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+        .pub-placeholder i {
+            font-size: 2rem;
+            color: var(--accent);
+            margin-bottom: 8px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <header class="top-bar">
+        <a class="brand" href="/">
+            <img src="bmulogo.png" alt="BMU" />
+            <div>
+                <strong>BMU AI Academic Advisor</strong>
+                <small>Bayelsa Medical University</small>
+            </div>
+        </a>
+        <nav class="top-actions">
+            <a href="/advisor" class="link-muted"><i class="fa-solid fa-message"></i> Ask Dr. Tari</a>
+            <a href="/handbook" class="link-muted"><i class="fa-solid fa-book-open"></i> Handbook</a>
+            <button id="themeToggleBtn" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme"><i class="fa-solid fa-moon"></i></button>
+            <div id="authSlot"></div>
+        </nav>
+    </header>
+
+    <main class="annual-page">
+        <section class="annual-hero">
+            <h1><i class="fa-solid fa-calendar-days"></i> University Annual Calendar & Yearbook</h1>
+            <p>
+                Browse the latest academic calendar and yearbook publications in one place.
+                This page reads directly from the university source folder, so when new session files are uploaded,
+                the latest version appears automatically.
+            </p>
+            <div class="annual-meta">
+                <span><i class="fa-solid fa-rotate"></i> Auto-updated from official sources</span>
+                <span id="generatedAt"><i class="fa-solid fa-clock"></i> Loading update time...</span>
+            </div>
+        </section>
+
+        <section class="annual-grid" id="annualGrid">
+            <article class="pub-card"><div class="pub-body">Loading publications...</div></article>
+        </section>
+    </main>
+
+    <script>
+    (() => {
+        const authSlot = document.getElementById('authSlot');
+        const grid = document.getElementById('annualGrid');
+        const generatedAt = document.getElementById('generatedAt');
+
+        const token = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+        let user = null;
+        try { user = JSON.parse(localStorage.getItem('bmu_user') || 'null'); } catch (_) {}
+
+        if (token) {
+            const name = (user?.firstName || user?.first_name || user?.email || 'You').toString().split(' ')[0];
+            authSlot.innerHTML = `
+                <span class="link-muted" title="${escapeHtml(user?.email || '')}">
+                    <i class="fa-solid fa-user"></i> ${escapeHtml(name)}
+                </span>
+                <button id="logoutBtn" class="btn btn-ghost"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</button>`;
+            document.getElementById('logoutBtn')?.addEventListener('click', () => {
+                localStorage.removeItem('bmu_token');
+                localStorage.removeItem('bmu_user');
+                sessionStorage.removeItem('bmu_token');
+                location.replace('/');
+            });
+        } else {
+            authSlot.innerHTML = `<a href="/login" class="btn btn-ghost">Sign in</a>`;
+        }
+
+        loadPublications();
+
+        async function loadPublications() {
+            try {
+                const response = await fetch('/api/publications/annual');
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Could not load publications');
+                }
+
+                generatedAt.innerHTML = `<i class="fa-solid fa-clock"></i> Updated ${formatDate(data.generatedAt)}`;
+
+                grid.innerHTML = '';
+                grid.appendChild(renderCard({
+                    kind: 'calendar',
+                    heading: 'Academic Calendar',
+                    description: 'Official session timeline, semester dates, examinations, and key deadlines.',
+                    file: data.calendar,
+                    emptyText: 'No academic calendar file was found in the sources folder yet.'
+                }));
+                grid.appendChild(renderCard({
+                    kind: 'yearbook',
+                    heading: 'Yearbook',
+                    description: 'Latest yearbook (or students\' handbook if no explicit yearbook file is present).',
+                    file: data.yearbook,
+                    emptyText: 'No yearbook file was found yet. You can upload one to the sources folder.'
+                }));
+            } catch (err) {
+                grid.innerHTML = `
+                    <article class="pub-card" style="grid-column:1/-1;min-height:180px;">
+                        <div class="pub-body">
+                            <div class="pub-placeholder">
+                                <div>
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                    <strong>Could not load annual publications.</strong><br/>
+                                    ${escapeHtml(err.message || 'Unknown error')}
+                                </div>
+                            </div>
+                        </div>
+                    </article>`;
+            }
+        }
+
+        function renderCard({ kind, heading, description, file, emptyText }) {
+            const icon = kind === 'calendar' ? 'fa-calendar-check' : 'fa-book-open-reader';
+            const card = document.createElement('article');
+            card.className = 'pub-card';
+
+            if (!file) {
+                card.innerHTML = `
+                    <header class="pub-head">
+                        <h2><i class="fa-solid ${icon}"></i> ${escapeHtml(heading)}</h2>
+                        <p>${escapeHtml(description)}</p>
+                    </header>
+                    <div class="pub-body">
+                        <div class="pub-placeholder">
+                            <div>
+                                <i class="fa-regular fa-folder-open"></i>
+                                ${escapeHtml(emptyText)}
+                            </div>
+                        </div>
+                    </div>`;
+                return card;
+            }
+
+            const preview = file.previewable
+                ? `<div class="pub-preview"><iframe src="${escapeAttr(file.viewUrl)}" title="${escapeAttr(heading)} preview"></iframe></div>`
+                : `<div class="pub-preview"><div class="pub-placeholder"><div><i class="fa-solid fa-file"></i>Preview is not available for .${escapeHtml(file.ext || 'file')} files.<br/>Use Open or Download.</div></div></div>`;
+
+            card.innerHTML = `
+                <header class="pub-head">
+                    <h2><i class="fa-solid ${icon}"></i> ${escapeHtml(heading)}</h2>
+                    <p>${escapeHtml(description)}</p>
+                </header>
+                <div class="pub-body">
+                    <div class="pub-row"><div class="k">File</div><div class="v">${escapeHtml(file.name)}</div></div>
+                    <div class="pub-row"><div class="k">Format</div><div class="v">.${escapeHtml(file.ext || 'file')}</div></div>
+                    <div class="pub-row"><div class="k">Updated</div><div class="v">${escapeHtml(formatDate(file.modifiedAt))}</div></div>
+                    <div class="pub-actions">
+                        <a class="btn btn-primary" href="${escapeAttr(file.viewUrl)}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>
+                        <a class="btn btn-ghost" href="${escapeAttr(file.downloadUrl)}"><i class="fa-solid fa-download"></i> Download</a>
+                    </div>
+                    ${preview}
+                </div>`;
+            return card;
+        }
+
+        function formatDate(iso) {
+            if (!iso) return 'Unknown';
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return 'Unknown';
+            return d.toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[c]));
+        }
+
+        function escapeAttr(value) {
+            return escapeHtml(value).replace(/`/g, '&#96;');
+        }
+    })();
+    </script>
+    <script src="footer.js" defer></script>
+</body>
+</html>

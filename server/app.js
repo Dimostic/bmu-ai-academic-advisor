@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // Import routes
@@ -19,6 +20,36 @@ const advisorRoutes = require('./routes/advisorRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const SOURCES_DIR = path.join(__dirname, '../sources');
+
+function buildPublicationRecord(name, stat) {
+    const ext = path.extname(name).slice(1).toLowerCase();
+    const previewable = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext);
+    const normalized = name.toLowerCase();
+    const yearMatches = normalized.match(/20\d{2}/g) || [];
+    const newestYear = yearMatches.length ? Number(yearMatches[yearMatches.length - 1]) : 0;
+
+    return {
+        name,
+        ext,
+        sizeBytes: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        previewable,
+        newestYear,
+        viewUrl: `/api/publications/file?name=${encodeURIComponent(name)}`,
+        downloadUrl: `/api/publications/file?name=${encodeURIComponent(name)}&download=1`
+    };
+}
+
+function pickLatestPublication(list, pattern) {
+    const matches = list.filter(item => pattern.test(item.name));
+    if (!matches.length) return null;
+    matches.sort((a, b) => {
+        if (b.newestYear !== a.newestYear) return b.newestYear - a.newestYear;
+        return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
+    });
+    return matches[0];
+}
 
 // Trust nginx reverse proxy (required for correct client IP + express-rate-limit behind proxy)
 if (process.env.NODE_ENV === 'production') {
@@ -133,6 +164,9 @@ app.get('/login', (req, res) => {
 app.get('/register', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/register.html'));
 });
+app.get('/calendar-yearbook', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/calendar-yearbook.html'));
+});
 app.get('/advisor', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/advisor.html'));
 });
@@ -214,6 +248,65 @@ app.use((req, res, next) => {
     next();
 });
 
+// Public file catalogue for annual publications (calendar/yearbook).
+// Reads from /sources on every request so staff can replace files each
+// session without redeploying code.
+app.get('/api/publications/annual', async (req, res) => {
+    try {
+        const dirItems = await fs.promises.readdir(SOURCES_DIR, { withFileTypes: true });
+        const fileNames = dirItems.filter(d => d.isFile()).map(d => d.name);
+
+        const fileStats = await Promise.all(fileNames.map(async (name) => {
+            const stat = await fs.promises.stat(path.join(SOURCES_DIR, name));
+            return buildPublicationRecord(name, stat);
+        }));
+
+        const calendar = pickLatestPublication(
+            fileStats,
+            /(academic\s*)?calendar|sessional\s*calendar/i
+        );
+        const yearbook = pickLatestPublication(
+            fileStats,
+            /yearbook|handbook/i
+        );
+
+        res.json({
+            success: true,
+            calendar,
+            yearbook,
+            totalFiles: fileStats.length,
+            generatedAt: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Annual publications listing error:', error.message);
+        res.status(500).json({
+            success: false,
+            error: 'Could not load annual publications.'
+        });
+    }
+});
+
+// Safe file-serving endpoint restricted to /sources.
+app.get('/api/publications/file', async (req, res) => {
+    try {
+        const requestedName = String(req.query.name || '').trim();
+        const safeName = path.basename(requestedName);
+        if (!safeName || safeName !== requestedName) {
+            return res.status(400).json({ success: false, error: 'Invalid file name' });
+        }
+
+        const fullPath = path.join(SOURCES_DIR, safeName);
+        await fs.promises.access(fullPath, fs.constants.R_OK);
+
+        if (String(req.query.download || '') === '1') {
+            return res.download(fullPath, safeName);
+        }
+        res.sendFile(fullPath);
+    } catch (error) {
+        res.status(404).json({ success: false, error: 'File not found' });
+    }
+});
+
 // API Routes
 app.use('/api/users', userRoutes);
 app.use('/api/chat', chatRoutes);
@@ -281,6 +374,7 @@ app.get('*', (req, res, next) => {
     if (req.path.startsWith('/advisor'))  return res.sendFile(path.join(__dirname, '../client/advisor.html'));
     if (req.path.startsWith('/login'))    return res.sendFile(path.join(__dirname, '../client/login.html'));
     if (req.path.startsWith('/register')) return res.sendFile(path.join(__dirname, '../client/register.html'));
+    if (req.path.startsWith('/calendar-yearbook')) return res.sendFile(path.join(__dirname, '../client/calendar-yearbook.html'));
     if (req.path.startsWith('/reset-password')) return res.sendFile(path.join(__dirname, '../client/reset-password.html'));
     if (req.path.startsWith('/verify-email')) return res.sendFile(path.join(__dirname, '../client/verify-email.html'));
     // Default: marketing landing.
