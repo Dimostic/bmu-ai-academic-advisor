@@ -488,6 +488,35 @@ class User {
         return result.affectedRows > 0;
     }
 
+    // Admin alternate path: verify and activate a user in one action.
+    // This is used when the user cannot complete self-verification.
+    static async adminVerifyAndActivate(userId, approvedById, role = 'staff') {
+        const validRoles = ['student', 'staff', 'admin', 'superadmin'];
+        if (!validRoles.includes(role)) {
+            throw new Error('Invalid role');
+        }
+
+        const promptLimit = (role === 'admin' || role === 'superadmin') ? -1 : 100;
+
+        const sql = `
+            UPDATE users
+            SET is_verified = TRUE,
+                verification_token = NULL,
+                verification_token_expires = NULL,
+                is_approved = TRUE,
+                is_active = TRUE,
+                approved_by = ?,
+                approved_at = COALESCE(approved_at, NOW()),
+                role = ?,
+                monthly_prompt_limit = ?,
+                updated_at = NOW()
+            WHERE id = ?
+        `;
+
+        const result = await query(sql, [approvedById, role, promptLimit, userId]);
+        return result.affectedRows > 0;
+    }
+
     // Update role with appropriate limits
     static async updateRoleWithLimits(id, role) {
         const validRoles = ['student', 'staff', 'admin', 'superadmin'];

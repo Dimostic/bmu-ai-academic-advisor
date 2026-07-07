@@ -802,7 +802,10 @@
         function userActions(u, status) {
             const id = u.id;
             const buttons = [];
-            if (status === 'Pending approval') {
+            if (status === 'Unverified') {
+                buttons.push(`<button class="btn btn-primary" data-act="verify-activate" data-id="${id}"><i class="fa-solid fa-user-check"></i> Verify & Activate</button>`);
+                buttons.push(`<button class="btn btn-ghost" data-act="reject"  data-id="${id}"><i class="fa-solid fa-xmark"></i> Reject</button>`);
+            } else if (status === 'Pending approval') {
                 buttons.push(`<button class="btn btn-primary" data-act="approve" data-id="${id}"><i class="fa-solid fa-check"></i> Approve</button>`);
                 buttons.push(`<button class="btn btn-ghost" data-act="reject"  data-id="${id}"><i class="fa-solid fa-xmark"></i> Reject</button>`);
             } else if (status === 'Deactivated') {
@@ -824,6 +827,10 @@
                 const id = btn.dataset.id;
                 const act = btn.dataset.act;
                 try {
+                    if (act === 'verify-activate') {
+                        if (!confirm('Verify this email and activate the account now?')) return;
+                        await api('/api/users/admin/users/' + id + '/verify-activate', { method: 'POST' });
+                    }
                     if (act === 'approve')      { await api('/api/users/admin/users/' + id + '/approve', { method: 'POST' }); }
                     else if (act === 'reject')  { if (!confirm('Reject this account?')) return; await api('/api/users/admin/users/' + id + '/reject', { method: 'POST' }); }
                     else if (act === 'deactivate') { await api('/api/admin/users/' + id + '/status', { method: 'PUT', body: { isActive: false } }); }

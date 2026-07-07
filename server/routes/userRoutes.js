@@ -875,6 +875,86 @@ router.post('/admin/users/:id/approve', authenticateToken, requireSuperAdmin, as
     }
 });
 
+// Verify + activate user (admin alternate to self-verification)
+router.post('/admin/users/:id/verify-activate', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id);
+
+        const targetUser = await User.findByIdAny(userId);
+        if (!targetUser) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+
+        if (targetUser.role === 'superadmin' && req.user.role !== 'superadmin') {
+            return res.status(403).json({
+                success: false,
+                error: 'Only superadmins can manage superadmin accounts'
+            });
+        }
+
+        const desiredRole = req.body?.role || targetUser.role || 'student';
+        const validRoles = ['student', 'staff', 'admin', 'superadmin'];
+        if (!validRoles.includes(desiredRole)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid role specified'
+            });
+        }
+
+        if (desiredRole === 'superadmin' && req.user.role !== 'superadmin') {
+            return res.status(403).json({
+                success: false,
+                error: 'Only superadmins can assign the superadmin role'
+            });
+        }
+
+        const success = await User.adminVerifyAndActivate(userId, req.user.id, desiredRole);
+        if (!success) {
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to verify and activate user'
+            });
+        }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'USER_VERIFIED_ACTIVATED_BY_ADMIN',
+            entityType: 'user',
+            entityId: userId,
+            details: { email: targetUser.email, role: desiredRole },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        try {
+            const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+            const loginUrl = `${baseUrl}/#/login`;
+            await emailService.sendApprovalEmail({
+                to: targetUser.email,
+                userName: targetUser.first_name || targetUser.email,
+                loginUrl
+            });
+        } catch (emailError) {
+            console.error('Failed to send verify+activate notification email:', emailError);
+        }
+
+        res.json({
+            success: true,
+            message: 'User verified and activated successfully'
+        });
+    } catch (error) {
+        console.error('Verify+activate user error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to verify and activate user'
+        });
+    }
+});
+
 // Reject user (superadmin only)
 router.post('/admin/users/:id/reject', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
