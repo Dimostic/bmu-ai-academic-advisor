@@ -3,6 +3,12 @@ const nodemailer = require('nodemailer');
 class EmailService {
     constructor() {
         this.enabled = process.env.EMAIL_ENABLED === 'true';
+        this.primaryProvider = this._normalizeProvider(
+            process.env.EMAIL_PROVIDER || process.env.EMAIL_TRANSPORT || 'smtp'
+        );
+        this.fallbackProvider = this._normalizeProvider(
+            process.env.EMAIL_FALLBACK_PROVIDER || ''
+        );
 
         // Backwards compatible FROM handling:
         // - Prefer explicit FROM_NAME/FROM_EMAIL if provided
@@ -14,6 +20,17 @@ class EmailService {
 
         // Lazily created transporter
         this._transporter = null;
+
+        // Optional reply-to for providers where sender domain restrictions apply.
+        this.replyTo = (process.env.EMAIL_REPLY_TO || '').trim() || undefined;
+    }
+
+    _normalizeProvider(raw) {
+        const value = String(raw || '').trim().toLowerCase();
+        if (value === 'resend') return 'resend';
+        if (value === 'sendmail') return 'smtp';
+        if (value === 'smtp') return 'smtp';
+        return value || '';
     }
 
     getTransporter() {
@@ -72,26 +89,132 @@ class EmailService {
         return this._transporter;
     }
 
+    _isRetryableProviderError(error) {
+        if (!error) return false;
+
+        // SMTP/network/auth failures are fallback candidates.
+        const retryableCodes = new Set([
+            'EAUTH',
+            'ECONNECTION',
+            'ESOCKET',
+            'ETIMEDOUT',
+            'ECONNRESET',
+            'EHOSTUNREACH',
+            'ENOTFOUND',
+            'ESERVFAIL'
+        ]);
+
+        if (error.code && retryableCodes.has(String(error.code).toUpperCase())) {
+            return true;
+        }
+
+        // Resend (HTTP) - fallback on transient/server failures.
+        if (error.httpStatus && Number(error.httpStatus) >= 500) return true;
+        if (error.httpStatus && Number(error.httpStatus) === 429) return true;
+
+        return false;
+    }
+
+    async _sendViaSmtp({ to, subject, text, html }) {
+        const transporter = this.getTransporter();
+        const info = await transporter.sendMail({
+            from: this.from,
+            to,
+            replyTo: this.replyTo,
+            subject,
+            text,
+            html
+        });
+
+        return {
+            provider: 'smtp',
+            messageId: info.messageId
+        };
+    }
+
+    async _sendViaResend({ to, subject, text, html }) {
+        const apiKey = process.env.RESEND_API_KEY;
+        if (!apiKey) {
+            const err = new Error('RESEND_API_KEY not configured');
+            err.code = 'ERESEND_CONFIG';
+            throw err;
+        }
+
+        const payload = {
+            from: this.from,
+            to: Array.isArray(to) ? to : [to],
+            subject,
+            text,
+            html
+        };
+
+        if (this.replyTo) {
+            payload.reply_to = this.replyTo;
+        }
+
+        const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const message = body?.message || body?.error || `Resend API failed (${response.status})`;
+            const err = new Error(message);
+            err.code = 'ERESEND_SEND';
+            err.httpStatus = response.status;
+            throw err;
+        }
+
+        return {
+            provider: 'resend',
+            messageId: body?.id || null
+        };
+    }
+
+    async _sendWithProvider(provider, payload) {
+        if (provider === 'resend') {
+            return this._sendViaResend(payload);
+        }
+        return this._sendViaSmtp(payload);
+    }
+
     async sendMail({ to, subject, text, html }) {
         if (!this.enabled) {
             console.log('[EmailService] Email disabled, skipping send');
             return { success: false, disabled: true };
         }
 
-        try {
-            const transporter = this.getTransporter();
-            const info = await transporter.sendMail({
-                from: this.from,
-                to,
-                subject,
-                text,
-                html
-            });
+        const primary = this.primaryProvider || 'smtp';
+        const fallback = this.fallbackProvider || '';
 
-            console.log(`[EmailService] Email sent to ${to}, messageId: ${info.messageId}`);
-            return { success: true, messageId: info.messageId };
+        try {
+            const sent = await this._sendWithProvider(primary, { to, subject, text, html });
+            console.log(`[EmailService] Email sent via ${sent.provider} to ${to}, messageId: ${sent.messageId || 'n/a'}`);
+            return { success: true, provider: sent.provider, messageId: sent.messageId };
         } catch (error) {
-            console.error('[EmailService] Failed to send email:', error.message);
+            const canFallback = fallback && fallback !== primary && this._isRetryableProviderError(error);
+
+            if (canFallback) {
+                console.warn(`[EmailService] Primary provider ${primary} failed (${error.code || 'no_code'}). Trying fallback ${fallback}.`);
+                try {
+                    const sent = await this._sendWithProvider(fallback, { to, subject, text, html });
+                    console.log(`[EmailService] Email sent via fallback ${sent.provider} to ${to}, messageId: ${sent.messageId || 'n/a'}`);
+                    return { success: true, provider: sent.provider, messageId: sent.messageId, fallbackUsed: true };
+                } catch (fallbackError) {
+                    console.error('[EmailService] Fallback provider failed:', fallbackError.message);
+                    if (fallbackError.code) {
+                        console.error('[EmailService] Fallback error code:', fallbackError.code);
+                    }
+                    throw fallbackError;
+                }
+            }
+
+            console.error(`[EmailService] Failed to send email via ${primary}:`, error.message);
             if (error.code) {
                 console.error('[EmailService] Error code:', error.code);
             }
