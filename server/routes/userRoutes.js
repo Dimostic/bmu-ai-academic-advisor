@@ -15,6 +15,28 @@ const emailService = require('../services/emailService');
 
 const router = express.Router();
 
+async function resendVerificationForUser({ user, req }) {
+    if (!user || user.is_verified) {
+        return { sent: false, reason: 'already_verified' };
+    }
+
+    const verificationToken = await User.regenerateVerificationToken(user.id);
+    if (!verificationToken) {
+        return { sent: false, reason: 'token_generation_failed' };
+    }
+
+    const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const verifyUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
+
+    await emailService.sendVerificationEmail({
+        to: user.email,
+        verifyUrl,
+        userName: user.first_name || user.email
+    });
+
+    return { sent: true };
+}
+
 // Registration
 router.post('/register', registerValidation, async (req, res) => {
     try {
@@ -549,6 +571,98 @@ router.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => 
             success: false, 
             error: 'Failed to fetch users' 
         });
+    }
+});
+
+// Resend verification to one user (admin)
+router.post('/admin/users/:id/resend-verification', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const userId = parseInt(req.params.id, 10);
+        const user = await User.findByIdAny(userId);
+
+        if (!user) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        const result = await resendVerificationForUser({ user, req });
+        if (!result.sent) {
+            return res.status(400).json({
+                success: false,
+                error: result.reason === 'already_verified'
+                    ? 'User email is already verified'
+                    : 'Could not resend verification email'
+            });
+        }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'ADMIN_RESENT_VERIFICATION_EMAIL',
+            entityType: 'user',
+            entityId: userId,
+            details: { email: user.email },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.json({ success: true, message: 'Verification email resent successfully' });
+    } catch (error) {
+        console.error('Admin resend verification error:', error);
+        res.status(500).json({ success: false, error: 'Failed to resend verification email' });
+    }
+});
+
+// Bulk resend verification to unverified users (admin)
+router.post('/admin/users/resend-verification-unverified', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const requestedLimit = parseInt(req.body?.limit, 10);
+        const limit = Number.isInteger(requestedLimit)
+            ? Math.max(1, Math.min(requestedLimit, 500))
+            : 200;
+
+        const list = await User.getAll(1, limit, { status: 'pending_verification' });
+        const users = list?.users || [];
+
+        let sent = 0;
+        const failed = [];
+
+        for (const user of users) {
+            try {
+                const result = await resendVerificationForUser({ user, req });
+                if (result.sent) sent += 1;
+            } catch (error) {
+                failed.push({
+                    id: user.id,
+                    email: user.email,
+                    error: error.message
+                });
+            }
+        }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'ADMIN_BULK_RESEND_VERIFICATION',
+            entityType: 'user',
+            details: {
+                requestedLimit: limit,
+                foundUnverified: users.length,
+                sent,
+                failedCount: failed.length
+            },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.json({
+            success: true,
+            message: `Resent verification to ${sent} user(s).`,
+            processed: users.length,
+            sent,
+            failedCount: failed.length,
+            failed: failed.slice(0, 25)
+        });
+    } catch (error) {
+        console.error('Bulk resend verification error:', error);
+        res.status(500).json({ success: false, error: 'Failed to resend verification emails' });
     }
 });
 

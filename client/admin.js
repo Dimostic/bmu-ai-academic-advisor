@@ -686,7 +686,7 @@
     async function renderUsers() {
         main.innerHTML = `
             <h2>Users</h2>
-            <p class="lede">Approve pending registrations, change roles, and deactivate accounts.</p>
+            <p class="lede">Approve pending registrations, resend missing verification links, change roles, and deactivate accounts.</p>
             <details class="curate-compose" id="createUserBlock">
                 <summary><i class="fa-solid fa-user-plus"></i> Create a user</summary>
                 <form id="createUserForm" class="curate-edit" style="margin-top:12px;">
@@ -722,6 +722,7 @@
             </details>
             <div class="admin-actions">
                 <input id="usersSearch" class="admin-search" type="search" placeholder="Search users by name or email…" />
+                <button class="btn btn-primary" id="bulkResendUnverified"><i class="fa-solid fa-envelope-circle-check"></i> Auto resend unverified</button>
                 <button class="btn btn-ghost" id="filterAll">All</button>
                 <button class="btn btn-ghost" id="filterPending">Pending approval</button>
                 <button class="btn btn-ghost" id="filterAdmins">Admins</button>
@@ -804,6 +805,7 @@
             const buttons = [];
             if (status === 'Unverified') {
                 buttons.push(`<button class="btn btn-primary" data-act="verify-activate" data-id="${id}"><i class="fa-solid fa-user-check"></i> Verify & Activate</button>`);
+                buttons.push(`<button class="btn btn-ghost" data-act="resend-verification" data-id="${id}"><i class="fa-solid fa-envelope"></i> Resend Link</button>`);
                 buttons.push(`<button class="btn btn-ghost" data-act="reject"  data-id="${id}"><i class="fa-solid fa-xmark"></i> Reject</button>`);
             } else if (status === 'Pending approval') {
                 buttons.push(`<button class="btn btn-primary" data-act="approve" data-id="${id}"><i class="fa-solid fa-check"></i> Approve</button>`);
@@ -830,6 +832,9 @@
                     if (act === 'verify-activate') {
                         if (!confirm('Verify this email and activate the account now?')) return;
                         await api('/api/users/admin/users/' + id + '/verify-activate', { method: 'POST' });
+                    }
+                    if (act === 'resend-verification') {
+                        await api('/api/users/admin/users/' + id + '/resend-verification', { method: 'POST' });
                     }
                     if (act === 'approve')      { await api('/api/users/admin/users/' + id + '/approve', { method: 'POST' }); }
                     else if (act === 'reject')  { if (!confirm('Reject this account?')) return; await api('/api/users/admin/users/' + id + '/reject', { method: 'POST' }); }
@@ -860,6 +865,20 @@
         document.getElementById('filterAll').addEventListener('click', () => { filter = 'all'; load(); });
         document.getElementById('filterPending').addEventListener('click', () => { filter = 'pending'; load(); });
         document.getElementById('filterAdmins').addEventListener('click', () => { filter = 'admins'; load(); });
+        document.getElementById('bulkResendUnverified').addEventListener('click', async () => {
+            if (!confirm('Resend verification links to all currently unverified users?')) return;
+            try {
+                const result = await api('/api/users/admin/users/resend-verification-unverified', {
+                    method: 'POST',
+                    body: { limit: 200 }
+                });
+                const msg = `Processed ${result.processed || 0}, sent ${result.sent || 0}, failed ${result.failedCount || 0}`;
+                toast(msg);
+                load();
+            } catch (err) {
+                toast(err.message || 'Bulk resend failed', 'error');
+            }
+        });
         const usersSearch = document.getElementById('usersSearch');
         usersSearch?.addEventListener('input', () => {
             searchText = usersSearch.value.trim();
