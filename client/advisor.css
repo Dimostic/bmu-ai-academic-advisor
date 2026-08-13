@@ -808,7 +808,7 @@ body.advisor-full-view .brand small {
     display: none;
 }
 
-body.advisor-full-view .top-actions > *:not(#advisorViewToggleBtn) {
+body.advisor-full-view .top-actions > *:not(#advisorViewToggleBtn):not(#themeToggleBtn) {
     display: none !important;
 }
 
@@ -867,6 +867,48 @@ body.advisor-full-view .avatar-audio-controls {
     padding: 8px;
     border-radius: 999px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+html[data-theme="dark"] body.advisor-full-view .avatar-audio-controls {
+    background: rgba(7, 12, 14, 0.95);
+    border: 1px solid rgba(109, 238, 200, 0.22);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
+}
+
+html[data-theme="dark"] body.advisor-full-view .avatar-audio-controls .icon-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: var(--accent-soft);
+}
+
+html[data-theme="dark"] body.advisor-full-view .avatar-audio-controls .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+html[data-theme="dark"] body.advisor-full-view .avatar-audio-controls .icon-btn.is-active {
+    background: var(--accent);
+    color: #061215;
+    border-color: var(--accent);
+}
+
+body.advisor-full-view #themeToggleBtn {
+    background: var(--bg-elev);
+    color: var(--accent);
+    border-color: var(--line);
+}
+
+body.advisor-full-view #themeToggleBtn:hover {
+    background: #eef3f3;
+}
+
+html[data-theme="dark"] body.advisor-full-view #themeToggleBtn {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--accent-soft);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+html[data-theme="dark"] body.advisor-full-view #themeToggleBtn:hover {
+    background: rgba(255, 255, 255, 0.14);
 }
 
 body.advisor-full-view .history-pane,
