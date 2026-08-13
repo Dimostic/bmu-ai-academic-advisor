@@ -61,7 +61,6 @@
     const advisorName   = $('advisorName');
     const welcomeName   = $('welcomeName');
     const toastHost     = $('toastHost');
-    const avatarToggleBtn = $('avatarToggleBtn');
     const avatarGenderToggleBtn = $('avatarGenderToggleBtn');
     const usageOverlay  = $('usageOverlay');
     const usageOverlayTitle = $('usageOverlayTitle');
@@ -1673,15 +1672,6 @@
     if (advisorFullView) {
         historyPane?.classList.add('hidden');
         historyPane?.classList.remove('is-open');
-    }
-
-    // ---------- Avatar quick-toggle ----------
-    if (avatarToggleBtn) {
-        avatarToggleBtn.addEventListener('click', async () => {
-            const next = getAdvisorGender() === 'male' ? 'female' : 'male';
-            await saveAdvisorGender(next);
-            toast(`Switched to ${next === 'male' ? 'male' : 'female'} advisor`);
-        });
     }
 
     avatarGenderToggleBtn?.addEventListener('click', async () => {
