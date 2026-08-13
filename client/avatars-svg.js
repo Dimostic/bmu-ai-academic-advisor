@@ -357,10 +357,14 @@
                         <line x1="49" y1="52" x2="61" y2="52"/>
                     </g>
                     <!-- eyes -->
-                    <circle cx="44" cy="53" r="1.5" fill="${HAIR}"/>
-                    <circle cx="66" cy="53" r="1.5" fill="${HAIR}"/>
+                    <g id="thumbEyes">
+                        <circle id="thumbEyeFlashL" class="thumb-eye-flash" cx="44" cy="53" r="4.2" fill="none" stroke="#7bdcb5" stroke-width="1.4" opacity="0"/>
+                        <circle id="thumbEyeFlashR" class="thumb-eye-flash" cx="66" cy="53" r="4.2" fill="none" stroke="#7bdcb5" stroke-width="1.4" opacity="0"/>
+                        <circle cx="44" cy="53" r="1.5" fill="${HAIR}"/>
+                        <circle cx="66" cy="53" r="1.5" fill="${HAIR}"/>
+                    </g>
                     <!-- mouth (smile) -->
-                    <path d="M46 64 Q55 68 64 64" fill="none" stroke="#3a1f12" stroke-width="1.6" stroke-linecap="round"/>
+                    <path id="thumbMouth" d="M46 64 Q55 68 64 64" fill="none" stroke="#3a1f12" stroke-width="1.6" stroke-linecap="round"/>
                 </svg>`;
             }
             return `
@@ -390,10 +394,14 @@
                     <circle cx="33" cy="58" r="2" fill="#e7c64e" stroke="#a98c1c"/>
                     <circle cx="77" cy="58" r="2" fill="#e7c64e" stroke="#a98c1c"/>
                     <!-- eyes -->
-                    <circle cx="46" cy="54" r="1.7" fill="${HAIR}"/>
-                    <circle cx="64" cy="54" r="1.7" fill="${HAIR}"/>
+                    <g id="thumbEyes">
+                        <circle id="thumbEyeFlashL" class="thumb-eye-flash" cx="46" cy="54" r="4.4" fill="none" stroke="#7bdcb5" stroke-width="1.4" opacity="0"/>
+                        <circle id="thumbEyeFlashR" class="thumb-eye-flash" cx="64" cy="54" r="4.4" fill="none" stroke="#7bdcb5" stroke-width="1.4" opacity="0"/>
+                        <circle cx="46" cy="54" r="1.7" fill="${HAIR}"/>
+                        <circle cx="64" cy="54" r="1.7" fill="${HAIR}"/>
+                    </g>
                     <!-- mouth (smile) -->
-                    <path d="M46 64 Q55 69 64 64" fill="none" stroke="#552220" stroke-width="1.8" stroke-linecap="round"/>
+                    <path id="thumbMouth" d="M46 64 Q55 69 64 64" fill="none" stroke="#552220" stroke-width="1.8" stroke-linecap="round"/>
                 </svg>`;
         }
     };

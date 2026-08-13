@@ -112,6 +112,37 @@ button, input, textarea, select { font: inherit; color: inherit; }
     display: flex; align-items: center; justify-content: center;
     border: 1px solid rgba(255,255,255,.06);
 }
+.avatar-stage-controls {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 999px;
+    background: rgba(9, 16, 18, .70);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    box-shadow: 0 6px 18px rgba(0,0,0,.22);
+}
+.avatar-stage-controls .icon-btn {
+    background: rgba(255,255,255,.88);
+    color: var(--bg-deep);
+    border-color: rgba(15,61,62,.16);
+}
+.avatar-stage-controls .icon-btn:hover {
+    background: #fff;
+}
+.avatar-stage-controls .icon-btn.is-active {
+    background: var(--accent);
+    color: #061215;
+    border-color: var(--accent);
+}
+.avatar-stage-controls .icon-btn--wide {
+    min-width: 34px;
+}
 .avatar-compact-toggle {
     position: absolute;
     top: 10px;
@@ -152,6 +183,19 @@ html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-compact-toggle {
 html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-compact-toggle:hover {
     background: rgba(7, 12, 14, .98);
 }
+.avatar-pane .avatar-stage .avatar-stage-controls {
+    background: rgba(9, 16, 18, .68);
+}
+html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-stage-controls {
+    background: rgba(7, 12, 14, .86);
+    border: 1px solid rgba(109,238,200,.14);
+}
+.avatar-status {
+    position: absolute; left: 12px; top: 12px;
+    background: rgba(15, 61, 62, .85); color: #fff;
+    border-radius: 999px; padding: 4px 12px; font-size: .8rem;
+    display: flex; align-items: center; gap: 6px;
+}
 .avatar-stage svg, .avatar-stage > .lottie-host { width: 100%; height: 100%; }
 
 /* Animatable SVG avatar — the entire SVG fills the stage, individual
@@ -191,6 +235,13 @@ html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-compact-toggle:hover 
     33%      { transform: translateY(-0.6px) rotate(-0.4deg); }
     66%      { transform: translateY(-0.3px) rotate(0.3deg); }
 }
+@media (prefers-reduced-motion: reduce) {
+    body.is-speaking .avatar-stage[data-avatar-mode="thumb"] svg #thumbMouth,
+    body.is-speaking .avatar-stage[data-avatar-mode="thumb"] svg #thumbEyeFlashL,
+    body.is-speaking .avatar-stage[data-avatar-mode="thumb"] svg #thumbEyeFlashR {
+        animation: none;
+    }
+}
 @keyframes av-hand-l-emph {
     0%, 100% { transform: translate(50px, 268px) rotate(0deg); }
     40%      { transform: translate(50px, 265px) rotate(-8deg); }
@@ -200,9 +251,13 @@ html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-compact-toggle:hover 
     0%, 100% { transform: translate(170px, 268px) rotate(0deg); }
     50%      { transform: translate(170px, 265px) rotate(6deg); }
 }
-.avatar-svg-host svg.av-speaking #avHead  { animation: av-speak-bob 1.6s ease-in-out infinite; transform-origin: 110px 200px; }
-.avatar-svg-host svg.av-speaking #avHandL { animation: av-hand-l-emph 3.2s ease-in-out infinite; }
-.avatar-svg-host svg.av-speaking #avHandR { animation: av-hand-r-emph 2.8s ease-in-out infinite; }
+    50%      { opacity: 1; transform: translateY(.3px) scaleX(1.06); stroke-width: 2.4; }
+}
+@keyframes thumb-eye-flash {
+    0%, 100% { opacity: 0; transform: scale(.92); }
+    35%      { opacity: .95; transform: scale(1.05); }
+    65%      { opacity: .35; transform: scale(1.02); }
+}
 .avatar-status {
     position: absolute; left: 12px; bottom: 12px;
     background: rgba(15, 61, 62, .85); color: #fff;
@@ -220,28 +275,6 @@ html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-compact-toggle:hover 
 .avatar-meta { text-align: center; }
 .avatar-meta strong { display: block; font-size: 1.05rem; }
 .avatar-meta span { color: var(--muted); font-size: .85rem; }
-.avatar-audio-controls {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 10px;
-}
-.avatar-audio-controls .icon-btn {
-    width: 34px;
-    height: 34px;
-}
-.avatar-audio-controls .icon-btn--wide {
-    width: auto;
-    min-width: 34px;
-    padding: 0 10px;
-    border-radius: 999px;
-    gap: 6px;
-}
-.avatar-audio-controls .icon-btn.is-active {
-    background: var(--bg-deep);
-    color: #fff;
-    border-color: var(--bg-deep);
-}
 
 /* SVG avatar element animations */
 #avatarSvg .eye { transition: transform .12s linear; transform-box: fill-box; transform-origin: center; }
@@ -890,37 +923,31 @@ body.advisor-full-view .avatar-meta span {
     font-size: .92rem;
 }
 
-body.advisor-full-view .avatar-audio-controls {
-    margin-top: 0;
-    position: absolute;
-    top: 18px;
-    right: 18px;
-    z-index: 4;
+body.advisor-full-view .avatar-stage-controls {
+    left: 18px;
+    bottom: 18px;
     background: rgba(255, 255, 255, 0.88);
     -webkit-backdrop-filter: blur(6px);
     backdrop-filter: blur(6px);
-    padding: 8px;
-    border-radius: 999px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }
 
-html[data-theme="dark"] body.advisor-full-view .avatar-audio-controls {
+html[data-theme="dark"] body.advisor-full-view .avatar-stage-controls {
     background: rgba(7, 12, 14, 0.95);
     border: 1px solid rgba(109, 238, 200, 0.22);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
 }
 
-html[data-theme="dark"] body.advisor-full-view .avatar-audio-controls .icon-btn {
+html[data-theme="dark"] body.advisor-full-view .avatar-stage-controls .icon-btn {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.16);
     color: var(--accent-soft);
 }
 
-html[data-theme="dark"] body.advisor-full-view .avatar-audio-controls .icon-btn:hover {
+html[data-theme="dark"] body.advisor-full-view .avatar-stage-controls .icon-btn:hover {
     background: rgba(255, 255, 255, 0.14);
 }
 
-html[data-theme="dark"] body.advisor-full-view .avatar-audio-controls .icon-btn.is-active {
+html[data-theme="dark"] body.advisor-full-view .avatar-stage-controls .icon-btn.is-active {
     background: var(--accent);
     color: #061215;
     border-color: var(--accent);
@@ -1015,7 +1042,7 @@ body.advisor-full-view #advisorViewToggleBtn {
 }
 
 @media (max-width: 560px) {
-    body.advisor-full-view .avatar-audio-controls {
+    body.advisor-full-view .avatar-stage-controls {
         position: static;
         margin: 0;
         align-self: center;
