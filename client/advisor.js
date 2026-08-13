@@ -51,6 +51,7 @@
     const historyList   = $('historyList');
     const advisorStatus = $('avatarStatus');
     const avatarPane    = document.querySelector('.avatar-pane');
+    const avatarStage   = $('avatarStage');
     const avatarMuteBtn = $('avatarMuteBtn');
     const avatarPauseBtn= $('avatarPauseBtn');
     // The SVG element is rendered inside #avatarSvgHost by applyAvatar().
@@ -62,6 +63,7 @@
     const welcomeName   = $('welcomeName');
     const toastHost     = $('toastHost');
     const avatarGenderToggleBtn = $('avatarGenderToggleBtn');
+    const avatarCompactToggleBtn = $('avatarCompactToggleBtn');
     const usageOverlay  = $('usageOverlay');
     const usageOverlayTitle = $('usageOverlayTitle');
     const usageOverlayBody  = $('usageOverlayBody');
@@ -130,6 +132,16 @@
         const landscape = window.matchMedia('(orientation: landscape)').matches;
         const carLikeViewport = Math.min(window.innerWidth, window.innerHeight) < 700;
         return androidChrome && coarsePointer && noHover && landscape && carLikeViewport;
+    }
+
+    function syncAvatarCompactToggle() {
+        if (!avatarCompactToggleBtn) return;
+        const compact = shouldUseCompactAvatar();
+        avatarCompactToggleBtn.title = compact ? 'Show full avatar' : 'Show compact avatar';
+        avatarCompactToggleBtn.setAttribute('aria-label', avatarCompactToggleBtn.title);
+        avatarCompactToggleBtn.innerHTML = compact
+            ? '<i class="fa-solid fa-expand"></i>'
+            : '<i class="fa-solid fa-compress"></i>';
     }
 
     function syncAdvisorViewToggle() {
@@ -407,11 +419,9 @@
         handR      = avatarSvgHost.querySelector('#avHandR');
         browAnchors = null;
 
-        const stage = document.getElementById('avatarStage');
-        if (stage) {
-            stage.dataset.avatarMode = 'svg';
-            if (compact) stage.dataset.avatarMode = 'thumb';
-            stage.dataset.advisorGender = g;
+        if (avatarStage) {
+            avatarStage.dataset.avatarMode = compact ? 'thumb' : 'svg';
+            avatarStage.dataset.advisorGender = g;
         }
         if (advisorName) advisorName.textContent = 'Dr. Tari';
         if (welcomeName) welcomeName.textContent = 'Dr. Tari';
@@ -422,6 +432,7 @@
         if (!compact) syncAvatarThemeContrast();
         setAvatarState(currentState || 'idle', advisorStatus.querySelector('.label')?.textContent || 'Ready');
         syncMobileLayoutVars();
+        syncAvatarCompactToggle();
     }
 
     /** Save the chosen avatar both locally and on the server. */
@@ -447,6 +458,7 @@
     applyAvatar(getAdvisorGender());
     syncAvatarGenderToggle();
     syncAvatarThemeContrast();
+    syncAvatarCompactToggle();
 
     const avatarThemeObserver = new MutationObserver(() => {
         syncAvatarThemeContrast();
@@ -454,6 +466,20 @@
     avatarThemeObserver.observe(document.documentElement, {
         attributes: true,
         attributeFilter: ['data-theme']
+    });
+
+    avatarCompactToggleBtn?.addEventListener('click', () => {
+        const params = new URLSearchParams(location.search);
+        const compact = shouldUseCompactAvatar();
+        if (compact) {
+            params.set('avatar', 'full');
+            params.set('forceCompactAvatar', '0');
+        } else {
+            params.set('avatar', 'compact');
+            params.set('forceCompactAvatar', '1');
+        }
+        const query = params.toString();
+        location.href = `${location.pathname}${query ? `?${query}` : ''}${location.hash || ''}`;
     });
 
     // ---------- Blinks ----------
