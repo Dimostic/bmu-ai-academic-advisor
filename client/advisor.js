@@ -119,6 +119,16 @@
         return window.matchMedia('(max-width: 1024px)').matches;
     }
 
+    function shouldUseCompactAvatar() {
+        const ua = navigator.userAgent || '';
+        const androidChrome = /Android/i.test(ua) && /(Chrome|Chromium|CriOS)/i.test(ua);
+        const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        const noHover = window.matchMedia('(hover: none)').matches;
+        const landscape = window.matchMedia('(orientation: landscape)').matches;
+        const carLikeViewport = Math.min(window.innerWidth, window.innerHeight) < 700;
+        return androidChrome && coarsePointer && noHover && landscape && carLikeViewport;
+    }
+
     function syncAdvisorViewToggle() {
         if (!advisorViewToggleBtn) return;
         if (advisorFullView) {
@@ -372,7 +382,8 @@
         const g = gender === 'male' ? 'male' : 'female';
         if (!avatarSvgHost || !window.BMUAvatars) return;
 
-        avatarSvgHost.innerHTML = window.BMUAvatars.svg(g);
+        const compact = shouldUseCompactAvatar();
+        avatarSvgHost.innerHTML = compact ? window.BMUAvatars.thumb(g) : window.BMUAvatars.svg(g);
 
         // Re-resolve handles
         advisorSvg = avatarSvgHost.querySelector('#avatarSvg');
@@ -396,6 +407,7 @@
         const stage = document.getElementById('avatarStage');
         if (stage) {
             stage.dataset.avatarMode = 'svg';
+            if (compact) stage.dataset.avatarMode = 'thumb';
             stage.dataset.advisorGender = g;
         }
         if (advisorName) advisorName.textContent = 'Dr. Tari';
@@ -404,7 +416,7 @@
         // Reset everything to neutral / idle
         setMouthOpenness(0);
         setExpression('neutral');
-        syncAvatarThemeContrast();
+        if (!compact) syncAvatarThemeContrast();
         setAvatarState(currentState || 'idle', advisorStatus.querySelector('.label')?.textContent || 'Ready');
         syncMobileLayoutVars();
     }
