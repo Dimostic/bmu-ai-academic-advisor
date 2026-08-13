@@ -235,6 +235,40 @@ html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-stage-controls {
     33%      { transform: translateY(-0.6px) rotate(-0.4deg); }
     66%      { transform: translateY(-0.3px) rotate(0.3deg); }
 }
+.avatar-svg-host svg.av-speaking #avHead  { animation: av-speak-bob 1.6s ease-in-out infinite; transform-origin: 110px 200px; }
+.avatar-svg-host svg.av-speaking #avHandL { animation: av-hand-l-emph 3.2s ease-in-out infinite; }
+.avatar-svg-host svg.av-speaking #avHandR { animation: av-hand-r-emph 2.8s ease-in-out infinite; }
+
+/* Compact avatar speaking cues: stronger mouth pulse + eye flashes. */
+.avatar-stage[data-avatar-mode="thumb"] svg #thumbMouth {
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: translateY(0) scaleX(1);
+}
+.avatar-stage[data-avatar-mode="thumb"] svg #thumbEyeFlashL,
+.avatar-stage[data-avatar-mode="thumb"] svg #thumbEyeFlashR {
+    transform-box: fill-box;
+    transform-origin: center;
+    opacity: 0;
+    filter: drop-shadow(0 0 6px rgba(123, 220, 181, .96));
+}
+body.is-speaking .avatar-stage[data-avatar-mode="thumb"] svg #thumbMouth {
+    animation: thumb-mouth-pulse .34s ease-in-out infinite;
+}
+body.is-speaking .avatar-stage[data-avatar-mode="thumb"] svg #thumbEyeFlashL,
+body.is-speaking .avatar-stage[data-avatar-mode="thumb"] svg #thumbEyeFlashR {
+    animation: thumb-eye-flash .5s ease-in-out infinite;
+}
+@keyframes thumb-mouth-pulse {
+    0%, 100% { opacity: .86; transform: translateY(0) scaleX(1); stroke-width: 2; }
+    50%      { opacity: 1; transform: translateY(.9px) scaleX(1.22); stroke-width: 3.4; }
+}
+@keyframes thumb-eye-flash {
+    0%, 100% { opacity: 0; transform: scale(.84); }
+    30%      { opacity: 1; transform: scale(1.34); }
+    56%      { opacity: .68; transform: scale(1.15); }
+    78%      { opacity: .28; transform: scale(1.02); }
+}
 @media (prefers-reduced-motion: reduce) {
     body.is-speaking .avatar-stage[data-avatar-mode="thumb"] svg #thumbMouth,
     body.is-speaking .avatar-stage[data-avatar-mode="thumb"] svg #thumbEyeFlashL,
@@ -250,13 +284,6 @@ html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-stage-controls {
 @keyframes av-hand-r-emph {
     0%, 100% { transform: translate(170px, 268px) rotate(0deg); }
     50%      { transform: translate(170px, 265px) rotate(6deg); }
-}
-    50%      { opacity: 1; transform: translateY(.3px) scaleX(1.06); stroke-width: 2.4; }
-}
-@keyframes thumb-eye-flash {
-    0%, 100% { opacity: 0; transform: scale(.92); }
-    35%      { opacity: .95; transform: scale(1.05); }
-    65%      { opacity: .35; transform: scale(1.02); }
 }
 .avatar-status {
     position: absolute; left: 12px; bottom: 12px;
