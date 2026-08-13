@@ -806,10 +806,12 @@ body.advisor-full-view .top-actions > *:not(#advisorViewToggleBtn) {
 }
 
 body.advisor-full-view .advisor-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     max-width: 1320px;
     padding: 18px;
     gap: 16px;
+    min-height: calc(100vh - var(--mobile-topbar-h, 64px) - 36px);
 }
 
 body.advisor-full-view .avatar-pane {
@@ -821,12 +823,13 @@ body.advisor-full-view .avatar-pane {
     gap: 16px;
     flex-direction: column;
     align-items: stretch;
+    position: relative;
 }
 
 body.advisor-full-view .avatar-stage {
     width: 100%;
-    height: clamp(320px, 52vw, 620px);
-    min-height: 320px;
+    height: clamp(260px, 36vw, 440px);
+    min-height: 260px;
 }
 
 body.advisor-full-view .avatar-meta {
@@ -847,6 +850,16 @@ body.advisor-full-view .avatar-meta span {
 
 body.advisor-full-view .avatar-audio-controls {
     margin-top: 0;
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 4;
+    background: rgba(255, 255, 255, 0.88);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    padding: 8px;
+    border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }
 
 body.advisor-full-view .history-pane,
@@ -860,13 +873,18 @@ body.advisor-full-view .chat-pane {
     box-shadow: none;
     border-radius: 0;
     min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     gap: 14px;
 }
 
 body.advisor-full-view .transcript {
     padding: 0;
-    overflow: visible;
-    min-height: 30vh;
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1 1 auto;
 }
 
 body.advisor-full-view .bubble {
@@ -894,6 +912,7 @@ body.advisor-full-view #advisorViewToggleBtn {
 @media (max-width: 1024px) {
     body.advisor-full-view .advisor-grid {
         padding: 12px;
+        min-height: calc(100vh - var(--mobile-topbar-h, 64px) - 24px);
     }
 
     body.advisor-full-view .avatar-pane {
@@ -902,8 +921,8 @@ body.advisor-full-view #advisorViewToggleBtn {
     }
 
     body.advisor-full-view .avatar-stage {
-        height: clamp(280px, 58vw, 520px);
-        min-height: 280px;
+        height: clamp(240px, 48vw, 380px);
+        min-height: 240px;
     }
 
     body.advisor-full-view .composer {
@@ -912,9 +931,20 @@ body.advisor-full-view #advisorViewToggleBtn {
 }
 
 @media (max-width: 560px) {
+    body.advisor-full-view .avatar-audio-controls {
+        position: static;
+        margin: 0;
+        align-self: center;
+        background: transparent;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        padding: 0;
+        box-shadow: none;
+    }
+
     body.advisor-full-view .avatar-stage {
-        height: clamp(240px, 66vw, 420px);
-        min-height: 240px;
+        height: clamp(220px, 60vw, 320px);
+        min-height: 220px;
     }
 
     body.advisor-full-view .avatar-meta strong {
