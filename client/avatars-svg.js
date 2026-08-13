@@ -25,6 +25,8 @@
     const SKIN_M = '#8a5a3a'; // slightly darker / cooler (male advisor)
     const SKIN_M_DARK = '#5e3b22';
     const HAIR = '#1d1612';
+    const HAIR_EDGE = '#0b0705';
+    const EYE_WHITE = '#f3e7da';
     const COAT = '#ffffff';
     const COAT_SHADOW = '#dfe7e9';
     const SUIT = '#143638';      // BMU teal
@@ -104,21 +106,21 @@
 
                 <!-- head-wrap (gele-style, soft folds) -->
                 <path d="M58 115 Q70 55 110 50 Q150 55 162 115 Q155 95 110 92 Q65 95 58 115 Z"
-                      fill="url(#wrapF)"/>
+                        fill="url(#wrapF)" stroke="#2a1632" stroke-width="1.2"/>
                 <path d="M58 100 Q90 70 130 75 Q150 80 162 110"
                       fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="2"/>
                 <path d="M70 88 Q110 60 150 88" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="3"/>
 
                 <!-- ============= BROWS ============= -->
-                <g id="avBrows" stroke="${HAIR}" stroke-width="3" fill="none" stroke-linecap="round">
+                <g id="avBrows" stroke="${HAIR_EDGE}" stroke-width="3.5" fill="none" stroke-linecap="round">
                     <path id="avBrowL" d="M82 118 Q92 113 102 118"/>
                     <path id="avBrowR" d="M118 118 Q128 113 138 118"/>
                 </g>
 
                 <!-- ============= EYES ============= -->
                 <g id="avEyes">
-                    <ellipse class="eye-white" cx="92"  cy="130" rx="9" ry="7" fill="#ffffff"/>
-                    <ellipse class="eye-white" cx="128" cy="130" rx="9" ry="7" fill="#ffffff"/>
+                    <ellipse class="eye-white" cx="92"  cy="130" rx="9" ry="7" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
+                    <ellipse class="eye-white" cx="128" cy="130" rx="9" ry="7" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
                     <g id="avPupils">
                         <circle id="avPupilL" cx="92"  cy="131" r="3.4" fill="${HAIR}"/>
                         <circle id="avPupilR" cx="128" cy="131" r="3.4" fill="${HAIR}"/>
@@ -241,9 +243,9 @@
 
                 <!-- short hair (low fade with side part) -->
                 <path d="M64 110 Q72 72 110 70 Q148 72 156 110 Q150 92 110 90 Q72 92 64 110 Z"
-                      fill="${HAIR}"/>
+                        fill="${HAIR}" stroke="${HAIR_EDGE}" stroke-width="1"/>
                 <path d="M68 100 Q90 88 110 89 Q132 90 152 102"
-                      fill="none" stroke="#000" stroke-opacity=".25" stroke-width="2"/>
+                        fill="none" stroke="#000" stroke-opacity=".25" stroke-width="2"/>
 
                 <!-- glasses frames -->
                 <g stroke="${SCRUB}" stroke-width="2.4" fill="none">
@@ -253,15 +255,15 @@
                 </g>
 
                 <!-- BROWS -->
-                <g id="avBrows" stroke="${HAIR}" stroke-width="3.5" fill="none" stroke-linecap="round">
+                <g id="avBrows" stroke="${HAIR_EDGE}" stroke-width="4" fill="none" stroke-linecap="round">
                     <path id="avBrowL" d="M80 116 Q90 112 100 116"/>
                     <path id="avBrowR" d="M120 116 Q130 112 140 116"/>
                 </g>
 
                 <!-- EYES -->
                 <g id="avEyes">
-                    <ellipse class="eye-white" cx="90"  cy="128" rx="7" ry="5.5" fill="#ffffff"/>
-                    <ellipse class="eye-white" cx="130" cy="128" rx="7" ry="5.5" fill="#ffffff"/>
+                    <ellipse class="eye-white" cx="90"  cy="128" rx="7" ry="5.5" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
+                    <ellipse class="eye-white" cx="130" cy="128" rx="7" ry="5.5" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
                     <g id="avPupils">
                         <circle id="avPupilL" cx="90"  cy="129" r="3" fill="${HAIR}"/>
                         <circle id="avPupilR" cx="130" cy="129" r="3" fill="${HAIR}"/>
