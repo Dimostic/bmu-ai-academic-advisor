@@ -576,6 +576,7 @@
             };
         };
         browAnchors = {
+            L: parse(browL),
             R: parse(browR),
         };
     }
@@ -585,7 +586,7 @@
             ? mood : 'neutral';
         if (!browL || !browR) return;
         if (!browAnchors) _captureBrowAnchors();
-        if (!browAnchors) return;
+        if (!browAnchors || !browAnchors.L || !browAnchors.R) return;
 
         // For each mood we shift the resting y (DY) and the curvature (CV).
         // Positive DY = brow lower on the face (looks concerned/furrowed);
