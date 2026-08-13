@@ -195,6 +195,13 @@ html[data-theme="dark"] .avatar-stage {
     width: 34px;
     height: 34px;
 }
+.avatar-audio-controls .icon-btn--wide {
+    width: auto;
+    min-width: 34px;
+    padding: 0 10px;
+    border-radius: 999px;
+    gap: 6px;
+}
 .avatar-audio-controls .icon-btn.is-active {
     background: var(--bg-deep);
     color: #fff;

@@ -62,6 +62,7 @@
     const welcomeName   = $('welcomeName');
     const toastHost     = $('toastHost');
     const avatarToggleBtn = $('avatarToggleBtn');
+    const avatarGenderToggleBtn = $('avatarGenderToggleBtn');
     const usageOverlay  = $('usageOverlay');
     const usageOverlayTitle = $('usageOverlayTitle');
     const usageOverlayBody  = $('usageOverlayBody');
@@ -129,6 +130,16 @@
             advisorViewToggleBtn.innerHTML = '<i class="fa-solid fa-expand"></i> Full page';
         }
         document.body.classList.toggle('advisor-full-view', advisorFullView);
+    }
+
+    function syncAvatarGenderToggle() {
+        if (!avatarGenderToggleBtn) return;
+        const gender = getAdvisorGender();
+        avatarGenderToggleBtn.title = gender === 'male' ? 'Switch to female avatar' : 'Switch to male avatar';
+        avatarGenderToggleBtn.setAttribute('aria-label', avatarGenderToggleBtn.title);
+        avatarGenderToggleBtn.innerHTML = gender === 'male'
+            ? '<i class="fa-solid fa-person-dress"></i>'
+            : '<i class="fa-solid fa-person"></i>';
     }
 
     function setAdvisorViewMode(full) {
@@ -371,6 +382,7 @@
                 body: JSON.stringify({ gender: g })
             });
         } catch (_) { /* non-fatal */ }
+            syncAvatarGenderToggle();
     }
 
     // Initial paint
@@ -379,6 +391,7 @@
     // ---------- Blinks ----------
     // Animate the eyelids by stretching their height from 0 -> full -> 0
     // over ~140ms. Using width/height instead of a CSS class because the
+    syncAvatarGenderToggle();
     // lid rectangles are inside the SVG and don't get a transform origin
     // that survives re-render.
     function blink() {
@@ -1670,6 +1683,12 @@
             toast(`Switched to ${next === 'male' ? 'male' : 'female'} advisor`);
         });
     }
+
+    avatarGenderToggleBtn?.addEventListener('click', async () => {
+        const next = getAdvisorGender() === 'male' ? 'female' : 'male';
+        await saveAdvisorGender(next);
+        toast(`Switched to ${next === 'male' ? 'male' : 'female'} avatar`);
+    });
 
     // ---------- Escalation ----------
     function openEscalation() {
