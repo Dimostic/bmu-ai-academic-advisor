@@ -358,8 +358,8 @@
                     </g>
                     <!-- eyes -->
                     <g id="thumbEyes">
-                        <circle id="thumbEyeFlashL" class="thumb-eye-flash" cx="44" cy="53" r="5.9" fill="#7bdcb5" fill-opacity=".22" stroke="#cffff0" stroke-width="2.1" opacity="0"/>
-                        <circle id="thumbEyeFlashR" class="thumb-eye-flash" cx="66" cy="53" r="5.9" fill="#7bdcb5" fill-opacity=".22" stroke="#cffff0" stroke-width="2.1" opacity="0"/>
+                        <circle id="thumbEyeFlashL" class="thumb-eye-flash" cx="44" cy="53" r="4.8" fill="#7bdcb5" fill-opacity=".12" stroke="#cffff0" stroke-width="1.45" opacity="0"/>
+                        <circle id="thumbEyeFlashR" class="thumb-eye-flash" cx="66" cy="53" r="4.8" fill="#7bdcb5" fill-opacity=".12" stroke="#cffff0" stroke-width="1.45" opacity="0"/>
                         <circle cx="44" cy="53" r="1.5" fill="${HAIR}"/>
                         <circle cx="66" cy="53" r="1.5" fill="${HAIR}"/>
                     </g>
@@ -395,8 +395,8 @@
                     <circle cx="77" cy="58" r="2" fill="#e7c64e" stroke="#a98c1c"/>
                     <!-- eyes -->
                     <g id="thumbEyes">
-                        <circle id="thumbEyeFlashL" class="thumb-eye-flash" cx="46" cy="54" r="6.2" fill="#7bdcb5" fill-opacity=".24" stroke="#cffff0" stroke-width="2.2" opacity="0"/>
-                        <circle id="thumbEyeFlashR" class="thumb-eye-flash" cx="64" cy="54" r="6.2" fill="#7bdcb5" fill-opacity=".24" stroke="#cffff0" stroke-width="2.2" opacity="0"/>
+                        <circle id="thumbEyeFlashL" class="thumb-eye-flash" cx="46" cy="54" r="5" fill="#7bdcb5" fill-opacity=".12" stroke="#cffff0" stroke-width="1.55" opacity="0"/>
+                        <circle id="thumbEyeFlashR" class="thumb-eye-flash" cx="64" cy="54" r="5" fill="#7bdcb5" fill-opacity=".12" stroke="#cffff0" stroke-width="1.55" opacity="0"/>
                         <circle cx="46" cy="54" r="1.7" fill="${HAIR}"/>
                         <circle cx="64" cy="54" r="1.7" fill="${HAIR}"/>
                     </g>

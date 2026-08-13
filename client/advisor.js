@@ -209,6 +209,23 @@
         }
     }
 
+    function syncCompactSpeakingFx(level) {
+        if (!avatarStage) return;
+        const open = Math.max(0, Math.min(1, Number(level) || 0));
+        if (avatarStage.dataset.avatarMode !== 'thumb') {
+            avatarStage.style.setProperty('--thumb-mouth-open', '0');
+            avatarStage.style.setProperty('--thumb-eye-flash-level', '0');
+            avatarStage.style.setProperty('--thumb-eye-flash-opacity', '0');
+            return;
+        }
+
+        // Flash should appear only on stronger speech frames.
+        const flashLevel = open > 0.28 ? Math.min(1, (open - 0.28) / 0.72) : 0;
+        avatarStage.style.setProperty('--thumb-mouth-open', open.toFixed(3));
+        avatarStage.style.setProperty('--thumb-eye-flash-level', flashLevel.toFixed(3));
+        avatarStage.style.setProperty('--thumb-eye-flash-opacity', (flashLevel * 0.42).toFixed(3));
+    }
+
     function setAdvisorViewMode(full) {
         const params = new URLSearchParams(location.search);
         if (full) params.delete('view');
@@ -422,6 +439,7 @@
         if (avatarStage) {
             avatarStage.dataset.avatarMode = compact ? 'thumb' : 'svg';
             avatarStage.dataset.advisorGender = g;
+            syncCompactSpeakingFx(0);
         }
         if (advisorName) advisorName.textContent = 'Dr. Tari';
         if (welcomeName) welcomeName.textContent = 'Dr. Tari';
@@ -535,9 +553,10 @@
     //   - smile/concerned/neutral expressions reshape the LIP CORNERS
     //     so a smile while speaking still reads as a smile.
     function setMouthOpenness(level) {
-        if (!mouthUpper || !mouthLower) return;
         const W = 16;
         const open = Math.max(0, Math.min(1, level));   // 0..1
+        syncCompactSpeakingFx(open);
+        if (!mouthUpper || !mouthLower) return;
 
         // Vertical lip displacement. The lower lip moves further than the
         // upper lip (the jaw drops more than the upper face).
