@@ -120,6 +120,9 @@
     }
 
     function shouldUseCompactAvatar() {
+        const params = new URLSearchParams(location.search);
+        if (params.get('avatar') === 'compact' || params.get('forceCompactAvatar') === '1') return true;
+        if (params.get('avatar') === 'full' || params.get('forceCompactAvatar') === '0') return false;
         const ua = navigator.userAgent || '';
         const androidChrome = /Android/i.test(ua) && /(Chrome|Chromium|CriOS)/i.test(ua);
         const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
