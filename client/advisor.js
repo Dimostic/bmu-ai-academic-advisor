@@ -75,6 +75,11 @@
     const handbookCategories= $('handbookCategories');
     const handbookResults   = $('handbookResults');
     const adminLink         = $('adminLink');
+    const advisorViewToggleBtn = $('advisorViewToggleBtn');
+
+    const advisorViewParams = new URLSearchParams(location.search);
+    const advisorViewMode = advisorViewParams.get('view');
+    const advisorFullView = advisorViewMode === 'normal' ? false : true;
 
     // ---------- State ----------
     const state = {
@@ -113,6 +118,32 @@
     function isMobileLayout() {
         return window.matchMedia('(max-width: 1024px)').matches;
     }
+
+    function syncAdvisorViewToggle() {
+        if (!advisorViewToggleBtn) return;
+        if (advisorFullView) {
+            advisorViewToggleBtn.title = 'Return to normal view';
+            advisorViewToggleBtn.innerHTML = '<i class="fa-solid fa-compress"></i> Normal view';
+        } else {
+            advisorViewToggleBtn.title = 'Open full page advisor view';
+            advisorViewToggleBtn.innerHTML = '<i class="fa-solid fa-expand"></i> Full page';
+        }
+        document.body.classList.toggle('advisor-full-view', advisorFullView);
+    }
+
+    function setAdvisorViewMode(full) {
+        const params = new URLSearchParams(location.search);
+        if (full) params.delete('view');
+        else params.set('view', 'normal');
+        const query = params.toString();
+        const nextUrl = `${location.pathname}${query ? `?${query}` : ''}${location.hash || ''}`;
+        location.href = nextUrl;
+    }
+
+    syncAdvisorViewToggle();
+    advisorViewToggleBtn?.addEventListener('click', () => {
+        setAdvisorViewMode(!advisorFullView);
+    });
 
     function syncMobileLayoutVars() {
         const topBar = document.querySelector('.top-bar');
@@ -1626,6 +1657,11 @@
         });
     }
 
+    if (advisorFullView) {
+        historyPane?.classList.add('hidden');
+        historyPane?.classList.remove('is-open');
+    }
+
     // ---------- Avatar quick-toggle ----------
     if (avatarToggleBtn) {
         avatarToggleBtn.addEventListener('click', async () => {
@@ -1681,6 +1717,7 @@
 
     // ---------- History sidebar ----------
     historyToggle?.addEventListener('click', async () => {
+        if (advisorFullView) return;
         if (isMobileLayout()) {
             historyPane.classList.remove('hidden');
             historyPane.classList.toggle('is-open');
@@ -1699,7 +1736,10 @@
     });
     if (state.token) {
         historyToggle?.classList.remove('hidden');
-        if (isMobileLayout()) {
+        if (advisorFullView) {
+            historyPane.classList.add('hidden');
+            historyPane.classList.remove('is-open');
+        } else if (isMobileLayout()) {
             historyPane.classList.remove('hidden');
             historyPane.classList.remove('is-open');
         } else {
@@ -1710,6 +1750,7 @@
 
     window.addEventListener('resize', () => {
         if (!state.token) return;
+        if (advisorFullView) return;
         if (isMobileLayout()) {
             historyPane.classList.remove('hidden');
             historyPane.classList.remove('is-open');

@@ -785,3 +785,143 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
         transition: max-height .2s ease, opacity .16s ease, padding .2s ease, margin .2s ease;
     }
 }
+
+/* ========================================================================
+   Full-page advisor mode
+   - Keep only the title and return button in the header
+   - Let the avatar span the page width
+   - Remove nonessential navigation chrome
+   ===================================================================== */
+body.advisor-full-view .top-bar {
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+body.advisor-full-view .brand small {
+    display: none;
+}
+
+body.advisor-full-view .top-actions > *:not(#advisorViewToggleBtn) {
+    display: none !important;
+}
+
+body.advisor-full-view .advisor-grid {
+    grid-template-columns: 1fr;
+    max-width: 1320px;
+    padding: 18px;
+    gap: 16px;
+}
+
+body.advisor-full-view .avatar-pane {
+    position: sticky;
+    top: calc(var(--mobile-topbar-h, 64px) + 12px);
+    align-self: stretch;
+    width: 100%;
+    padding: 18px;
+    gap: 16px;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+body.advisor-full-view .avatar-stage {
+    width: 100%;
+    height: clamp(320px, 52vw, 620px);
+    min-height: 320px;
+}
+
+body.advisor-full-view .avatar-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+}
+
+body.advisor-full-view .avatar-meta strong {
+    font-size: 1.2rem;
+}
+
+body.advisor-full-view .avatar-meta span {
+    font-size: .92rem;
+}
+
+body.advisor-full-view .avatar-audio-controls {
+    margin-top: 0;
+}
+
+body.advisor-full-view .history-pane,
+body.advisor-full-view .topics-bar,
+body.advisor-full-view .followups {
+    display: none !important;
+}
+
+body.advisor-full-view .chat-pane {
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    min-height: 0;
+    gap: 14px;
+}
+
+body.advisor-full-view .transcript {
+    padding: 0;
+    overflow: visible;
+    min-height: 30vh;
+}
+
+body.advisor-full-view .bubble {
+    max-width: 100%;
+}
+
+body.advisor-full-view .composer {
+    position: sticky;
+    bottom: 12px;
+    z-index: 24;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--bg-elev);
+    box-shadow: var(--shadow);
+}
+
+body.advisor-full-view .composer input[type="text"] {
+    font-size: 1.05rem;
+}
+
+body.advisor-full-view #advisorViewToggleBtn {
+    white-space: nowrap;
+}
+
+@media (max-width: 1024px) {
+    body.advisor-full-view .advisor-grid {
+        padding: 12px;
+    }
+
+    body.advisor-full-view .avatar-pane {
+        top: calc(var(--mobile-topbar-h, 64px) + 8px);
+        padding: 14px;
+    }
+
+    body.advisor-full-view .avatar-stage {
+        height: clamp(280px, 58vw, 520px);
+        min-height: 280px;
+    }
+
+    body.advisor-full-view .composer {
+        bottom: 10px;
+    }
+}
+
+@media (max-width: 560px) {
+    body.advisor-full-view .avatar-stage {
+        height: clamp(240px, 66vw, 420px);
+        min-height: 240px;
+    }
+
+    body.advisor-full-view .avatar-meta strong {
+        font-size: 1.05rem;
+    }
+
+    body.advisor-full-view .composer input[type="text"] {
+        font-size: .98rem;
+    }
+}
