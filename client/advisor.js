@@ -141,6 +141,49 @@
             : '<i class="fa-solid fa-person"></i>';
     }
 
+    function syncAvatarThemeContrast() {
+        if (!advisorSvg || !avatarSvgHost) return;
+        const lightTheme = document.documentElement.getAttribute('data-theme') !== 'dark';
+        const gender = document.getElementById('avatarStage')?.dataset.advisorGender || getAdvisorGender();
+
+        const eyeFill = lightTheme ? '#ead7c4' : '#f3e7da';
+        const eyeStroke = lightTheme ? '#8b715d' : '#b79d84';
+        avatarSvgHost.querySelectorAll('#avEyes .eye-white').forEach((eye) => {
+            eye.setAttribute('fill', eyeFill);
+            eye.setAttribute('stroke', eyeStroke);
+            eye.setAttribute('stroke-width', '.85');
+        });
+
+        avatarSvgHost.querySelectorAll('#avIrisL, #avIrisR').forEach((iris) => {
+            iris.setAttribute('fill', gender === 'male' ? '#1f2a26' : '#35504d');
+            iris.setAttribute('opacity', lightTheme ? '.99' : '.96');
+            iris.setAttribute('r', gender === 'male' ? '5.2' : '5.4');
+        });
+
+        avatarSvgHost.querySelectorAll('#avPupilL, #avPupilR').forEach((pupil) => {
+            pupil.setAttribute('fill', '#050302');
+            pupil.setAttribute('r', gender === 'male' ? '2.8' : '3');
+        });
+
+        avatarSvgHost.querySelectorAll('#avBrows path').forEach((brow) => {
+            brow.setAttribute('stroke', gender === 'male' ? '#090503' : '#22160f');
+            brow.setAttribute('stroke-width', gender === 'male' ? '4.5' : '3.7');
+        });
+
+        const maleHair = avatarSvgHost.querySelector('#avHair');
+        if (maleHair) {
+            maleHair.setAttribute('fill', lightTheme ? '#080504' : '#0f0906');
+            maleHair.setAttribute('stroke', '#030202');
+            maleHair.setAttribute('stroke-width', '1.6');
+        }
+
+        const maleHairLine = avatarSvgHost.querySelector('#avHairLine');
+        if (maleHairLine) {
+            maleHairLine.setAttribute('stroke', lightTheme ? '#0c0604' : '#000000');
+            maleHairLine.setAttribute('stroke-opacity', lightTheme ? '.48' : '.38');
+        }
+    }
+
     function setAdvisorViewMode(full) {
         const params = new URLSearchParams(location.search);
         if (full) params.delete('view');
@@ -361,6 +404,7 @@
         // Reset everything to neutral / idle
         setMouthOpenness(0);
         setExpression('neutral');
+        syncAvatarThemeContrast();
         setAvatarState(currentState || 'idle', advisorStatus.querySelector('.label')?.textContent || 'Ready');
         syncMobileLayoutVars();
     }
@@ -381,16 +425,25 @@
                 body: JSON.stringify({ gender: g })
             });
         } catch (_) { /* non-fatal */ }
-            syncAvatarGenderToggle();
+        syncAvatarGenderToggle();
     }
 
     // Initial paint
     applyAvatar(getAdvisorGender());
+    syncAvatarGenderToggle();
+    syncAvatarThemeContrast();
+
+    const avatarThemeObserver = new MutationObserver(() => {
+        syncAvatarThemeContrast();
+    });
+    avatarThemeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme']
+    });
 
     // ---------- Blinks ----------
     // Animate the eyelids by stretching their height from 0 -> full -> 0
     // over ~140ms. Using width/height instead of a CSS class because the
-    syncAvatarGenderToggle();
     // lid rectangles are inside the SVG and don't get a transform origin
     // that survives re-render.
     function blink() {
@@ -523,7 +576,6 @@
             };
         };
         browAnchors = {
-            L: parse(browL),
             R: parse(browR),
         };
     }

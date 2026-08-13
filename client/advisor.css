@@ -119,32 +119,6 @@ html[data-theme="dark"] .avatar-stage {
 }
 .avatar-stage svg, .avatar-stage > .lottie-host { width: 100%; height: 100%; }
 
-/* Light-theme avatar contrast: keep the face readable on the pale page by
-   warming the whites and darkening the hair/brow accents a touch. */
-html:not([data-theme="dark"]) .avatar-stage svg .eye-white {
-    fill: #f1e2d4;
-}
-
-html:not([data-theme="dark"]) .avatar-stage svg #avBrows path {
-    stroke: #24150f !important;
-}
-
-html:not([data-theme="dark"]) .avatar-stage svg #avHead [stroke="#fff"] {
-    stroke: rgba(255, 255, 255, 0.22) !important;
-}
-
-html:not([data-theme="dark"]) .avatar-stage svg #avHead [fill="#fff"] {
-    fill: #f6ece4 !important;
-}
-
-html:not([data-theme="dark"]) .avatar-stage svg #avHead [fill="#f7ecd9"] {
-    fill: #eee1cf !important;
-}
-
-html:not([data-theme="dark"]) .avatar-stage svg #avHead [fill="#ffffff"] {
-    fill: #f7efe6 !important;
-}
-
 /* Animatable SVG avatar — the entire SVG fills the stage, individual
    pieces (#avHead, #avHandL, #avHandR) are animated via SVG transforms
    from advisor.js or via the CSS classes below. */

@@ -125,6 +125,8 @@
                     <ellipse class="eye-white" cx="92"  cy="130" rx="9" ry="7" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
                     <ellipse class="eye-white" cx="128" cy="130" rx="9" ry="7" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
                     <g id="avPupils">
+                        <circle id="avIrisL" cx="92"  cy="131" r="5.1" fill="${IRIS_F}" opacity=".96"/>
+                        <circle id="avIrisR" cx="128" cy="131" r="5.1" fill="${IRIS_F}" opacity=".96"/>
                         <circle cx="92"  cy="131" r="4.6" fill="${IRIS_F}" opacity=".92"/>
                         <circle cx="128" cy="131" r="4.6" fill="${IRIS_F}" opacity=".92"/>
                         <circle id="avPupilL" cx="92"  cy="131" r="3.4" fill="${HAIR}"/>
@@ -247,9 +249,9 @@
                 <ellipse cx="110" cy="128" rx="46" ry="56" fill="url(#skinM)"/>
 
                 <!-- short hair (low fade with side part) -->
-                    <path d="M60 112 Q70 58 110 56 Q150 58 160 112 Q152 94 110 92 Q68 94 60 112 Z"
+                    <path id="avHair" d="M60 112 Q70 58 110 56 Q150 58 160 112 Q152 94 110 92 Q68 94 60 112 Z"
                         fill="${HAIR_MALE}" stroke="${HAIR_EDGE}" stroke-width="1.4"/>
-                    <path d="M66 100 Q88 84 110 86 Q132 88 154 100"
+                        <path id="avHairLine" d="M66 100 Q88 84 110 86 Q132 88 154 100"
                         fill="none" stroke="#000" stroke-opacity=".38" stroke-width="2.4"/>
 
                 <!-- glasses frames -->
@@ -270,6 +272,8 @@
                     <ellipse class="eye-white" cx="90"  cy="128" rx="7" ry="5.5" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
                     <ellipse class="eye-white" cx="130" cy="128" rx="7" ry="5.5" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
                     <g id="avPupils">
+                        <circle id="avIrisL" cx="90"  cy="129" r="4.7" fill="${IRIS_M}" opacity=".98"/>
+                        <circle id="avIrisR" cx="130" cy="129" r="4.7" fill="${IRIS_M}" opacity=".98"/>
                         <circle cx="90"  cy="129" r="4.1" fill="${IRIS_M}" opacity=".94"/>
                         <circle cx="130" cy="129" r="4.1" fill="${IRIS_M}" opacity=".94"/>
                         <circle id="avPupilL" cx="90"  cy="129" r="3" fill="${HAIR}"/>
