@@ -285,6 +285,26 @@ router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
             return res.status(400).json({ success: false, error: 'question is required' });
         }
 
+        const normalizedQuestion = String(question).toLowerCase();
+        if (/(governor|visitor\s+to\s+the\s+university|visitor\s+of\s+the\s+university|bayelsa\s+state)/i.test(normalizedQuestion)
+            && /(who\s+is|name\s+of|current|serves\s+as|visitor)/i.test(normalizedQuestion)) {
+            return res.json({
+                success: true,
+                reply: {
+                    speech_text: 'The Governor of Bayelsa State is Senator Douye Diri, and he serves as the Visitor to Bayelsa Medical University (BMU).',
+                    display_markdown: 'The Governor of Bayelsa State is **Senator Douye Diri**, and he serves as the **Visitor to Bayelsa Medical University (BMU)**.',
+                    topic_slug: 'bmu_visitor_governor',
+                    citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+                    suggested_actions: [],
+                    follow_up_questions: [],
+                    needs_escalation: false,
+                    confidence: 0.99
+                },
+                audio: { provider: 'none', audio_url: null, from_cache: false, use_browser_fallback: false },
+                meta: { latency_ms: 0, source: 'route_override', quality: null }
+            });
+        }
+
         let student = null;
         if (req.user?.id) {
             student = await Advisor.ensureStudentForUser(req.user);

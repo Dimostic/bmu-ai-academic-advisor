@@ -186,6 +186,68 @@ async function triggerSloAlert({ status = 'warning', p95 = 0, errorRatePct = 0 }
 }
 
 const OFFICE_HOLDER_DOC_TITLE = '%profile of bmu%';
+const BMU_PRINCIPAL_OFFICERS = [
+    { position: 'Vice-Chancellor', name: 'Prof. Dimie Ogoina', note: 'appointed October 2024' },
+    { position: 'Deputy Vice-Chancellor Administration', name: 'Prof. Ebi Aloysius Lihah', note: '' },
+    { position: 'Deputy Vice-Chancellor Academic', name: 'Prof. Godwill Ziriki', note: 'in charge of Sampou campus' },
+    { position: 'Registrar', name: 'Dr. (Mrs) Felicia Akusu', note: '' },
+    { position: 'Bursar', name: 'Mr. Ebiapiado Ombu', note: '' },
+    { position: 'University Librarian', name: 'Dr. Abraham Etebu', note: '' }
+];
+const BMU_VISITOR = {
+    role: 'Visitor to the University',
+    name: 'Senator Douye Diri',
+    office: 'Governor of Bayelsa State'
+};
+
+function _isPrincipalOfficersQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    return /(principal\s+officers?|current\s+(?:name|names)\s+and\s+their\s+positions?|their\s+positions|who\s+are\s+the\s+principal\s+officers)/i.test(q)
+        || (/(who\s+is|name\s+of|current)/i.test(q) && /(vice[-\s]?chancellor|\bvc\b|registrar|bursar|deputy\s+vice[-\s]?chancellor|librarian|university\s+librarian)/i.test(q));
+}
+
+function _isGovernorVisitorQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    return /(governor|visitor\s+to\s+the\s+university|visitor\s+of\s+the\s+university|bayelsa\s+state)/i.test(q)
+        && /(who\s+is|name\s+of|current|serves\s+as|visitor)/i.test(q);
+}
+
+function _buildPrincipalOfficersReply() {
+    const rows = BMU_PRINCIPAL_OFFICERS.map(({ position, name, note }) => ({
+        position,
+        name,
+        note: note || 'Current BMU profile listing'
+    }));
+    const table = [
+        '| Position | Current name | Notes |',
+        '| --- | --- | --- |',
+        ...rows.map(row => `| ${row.position} | ${row.name} | ${row.note} |`)
+    ].join('\n');
+
+    return {
+        speech_text: BMU_PRINCIPAL_OFFICERS.map(({ position, name }) => `${position}: ${name}`).join('; ') + '.',
+        display_markdown: `Based on the BMU Brief Institutional Profile (May 2025), the principal officers are:\n\n${table}\n\nAlso listed in the same profile: Governing Council Chair, Prof. Tarila Tebepah; and Visitor to the University, Senator Douye Diri.`,
+        topic_slug: 'bmu_principal_officers',
+        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99
+    };
+}
+
+function _buildGovernorVisitorReply() {
+    return {
+        speech_text: `The Governor of Bayelsa State is ${BMU_VISITOR.name}, and he serves as the Visitor to Bayelsa Medical University (BMU).`,
+        display_markdown: `The Governor of Bayelsa State is **${BMU_VISITOR.name}**, and he serves as the **Visitor to Bayelsa Medical University (BMU)**.`,
+        topic_slug: 'bmu_visitor_governor',
+        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99
+    };
+}
 
 async function _getProfileDocumentContent() {
     try {
@@ -1039,7 +1101,9 @@ async function askStream({
     }
     const trimmed = question.trim().slice(0, 4000);
     const isOfficeHolderIdentity = _isOfficeHolderIdentityQuestion(trimmed);
-    const fastIntentReply = ADVISOR_FAST_INTENT_ENABLED ? _buildFastIntentReply(trimmed) : null;
+    const isPrincipalOfficersQuestion = _isPrincipalOfficersQuestion(trimmed);
+    const isGovernorVisitorQuestion = _isGovernorVisitorQuestion(trimmed);
+    const fastIntentReply = !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED ? _buildFastIntentReply(trimmed) : null;
 
     let conversation;
     try {
@@ -1130,7 +1194,7 @@ async function askStream({
     // for a semantically equivalent question, serve it without paying the
     // LLM round-trip. Falls through silently on any error.
     // ------------------------------------------------------------------
-    if (faqService && !isOfficeHolderIdentity) {
+    if (faqService && !isOfficeHolderIdentity && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion) {
         try {
             const cached = await faqService.getCachedResponse(trimmed, {
                 userId: student?.user_id || null,
@@ -1236,6 +1300,142 @@ async function askStream({
         } catch (err) {
             console.warn('[advisorStreamService] FAQ cache lookup failed:', err.message);
         }
+    }
+
+    if (isPrincipalOfficersQuestion) {
+        const parsed = _buildPrincipalOfficersReply();
+        send('speech_ready', { speech_text: parsed.speech_text });
+        if (parsed.display_markdown) send('token', { text: parsed.display_markdown });
+
+        let audio = { provider: 'none' };
+        if (voiceEnabled !== false && conversation.voice_enabled) {
+            try {
+                audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender });
+                if (audio.audioUrl) {
+                    send('audio', {
+                        provider: audio.provider,
+                        audio_url: audio.audioUrl,
+                        from_cache: Boolean(audio.fromCache),
+                        speech_text: parsed.speech_text
+                    });
+                } else {
+                    send('audio', { provider: 'browser', use_browser_fallback: true, speech_text: parsed.speech_text });
+                }
+            } catch (err) {
+                send('audio', { provider: 'browser', use_browser_fallback: true, speech_text: parsed.speech_text, error: err.message });
+            }
+        } else {
+            send('audio', { provider: 'none', use_browser_fallback: false, speech_text: parsed.speech_text });
+        }
+
+        let messageId = null;
+        try {
+            messageId = await Advisor.addMessage({
+                conversationId: conversation.id,
+                role: 'advisor',
+                inputMode: 'text',
+                text: parsed.display_markdown,
+                speechText: parsed.speech_text,
+                displayMarkdown: parsed.display_markdown,
+                audioUrl: audio.audioUrl || null,
+                citationsJson: JSON.stringify(parsed.citations || []),
+                suggestedActionsJson: JSON.stringify(parsed.suggested_actions || []),
+                followUpsJson: JSON.stringify(parsed.follow_up_questions || []),
+                latencyMs: Date.now() - startedAt
+            });
+            await Advisor.touchConversation(conversation.id, null);
+        } catch (err) {
+            console.warn('[advisorStreamService] persist principal-officers advisor turn failed:', err.message);
+        }
+
+        send('done', {
+            success: true,
+            sessionToken: conversation.session_token,
+            conversationId: conversation.id,
+            messageId,
+            reply: parsed,
+            audio: {
+                provider: audio.provider || 'none',
+                audio_url: audio.audioUrl || null,
+                from_cache: Boolean(audio.fromCache),
+                use_browser_fallback: Boolean(audio.useBrowserFallback)
+            },
+            meta: {
+                latency_ms: Date.now() - startedAt,
+                source: 'principal_officers_reference',
+                quality: null
+            }
+        });
+        _trackOutcome({ latencyMs: Date.now() - startedAt, source: 'principal_officers_reference', isError: false });
+        return;
+    }
+
+    if (isGovernorVisitorQuestion) {
+        const parsed = _buildGovernorVisitorReply();
+        send('speech_ready', { speech_text: parsed.speech_text });
+        if (parsed.display_markdown) send('token', { text: parsed.display_markdown });
+
+        let audio = { provider: 'none' };
+        if (voiceEnabled !== false && conversation.voice_enabled) {
+            try {
+                audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender });
+                if (audio.audioUrl) {
+                    send('audio', {
+                        provider: audio.provider,
+                        audio_url: audio.audioUrl,
+                        from_cache: Boolean(audio.fromCache),
+                        speech_text: parsed.speech_text
+                    });
+                } else {
+                    send('audio', { provider: 'browser', use_browser_fallback: true, speech_text: parsed.speech_text });
+                }
+            } catch (err) {
+                send('audio', { provider: 'browser', use_browser_fallback: true, speech_text: parsed.speech_text, error: err.message });
+            }
+        } else {
+            send('audio', { provider: 'none', use_browser_fallback: false, speech_text: parsed.speech_text });
+        }
+
+        let messageId = null;
+        try {
+            messageId = await Advisor.addMessage({
+                conversationId: conversation.id,
+                role: 'advisor',
+                inputMode: 'text',
+                text: parsed.display_markdown,
+                speechText: parsed.speech_text,
+                displayMarkdown: parsed.display_markdown,
+                audioUrl: audio.audioUrl || null,
+                citationsJson: JSON.stringify(parsed.citations || []),
+                suggestedActionsJson: JSON.stringify(parsed.suggested_actions || []),
+                followUpsJson: JSON.stringify(parsed.follow_up_questions || []),
+                latencyMs: Date.now() - startedAt
+            });
+            await Advisor.touchConversation(conversation.id, null);
+        } catch (err) {
+            console.warn('[advisorStreamService] persist governor visitor advisor turn failed:', err.message);
+        }
+
+        send('done', {
+            success: true,
+            sessionToken: conversation.session_token,
+            conversationId: conversation.id,
+            messageId,
+            reply: parsed,
+            audio: {
+                provider: audio.provider || 'none',
+                audio_url: audio.audioUrl || null,
+                from_cache: Boolean(audio.fromCache),
+                use_browser_fallback: Boolean(audio.useBrowserFallback)
+            },
+            meta: {
+                latency_ms: Date.now() - startedAt,
+                source: 'visitor_governor_reference',
+                quality: null
+            }
+        });
+        _trackOutcome({ latencyMs: Date.now() - startedAt, source: 'visitor_governor_reference', isError: false });
+        return;
     }
 
     let history = [];

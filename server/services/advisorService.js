@@ -39,6 +39,68 @@ catch (err) { console.warn('[advisorService] retrievalService unavailable:', err
 const { query } = require('../../config/db');
 
 const OFFICE_HOLDER_DOC_TITLE = '%profile of bmu%';
+const BMU_PRINCIPAL_OFFICERS = [
+    { position: 'Vice-Chancellor', name: 'Prof. Dimie Ogoina', note: 'appointed October 2024' },
+    { position: 'Deputy Vice-Chancellor Administration', name: 'Prof. Ebi Aloysius Lihah', note: '' },
+    { position: 'Deputy Vice-Chancellor Academic', name: 'Prof. Godwill Ziriki', note: 'in charge of Sampou campus' },
+    { position: 'Registrar', name: 'Dr. (Mrs) Felicia Akusu', note: '' },
+    { position: 'Bursar', name: 'Mr. Ebiapiado Ombu', note: '' },
+    { position: 'University Librarian', name: 'Dr. Abraham Etebu', note: '' }
+];
+const BMU_VISITOR = {
+    role: 'Visitor to the University',
+    name: 'Senator Douye Diri',
+    office: 'Governor of Bayelsa State'
+};
+
+function _isPrincipalOfficersQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    return /(principal\s+officers?|current\s+(?:name|names)\s+and\s+their\s+positions?|their\s+positions|who\s+are\s+the\s+principal\s+officers)/i.test(q)
+        || (/(who\s+is|name\s+of|current)/i.test(q) && /(vice[-\s]?chancellor|\bvc\b|registrar|bursar|deputy\s+vice[-\s]?chancellor|librarian|university\s+librarian)/i.test(q));
+}
+
+function _isGovernorVisitorQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    return /(governor|visitor\s+to\s+the\s+university|visitor\s+of\s+the\s+university|bayelsa\s+state)/i.test(q)
+        && /(who\s+is|name\s+of|current|serves\s+as|visitor)/i.test(q);
+}
+
+function _buildPrincipalOfficersReply() {
+    const rows = BMU_PRINCIPAL_OFFICERS.map(({ position, name, note }) => ({
+        position,
+        name,
+        note: note || 'Current BMU profile listing'
+    }));
+    const table = [
+        '| Position | Current name | Notes |',
+        '| --- | --- | --- |',
+        ...rows.map(row => `| ${row.position} | ${row.name} | ${row.note} |`)
+    ].join('\n');
+
+    return {
+        speech_text: BMU_PRINCIPAL_OFFICERS.map(({ position, name }) => `${position}: ${name}`).join('; ') + '.',
+        display_markdown: `Based on the BMU Brief Institutional Profile (May 2025), the principal officers are:\n\n${table}\n\nAlso listed in the same profile: Governing Council Chair, Prof. Tarila Tebepah; and Visitor to the University, Senator Douye Diri.`,
+        topic_slug: 'bmu_principal_officers',
+        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99
+    };
+}
+
+function _buildGovernorVisitorReply() {
+    return {
+        speech_text: `The Governor of Bayelsa State is ${BMU_VISITOR.name}, and he serves as the Visitor to Bayelsa Medical University (BMU).`,
+        display_markdown: `The Governor of Bayelsa State is **${BMU_VISITOR.name}**, and he serves as the **Visitor to Bayelsa Medical University (BMU)**.`,
+        topic_slug: 'bmu_visitor_governor',
+        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99
+    };
+}
 
 async function _getProfileDocumentContent() {
     try {
@@ -822,6 +884,8 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     }
     const trimmed = question.trim().slice(0, 4000);
     const isOfficeHolderIdentity = _isOfficeHolderIdentityQuestion(trimmed);
+    const isPrincipalOfficersQuestion = _isPrincipalOfficersQuestion(trimmed);
+    const isGovernorVisitorQuestion = _isGovernorVisitorQuestion(trimmed);
 
     // 1. Conversation
     const conversation = await _resolveConversation({
@@ -841,7 +905,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     // 2b. FAQ-cache short-circuit. If we already have a curated/auto-
     // generated answer for a semantically equivalent question, serve it
     // without paying the LLM round-trip.
-    if (faqService && !isOfficeHolderIdentity) {
+    if (faqService && !isOfficeHolderIdentity && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion) {
         try {
             const cached = await faqService.getCachedResponse(trimmed, {
                 userId: student?.user_id || null,
@@ -881,6 +945,24 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         } catch (err) {
             console.warn('[advisorService] FAQ cache lookup failed:', err.message);
         }
+    }
+
+    if (isPrincipalOfficersQuestion) {
+        const parsed = _buildPrincipalOfficersReply();
+        return await _persistAndPackage({
+            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
+            questionText: trimmed,
+            ragContext: ''
+        });
+    }
+
+    if (isGovernorVisitorQuestion) {
+        const parsed = _buildGovernorVisitorReply();
+        return await _persistAndPackage({
+            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
+            questionText: trimmed,
+            ragContext: ''
+        });
     }
 
     // 3. Context: history + RAG

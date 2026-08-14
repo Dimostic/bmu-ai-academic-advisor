@@ -80,7 +80,7 @@ ${ragContext.trim()}`
 
     const q = String(question || '').toLowerCase();
     const isOfficeHolderIdentityQuestion = /(who\s+is|name\s+of|current)/i.test(q)
-        && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|librarian|university\s+librarian)/i.test(q);
+        && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|librarian|university\s+librarian|governor|visitor)/i.test(q);
     const officeHolderGuardrail = isOfficeHolderIdentityQuestion
         ? `
 
@@ -89,6 +89,15 @@ IDENTITY QUESTION GUARDRAIL (IMPORTANT FOR THIS QUESTION):
 - ONLY answer with a person's name/title if RELEVANT BMU INFORMATION explicitly contains that role with a person name.
 - If that exact role/name pair is not present, say you do not have verified BMU data for that role right now and offer escalation.
 - NEVER switch to unrelated explanations (for example acronym meanings like CCMAS) when asked who a person is.`
+        : '';
+
+    const governorVisitorGuardrail = /(governor|visitor\s+to\s+the\s+university|visitor\s+of\s+the\s+university)/i.test(q)
+        ? `
+
+GOVERNOR / VISITOR FACT OVERRIDE (IMPORTANT FOR THIS QUESTION):
+- If the question asks who the Governor of Bayelsa State is or who serves as the Visitor to BMU, answer with Senator Douye Diri.
+- Do not say the current governor name is unavailable.
+- Do not fall back to the BMU Law text alone when the profile context already gives the officeholder name.`
         : '';
 
     return `You are ${ADVISOR_NAME}, the ${ADVISOR_TITLE} for Bayelsa Medical University (BMU), Yenagoa, Nigeria.
@@ -121,6 +130,8 @@ ${studentBlock}
 ${knowledgeBlock}
 
 ${officeHolderGuardrail}
+
+${governorVisitorGuardrail}
 
 PROGRAMME VOCABULARY — these are all the SAME thing inside BMU documents.
 Treat the words on the LEFT as equivalent to the canonical names on the
