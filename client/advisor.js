@@ -1693,6 +1693,20 @@
     let wakeRecognition = null;
     let wakeRestartTimer = null;
     let wakeSuspendedUntil = 0;
+    let wakeNeedsUserGesture = true;
+
+    function armWakeWordFromUserGesture() {
+        if (!state.wakeWordEnabled || !hasWebSpeech()) return;
+        wakeNeedsUserGesture = false;
+        scheduleWakeWordListener(240);
+    }
+
+    function bindWakeWordGestureArmer() {
+        const opts = { passive: true };
+        window.addEventListener('pointerdown', armWakeWordFromUserGesture, opts);
+        window.addEventListener('keydown', armWakeWordFromUserGesture, opts);
+        window.addEventListener('touchstart', armWakeWordFromUserGesture, opts);
+    }
 
     function stopWakeWordListener() {
         if (wakeRestartTimer) {
@@ -1712,6 +1726,7 @@
 
     function scheduleWakeWordListener(delay = 900) {
         if (!state.wakeWordEnabled || !hasWebSpeech()) return;
+        if (wakeNeedsUserGesture) return;
         if (wakeRestartTimer) clearTimeout(wakeRestartTimer);
         wakeRestartTimer = setTimeout(() => {
             wakeRestartTimer = null;
@@ -1721,6 +1736,7 @@
 
     function startWakeWordListener() {
         if (!state.wakeWordEnabled || !hasWebSpeech()) return;
+        if (wakeNeedsUserGesture) return;
         if (wakeRecognition || state.recording || document.hidden) {
             scheduleWakeWordListener(1000);
             return;
@@ -1762,7 +1778,11 @@
                 const code = String(e?.error || '').toLowerCase();
                 wakeRecognition = null;
                 if (code === 'not-allowed' || code === 'service-not-allowed') {
-                    state.wakeWordEnabled = false;
+                    // Most browsers require a recent user gesture before
+                    // background recognition can start. Re-arm after any
+                    // click/tap/key press instead of disabling wake word.
+                    wakeNeedsUserGesture = true;
+                    wakeSuspendedUntil = Date.now() + 1800;
                     return;
                 }
                 scheduleWakeWordListener(code === 'no-speech' ? 700 : 1400);
@@ -1783,6 +1803,7 @@
     let recognition = null;
     function startListening() {
         if (state.recording) return;
+        wakeNeedsUserGesture = false;
         stopWakeWordListener();
         // Hard-stop the early misleading error: if neither path can work,
         // bail out with a friendly toast rather than starting a recording
@@ -1889,10 +1910,12 @@
     }
 
     micBtn.addEventListener('click', () => {
+        wakeNeedsUserGesture = false;
         if (state.recording) stopListening(); else startListening();
     });
 
     avatarMicBtn?.addEventListener('click', () => {
+        wakeNeedsUserGesture = false;
         if (state.recording) stopListening(); else startListening();
     });
     syncMicButtonsUi(false);
@@ -2364,6 +2387,7 @@
             serverSttAvailable = false;
         }
         updateMicAvailability();
+        bindWakeWordGestureArmer();
         scheduleWakeWordListener(1100);
         loadTopics();
 
