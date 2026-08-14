@@ -947,6 +947,17 @@ body.advisor-full-view .avatar-stage {
     min-height: 0;
 }
 
+/* Fill more of the stage with the character while keeping proportions. */
+body.advisor-full-view .avatar-stage .avatar-svg-host svg {
+    transform: scale(1.16);
+    transform-origin: center 62%;
+}
+
+body.advisor-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+    transform: scale(1.1);
+    transform-origin: center 58%;
+}
+
 body.advisor-full-view .avatar-meta {
     display: none;
 }
