@@ -193,6 +193,7 @@
         if (pill) {
             pill.style.display = '';
             pill.className = `badge ${status === 'alert' ? 'badge-danger' : status === 'warning' ? 'badge-warn' : 'badge-ok'}`;
+            pill.dataset.status = status;
             pill.textContent = `Advisor ${statusLabel}`;
         }
     }

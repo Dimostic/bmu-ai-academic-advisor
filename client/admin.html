@@ -11,6 +11,20 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="advisor.css" />
     <link rel="stylesheet" href="pages.css" />
+    <style>
+        #advisorStatusPill[data-status="alert"] {
+            animation: advisor-pill-pulse 1.4s ease-in-out infinite;
+        }
+
+        #advisorStatusPill[data-status="warning"] {
+            box-shadow: 0 0 0 1px rgba(232,170,0,.14), 0 0 0 6px rgba(232,170,0,.04);
+        }
+
+        @keyframes advisor-pill-pulse {
+            0%, 100% { transform: translateY(0); box-shadow: 0 0 0 1px rgba(190,51,58,.10); }
+            50% { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(190,51,58,.24), 0 0 0 8px rgba(190,51,58,.06); }
+        }
+    </style>
 </head>
 <body>
     <header class="top-bar">
