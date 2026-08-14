@@ -161,6 +161,7 @@
     function renderAdvisorBanner(data) {
         const banner = document.getElementById('advisorAlertBanner');
         if (!banner) return;
+        const pill = document.getElementById('advisorStatusPill');
 
         const metrics = data?.health?.metrics || {};
         const slo = metrics.slo || {};
@@ -188,6 +189,12 @@
                 </div>
             </div>
         `;
+
+        if (pill) {
+            pill.style.display = '';
+            pill.className = `badge ${status === 'alert' ? 'badge-danger' : status === 'warning' ? 'badge-warn' : 'badge-ok'}`;
+            pill.textContent = `Advisor ${statusLabel}`;
+        }
     }
 
     async function renderAdvisorOpsPage() {
