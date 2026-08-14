@@ -52,6 +52,7 @@
     const advisorStatus = $('avatarStatus');
     const avatarPane    = document.querySelector('.avatar-pane');
     const avatarStage   = $('avatarStage');
+    const avatarMicBtn  = $('avatarMicBtn');
     const avatarMuteBtn = $('avatarMuteBtn');
     const avatarPauseBtn= $('avatarPauseBtn');
     // The SVG element is rendered inside #avatarSvgHost by applyAvatar().
@@ -1658,12 +1659,34 @@
             micBtn.title = browserOk
                 ? 'Speak your question'
                 : 'Speak your question (server transcription)';
+            if (avatarMicBtn) {
+                avatarMicBtn.disabled = false;
+                avatarMicBtn.classList.remove('is-disabled');
+                avatarMicBtn.title = micBtn.title;
+                avatarMicBtn.setAttribute('aria-label', micBtn.title);
+            }
         } else {
             micBtn.disabled = true;
             micBtn.classList.add('mic-btn--disabled');
             micBtn.title = 'Voice input is not supported in this browser. Please type your question, or switch to Chrome / Edge.';
             micBtn.setAttribute('aria-label', micBtn.title);
+            if (avatarMicBtn) {
+                avatarMicBtn.disabled = true;
+                avatarMicBtn.classList.add('is-disabled');
+                avatarMicBtn.title = micBtn.title;
+                avatarMicBtn.setAttribute('aria-label', micBtn.title);
+            }
         }
+    }
+
+    function syncMicButtonsUi(recording) {
+        micBtn?.setAttribute('aria-pressed', recording ? 'true' : 'false');
+        if (!avatarMicBtn) return;
+        avatarMicBtn.setAttribute('aria-pressed', recording ? 'true' : 'false');
+        avatarMicBtn.classList.toggle('is-recording', !!recording);
+        avatarMicBtn.innerHTML = recording
+            ? '<i class="fa-solid fa-stop"></i>'
+            : '<i class="fa-solid fa-microphone"></i>';
     }
 
     const WAKE_WORD_RE = /\b(?:dr\.?\s*tari|doctor\s*tari)\b/i;
@@ -1792,12 +1815,12 @@
             };
             recognition.onend = () => {
                 state.recording = false;
-                micBtn.setAttribute('aria-pressed', 'false');
+                syncMicButtonsUi(false);
                 setAvatarState('idle', 'Ready');
                 if (questionInput.value.trim()) askNow();
                 scheduleWakeWordListener(900);
             };
-            try { recognition.start(); state.recording = true; micBtn.setAttribute('aria-pressed', 'true'); }
+            try { recognition.start(); state.recording = true; syncMicButtonsUi(true); }
             catch (err) { console.warn(err); }
         } else {
             startServerRecording();
@@ -1813,7 +1836,7 @@
             recorder.ondataavailable = (e) => e.data && chunks.push(e.data);
             recorder.onstop = async () => {
                 stream.getTracks().forEach(t => t.stop());
-                state.recording = false; micBtn.setAttribute('aria-pressed', 'false');
+                state.recording = false; syncMicButtonsUi(false);
                 setAvatarState('thinking', 'Transcribing');
                 const blob = new Blob(chunks, { type: 'audio/webm' });
                 const form = new FormData();
@@ -1846,11 +1869,12 @@
             recorder.start();
             state.mediaRecorder = recorder;
             state.recording = true;
-            micBtn.setAttribute('aria-pressed', 'true');
+            syncMicButtonsUi(true);
         } catch (err) {
             console.warn('[advisor] getUserMedia failed:', err.message);
             toast('Microphone access denied.', 'error');
             setAvatarState('idle', 'Ready');
+            syncMicButtonsUi(false);
         }
     }
 
@@ -1860,13 +1884,18 @@
             try { state.mediaRecorder.stop(); } catch (_) {}
         }
         state.recording = false;
-        micBtn.setAttribute('aria-pressed', 'false');
+        syncMicButtonsUi(false);
         scheduleWakeWordListener(900);
     }
 
     micBtn.addEventListener('click', () => {
         if (state.recording) stopListening(); else startListening();
     });
+
+    avatarMicBtn?.addEventListener('click', () => {
+        if (state.recording) stopListening(); else startListening();
+    });
+    syncMicButtonsUi(false);
 
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {

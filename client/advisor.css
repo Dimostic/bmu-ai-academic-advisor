@@ -140,6 +140,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
     color: #061215;
     border-color: var(--accent);
 }
+.avatar-stage-controls .icon-btn.is-recording {
+    background: var(--danger);
+    color: #fff;
+    border-color: var(--danger);
+}
 .avatar-stage-controls .icon-btn--wide {
     min-width: 34px;
 }
@@ -898,6 +903,12 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
 body.advisor-full-view .top-bar {
     flex-wrap: nowrap;
     align-items: center;
+    padding: 8px 14px;
+}
+
+body.advisor-full-view {
+    height: 100vh;
+    overflow: hidden;
 }
 
 body.advisor-full-view .brand small {
@@ -912,27 +923,29 @@ body.advisor-full-view .advisor-grid {
     display: flex;
     flex-direction: column;
     max-width: 1320px;
-    padding: 18px;
-    gap: 16px;
-    min-height: calc(100vh - var(--mobile-topbar-h, 64px) - 36px);
+    padding: 8px 14px 10px;
+    gap: 10px;
+    height: calc(100vh - var(--mobile-topbar-h, 64px));
+    min-height: 0;
+    overflow: hidden;
 }
 
 body.advisor-full-view .avatar-pane {
-    position: sticky;
-    top: calc(var(--mobile-topbar-h, 64px) + 12px);
+    position: relative;
+    top: 0;
     align-self: stretch;
     width: 100%;
-    padding: 18px;
-    gap: 16px;
+    padding: 10px 14px;
+    gap: 10px;
     flex-direction: column;
     align-items: stretch;
-    position: relative;
+    flex: 0 0 auto;
 }
 
 body.advisor-full-view .avatar-stage {
     width: 100%;
-    height: clamp(260px, 36vw, 440px);
-    min-height: 260px;
+    height: clamp(300px, 42vw, 520px);
+    min-height: 300px;
 }
 
 body.advisor-full-view .avatar-meta {
@@ -1016,7 +1029,7 @@ body.advisor-full-view .chat-pane {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    gap: 14px;
+    gap: 8px;
 }
 
 body.advisor-full-view .transcript {
@@ -1032,7 +1045,7 @@ body.advisor-full-view .bubble {
 
 body.advisor-full-view .composer {
     position: sticky;
-    bottom: 12px;
+    bottom: 0;
     z-index: 24;
     border: 1px solid var(--line);
     border-radius: 16px;
@@ -1050,22 +1063,24 @@ body.advisor-full-view #advisorViewToggleBtn {
 
 @media (max-width: 1024px) {
     body.advisor-full-view .advisor-grid {
-        padding: 12px;
-        min-height: calc(100vh - var(--mobile-topbar-h, 64px) - 24px);
+        padding: 8px 10px 10px;
+        gap: 8px;
+        height: calc(100vh - var(--mobile-topbar-h, 64px));
+        min-height: 0;
     }
 
     body.advisor-full-view .avatar-pane {
-        top: calc(var(--mobile-topbar-h, 64px) + 8px);
-        padding: 14px;
+        top: 0;
+        padding: 8px 10px;
     }
 
     body.advisor-full-view .avatar-stage {
-        height: clamp(240px, 48vw, 380px);
+        height: clamp(240px, 50vw, 380px);
         min-height: 240px;
     }
 
     body.advisor-full-view .composer {
-        bottom: 10px;
+        bottom: 0;
     }
 }
 
