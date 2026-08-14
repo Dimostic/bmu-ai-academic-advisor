@@ -941,8 +941,8 @@ body.advisor-full-view .avatar-pane {
 
 body.advisor-full-view .avatar-stage {
     width: 100%;
-    height: clamp(240px, 30vw, 400px);
-    min-height: 240px;
+    height: clamp(320px, 52vh, 680px);
+    min-height: 320px;
 }
 
 body.advisor-full-view .avatar-meta {
@@ -1072,8 +1072,8 @@ body.advisor-full-view #advisorViewToggleBtn {
     }
 
     body.advisor-full-view .avatar-stage {
-        height: clamp(240px, 50vw, 380px);
-        min-height: 240px;
+        height: clamp(260px, 56vw, 440px);
+        min-height: 260px;
     }
 
     body.advisor-full-view .composer {
@@ -1094,8 +1094,8 @@ body.advisor-full-view #advisorViewToggleBtn {
     }
 
     body.advisor-full-view .avatar-stage {
-        height: clamp(220px, 60vw, 320px);
-        min-height: 220px;
+        height: clamp(230px, 66vw, 360px);
+        min-height: 230px;
     }
 
     body.advisor-full-view .avatar-meta strong {
