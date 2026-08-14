@@ -121,7 +121,10 @@
             <div id="recent"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
         try {
-            const data = await api('/api/admin/dashboard');
+            const [data, overview] = await Promise.all([
+                api('/api/admin/dashboard'),
+                api('/api/admin/advisor/health-overview').catch(() => null)
+            ]);
             const d = data.dashboard || {};
             const u = d.users || {}; const docs = d.documents || {}; const c = d.chat || {};
             document.getElementById('statRow').innerHTML = [
@@ -133,6 +136,7 @@
                 stat('Sessions (30d)', c.total_sessions ?? '—')
             ].join('');
 
+            renderAdvisorBanner(overview);
             await renderAdvisorOps('advisorOps');
 
             const recent = d.recentActivity || [];
@@ -154,12 +158,46 @@
         </div>`;
     }
 
+    function renderAdvisorBanner(data) {
+        const banner = document.getElementById('advisorAlertBanner');
+        if (!banner) return;
+
+        const metrics = data?.health?.metrics || {};
+        const slo = metrics.slo || {};
+        const summary = data?.quality || {};
+        const status = String(slo.status || 'disabled').toLowerCase();
+        const statusLabel = status === 'alert' ? 'Alert' : status === 'warning' ? 'Warning' : status === 'ok' ? 'Healthy' : 'Disabled';
+        const tone = status === 'alert'
+            ? 'background: linear-gradient(135deg, rgba(190,51,58,.16), rgba(190,51,58,.08)); border-color: rgba(190,51,58,.28); color: #8a1f26;'
+            : status === 'warning'
+                ? 'background: linear-gradient(135deg, rgba(232,170,0,.16), rgba(232,170,0,.08)); border-color: rgba(232,170,0,.28); color: #8c6200;'
+                : 'background: linear-gradient(135deg, rgba(20,124,94,.14), rgba(20,124,94,.06)); border-color: rgba(20,124,94,.24); color: #17684f;';
+
+        banner.innerHTML = `
+            <div style="${tone} border-radius: 18px; padding: 14px 16px; border: 1px solid; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap: 10px; box-shadow: 0 14px 30px rgba(0,0,0,.05);">
+                <div>
+                    <div style="font-weight: 800; letter-spacing: .01em; font-size: 1rem;">Advisor status: ${escapeHtml(statusLabel)}</div>
+                    <div style="opacity: .9; font-size: .92rem; margin-top: 3px;">
+                        p95 ${escapeHtml(String(Number(metrics.p95LatencyMs || 0)))} ms · error rate ${escapeHtml(Number(metrics.errorRatePct || 0).toFixed(2))}% · avg quality ${(Number(summary.avg_overall || 0) * 100).toFixed(1)}%
+                    </div>
+                </div>
+                <div style="display:flex; gap: 8px; flex-wrap:wrap;">
+                    <span class="badge ${status === 'alert' ? 'badge-danger' : status === 'warning' ? 'badge-warn' : 'badge-ok'}">${escapeHtml(statusLabel)}</span>
+                    <span class="badge">SLO ${escapeHtml(slo.enabled === false ? 'off' : 'on')}</span>
+                    <span class="badge">Trend ${Number(summary.total_scored || 0)} scored</span>
+                </div>
+            </div>
+        `;
+    }
+
     async function renderAdvisorOpsPage() {
         main.innerHTML = `
             <h2>Advisor Ops</h2>
             <p class="lede">Operational health, quality, trend, export, and alert drill controls for the advisor service.</p>
             <div id="advisorOpsPage"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
+        const overview = await api('/api/admin/advisor/health-overview').catch(() => null);
+        renderAdvisorBanner(overview);
         await renderAdvisorOps('advisorOpsPage');
     }
 
@@ -1293,6 +1331,8 @@
                 </div>
             `;
 
+            const overview = await api('/api/admin/advisor/health-overview').catch(() => null);
+            renderAdvisorBanner(overview);
             await renderAdvisorOps('metricsAdvisorOps');
         } catch (err) {
             main.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
