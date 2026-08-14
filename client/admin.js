@@ -114,6 +114,8 @@
             <h2>Dashboard</h2>
             <p class="lede">Health and traffic at a glance.</p>
             <div class="stat-row" id="statRow"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+            <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Advisor ops</h3>
+            <div id="advisorOps"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
             <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Recent activity</h3>
             <div id="recent"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
@@ -129,6 +131,8 @@
                 stat('Messages (30d)', c.total_messages ?? '—'),
                 stat('Sessions (30d)', c.total_sessions ?? '—')
             ].join('');
+
+            await renderAdvisorOps('advisorOps');
 
             const recent = d.recentActivity || [];
             if (!recent.length) {
@@ -147,6 +151,100 @@
             <div class="value">${escapeHtml(String(value))}</div>
             ${delta ? `<div class="delta">${escapeHtml(delta)}</div>` : ''}
         </div>`;
+    }
+
+    async function renderAdvisorOps(targetId) {
+        const el = document.getElementById(targetId);
+        if (!el) return;
+        try {
+            const [overview, quality, trend] = await Promise.all([
+                api('/api/admin/advisor/health-overview'),
+                api('/api/admin/advisor/quality-summary').catch(() => ({ summary: {} })),
+                api('/api/admin/advisor/quality-trend?days=14').catch(() => ({ trend: [] }))
+            ]);
+
+            const metrics = overview.health?.metrics || {};
+            const slo = metrics.slo || {};
+            const providers = overview.health?.providers || {};
+            const summary = quality.summary || overview.quality || {};
+            const trendRows = trend.trend || [];
+            const overall = Number(summary.avg_overall || 0);
+
+            const statusClass = slo.status === 'alert' ? 'badge-danger' : (slo.status === 'warning' ? 'badge-warn' : 'badge-ok');
+
+            const trendHtml = trendRows.length
+                ? table(
+                    ['Day', 'Scored', 'Avg quality', 'Low quality', 'Auto-cache eligible'],
+                    trendRows.map(row => [
+                        escapeHtml(row.day || '—'),
+                        escapeHtml(String(row.total_scored ?? 0)),
+                        escapeHtml(Number(row.avg_overall || 0).toFixed(2)),
+                        escapeHtml(String(row.low_quality ?? 0)),
+                        escapeHtml(String(row.eligible_for_auto_cache ?? 0))
+                    ])
+                )
+                : '<p class="empty">No trend data yet.</p>';
+
+            el.innerHTML = `
+                <div class="stat-row">
+                    ${stat('SLO status', slo.status || 'disabled')}
+                    ${stat('p95 latency', `${Number(metrics.p95LatencyMs || 0)} ms`)}
+                    ${stat('Error rate', `${Number(metrics.errorRatePct || 0).toFixed(2)}%`)}
+                    ${stat('Avg quality', `${(overall * 100).toFixed(1)}%`)}
+                    ${stat('Low quality', Number(summary.low_quality || 0))}
+                    ${stat('Auto-cached', Number(summary.auto_cached_count || 0))}
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 16px;">
+                    <span class="badge ${statusClass}">SLO ${escapeHtml(slo.status || 'disabled')}</span>
+                    <span class="badge">LLM ${providers.llm ? 'on' : 'off'}</span>
+                    <span class="badge">TTS ${providers.tts ? 'on' : 'off'}</span>
+                    <span class="badge">STT ${providers.stt ? 'on' : 'off'}</span>
+                    <span class="badge">RAG ${providers.rag ? 'on' : 'off'}</span>
+                </div>
+                <div class="admin-actions" style="margin-bottom: 14px;">
+                    <button class="btn btn-ghost" id="opsRefresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                    <button class="btn btn-ghost" id="opsExport"><i class="fa-solid fa-file-csv"></i> Export quality CSV</button>
+                    <button class="btn btn-primary" id="opsTestAlert"><i class="fa-solid fa-bell"></i> Send test alert</button>
+                </div>
+                <h4 style="margin: 12px 0 8px; color: var(--bg-deep);">Quality trend (14 days)</h4>
+                ${trendHtml}
+            `;
+
+            document.getElementById('opsRefresh')?.addEventListener('click', () => renderDashboard());
+            document.getElementById('opsExport')?.addEventListener('click', async () => {
+                try {
+                    const res = await fetch('/api/admin/advisor/quality-export?limit=500', { headers: authHeaders() });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `advisor-quality-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                    toast('Quality CSV exported');
+                } catch (err) {
+                    toast(err.message || 'Could not export quality CSV', 'error');
+                }
+            });
+            document.getElementById('opsTestAlert')?.addEventListener('click', async () => {
+                const btn = document.getElementById('opsTestAlert');
+                if (!btn) return;
+                btn.disabled = true;
+                try {
+                    await api('/api/admin/advisor/test-alert', { method: 'POST', body: { status: 'warning' } });
+                    toast('Test alert sent');
+                } catch (err) {
+                    toast(err.message || 'Could not send test alert', 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        } catch (err) {
+            el.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+        }
     }
 
     // -------------------------------------------------------- DOCUMENTS
@@ -1098,6 +1196,8 @@
             <h2>Retrieval metrics</h2>
             <p class="lede">How well the RAG pipeline is performing. Counters are kept in process memory and reset on every server restart.</p>
             <div id="metricsBody"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+            <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Advisor operations</h3>
+            <div id="metricsAdvisorOps"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
         try {
             const [retrieval, faq, perf] = await Promise.all([
@@ -1140,6 +1240,8 @@
                     ${stat('Vector chunks', fmtNum(p.totalChunks ?? p.total_chunks))}
                 </div>
             `;
+
+            await renderAdvisorOps('metricsAdvisorOps');
         } catch (err) {
             main.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
         }
