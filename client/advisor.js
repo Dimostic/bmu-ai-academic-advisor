@@ -106,6 +106,7 @@
         activeResponseBubble: null,
         speakingFocusTimer: null,
         lastSpeakingFocusAt: 0,
+        wakeWordEnabled: localStorage.getItem('bmu_wake_word') !== '0',
         historyLoaded: false,
         loadingHistory: false,
         usageIntroShown: false,
@@ -1665,9 +1666,101 @@
         }
     }
 
+    const WAKE_WORD_RE = /\b(?:dr\.?\s*tari|doctor\s*tari)\b/i;
+    let wakeRecognition = null;
+    let wakeRestartTimer = null;
+    let wakeSuspendedUntil = 0;
+
+    function stopWakeWordListener() {
+        if (wakeRestartTimer) {
+            clearTimeout(wakeRestartTimer);
+            wakeRestartTimer = null;
+        }
+        if (!wakeRecognition) return;
+        const rec = wakeRecognition;
+        wakeRecognition = null;
+        try {
+            rec.onresult = null;
+            rec.onerror = null;
+            rec.onend = null;
+            rec.stop();
+        } catch (_) { /* ignore */ }
+    }
+
+    function scheduleWakeWordListener(delay = 900) {
+        if (!state.wakeWordEnabled || !hasWebSpeech()) return;
+        if (wakeRestartTimer) clearTimeout(wakeRestartTimer);
+        wakeRestartTimer = setTimeout(() => {
+            wakeRestartTimer = null;
+            startWakeWordListener();
+        }, delay);
+    }
+
+    function startWakeWordListener() {
+        if (!state.wakeWordEnabled || !hasWebSpeech()) return;
+        if (wakeRecognition || state.recording || document.hidden) {
+            scheduleWakeWordListener(1000);
+            return;
+        }
+        if (Date.now() < wakeSuspendedUntil) {
+            scheduleWakeWordListener(Math.max(600, wakeSuspendedUntil - Date.now() + 120));
+            return;
+        }
+
+        try {
+            const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            wakeRecognition = new Rec();
+            wakeRecognition.lang = 'en-NG';
+            wakeRecognition.interimResults = true;
+            wakeRecognition.continuous = true;
+
+            wakeRecognition.onresult = (ev) => {
+                let heard = '';
+                for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                    heard += ` ${ev.results[i][0].transcript || ''}`;
+                }
+                const text = heard.trim();
+                if (!text || !WAKE_WORD_RE.test(text)) return;
+
+                const remainder = text.replace(WAKE_WORD_RE, ' ').replace(/\s+/g, ' ').trim();
+                stopWakeWordListener();
+                wakeSuspendedUntil = Date.now() + 1700;
+
+                if (remainder.length >= 3) {
+                    questionInput.value = remainder;
+                    askNow();
+                    scheduleWakeWordListener(2400);
+                    return;
+                }
+                startListening();
+            };
+
+            wakeRecognition.onerror = (e) => {
+                const code = String(e?.error || '').toLowerCase();
+                wakeRecognition = null;
+                if (code === 'not-allowed' || code === 'service-not-allowed') {
+                    state.wakeWordEnabled = false;
+                    return;
+                }
+                scheduleWakeWordListener(code === 'no-speech' ? 700 : 1400);
+            };
+
+            wakeRecognition.onend = () => {
+                wakeRecognition = null;
+                if (!state.recording) scheduleWakeWordListener(900);
+            };
+
+            wakeRecognition.start();
+        } catch (_) {
+            wakeRecognition = null;
+            scheduleWakeWordListener(1800);
+        }
+    }
+
     let recognition = null;
     function startListening() {
         if (state.recording) return;
+        stopWakeWordListener();
         // Hard-stop the early misleading error: if neither path can work,
         // bail out with a friendly toast rather than starting a recording
         // we know will fail at upload time.
@@ -1697,7 +1790,13 @@
                 stopListening();
                 startServerRecording();
             };
-            recognition.onend = () => { state.recording = false; micBtn.setAttribute('aria-pressed', 'false'); setAvatarState('idle', 'Ready'); if (questionInput.value.trim()) askNow(); };
+            recognition.onend = () => {
+                state.recording = false;
+                micBtn.setAttribute('aria-pressed', 'false');
+                setAvatarState('idle', 'Ready');
+                if (questionInput.value.trim()) askNow();
+                scheduleWakeWordListener(900);
+            };
             try { recognition.start(); state.recording = true; micBtn.setAttribute('aria-pressed', 'true'); }
             catch (err) { console.warn(err); }
         } else {
@@ -1707,6 +1806,7 @@
 
     async function startServerRecording() {
         try {
+            stopWakeWordListener();
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
             const chunks = [];
@@ -1741,6 +1841,7 @@
                     toast('Transcription failed.', 'error');
                     setAvatarState('idle', 'Ready');
                 }
+                scheduleWakeWordListener(900);
             };
             recorder.start();
             state.mediaRecorder = recorder;
@@ -1760,10 +1861,19 @@
         }
         state.recording = false;
         micBtn.setAttribute('aria-pressed', 'false');
+        scheduleWakeWordListener(900);
     }
 
     micBtn.addEventListener('click', () => {
         if (state.recording) stopListening(); else startListening();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopWakeWordListener();
+            return;
+        }
+        scheduleWakeWordListener(700);
     });
 
     if (avatarMuteBtn) {
@@ -2225,6 +2335,7 @@
             serverSttAvailable = false;
         }
         updateMicAvailability();
+        scheduleWakeWordListener(1100);
         loadTopics();
 
         // Fetch persona name (optional — server doesn't yet expose it; use defaults)
