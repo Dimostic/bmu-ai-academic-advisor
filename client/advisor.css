@@ -191,10 +191,9 @@ html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-stage-controls {
     border: 1px solid rgba(109,238,200,.14);
 }
 .avatar-status {
-    position: absolute; left: 12px; top: 12px;
     background: rgba(15, 61, 62, .85); color: #fff;
     border-radius: 999px; padding: 4px 12px; font-size: .8rem;
-    display: flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; gap: 6px;
 }
 .avatar-stage svg, .avatar-stage > .lottie-host { width: 100%; height: 100%; }
 
@@ -274,12 +273,6 @@ html[data-theme="dark"] .avatar-pane .avatar-stage .avatar-stage-controls {
 @keyframes av-hand-r-emph {
     0%, 100% { transform: translate(170px, 268px) rotate(0deg); }
     50%      { transform: translate(170px, 265px) rotate(6deg); }
-}
-.avatar-status {
-    position: absolute; left: 12px; bottom: 12px;
-    background: rgba(15, 61, 62, .85); color: #fff;
-    border-radius: 999px; padding: 4px 12px; font-size: .8rem;
-    display: flex; align-items: center; gap: 6px;
 }
 .avatar-status .dot {
     width: 8px; height: 8px; border-radius: 50%; background: var(--accent-soft);
@@ -708,20 +701,39 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
         margin-bottom: 8px;
         padding: 12px;
         border-radius: 12px;
-        flex-direction: row;
+        flex-direction: column;
         align-items: center;
         justify-content: flex-start;
         gap: 12px;
     }
 
     .avatar-stage {
-        width: clamp(132px, 26vw, 170px);
-        height: clamp(156px, 31vw, 196px);
+        width: min(100%, 360px);
+        height: clamp(220px, 44vw, 300px);
         flex: 0 0 auto;
     }
 
+    .avatar-stage-controls {
+        position: static;
+        order: -1;
+        margin-bottom: 6px;
+        align-self: center;
+    }
+
     .avatar-meta {
-        text-align: left;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+    }
+
+    body.advisor-full-view .avatar-stage-controls {
+        position: static;
+        order: -1;
+        left: auto;
+        bottom: auto;
+        margin-bottom: 6px;
     }
 
     .avatar-meta strong {
@@ -814,8 +826,8 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
     }
 
     .avatar-stage {
-        width: clamp(116px, 34vw, 150px);
-        height: clamp(136px, 41vw, 176px);
+        width: min(100%, 320px);
+        height: clamp(200px, 58vw, 260px);
     }
 
     .composer {
