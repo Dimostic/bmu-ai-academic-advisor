@@ -1321,5 +1321,6 @@
     }
 
     // First render
-    renderDashboard();
+    navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.section === 'advisorOps'));
+    renderAdvisorOpsPage();
 })();
