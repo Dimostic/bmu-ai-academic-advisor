@@ -199,6 +199,33 @@
         }
 
         if (mobileStrip) {
+            const dismissed = mobileStrip.dataset.dismissed === '1';
+            mobileStrip.style.display = dismissed ? 'none' : '';
+            mobileStrip.innerHTML = dismissed ? '' : `
+                <div style="${tone} border-radius: 16px; padding: 12px 14px; border: 1px solid; display:flex; align-items:center; justify-content:space-between; gap: 10px; box-shadow: 0 14px 24px rgba(0,0,0,.06); backdrop-filter: blur(10px);">
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 800; font-size: .95rem; line-height: 1.1;">Advisor ${escapeHtml(statusLabel)}</div>
+                        <div style="opacity: .9; font-size: .82rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            p95 ${escapeHtml(String(Number(metrics.p95LatencyMs || 0)))} ms · ${escapeHtml(Number(metrics.errorRatePct || 0).toFixed(2))}% error
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap: 8px; flex-shrink: 0;">
+                        <span class="badge ${status === 'alert' ? 'badge-danger' : status === 'warning' ? 'badge-warn' : 'badge-ok'}">${escapeHtml(statusLabel)}</span>
+                        <button type="button" class="btn btn-ghost btn-sm" id="dismissAdvisorStrip" aria-label="Dismiss advisor status strip" style="padding: 8px 10px; min-height: 32px;"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+            `;
+
+            if (!dismissed) {
+                document.getElementById('dismissAdvisorStrip')?.addEventListener('click', () => {
+                    mobileStrip.dataset.dismissed = '1';
+                    mobileStrip.style.display = 'none';
+                    mobileStrip.innerHTML = '';
+                });
+            }
+        }
+
+        if (mobileStrip) {
             mobileStrip.innerHTML = `
                 <div style="${tone} border-radius: 16px; padding: 12px 14px; border: 1px solid; display:flex; align-items:center; justify-content:space-between; gap: 10px; box-shadow: 0 14px 24px rgba(0,0,0,.06); backdrop-filter: blur(10px);">
                     <div style="min-width: 0;">
@@ -219,6 +246,12 @@
             <p class="lede">Operational health, quality, trend, export, and alert drill controls for the advisor service.</p>
             <div id="advisorOpsPage"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
+        const mobileStrip = document.getElementById('advisorMobileStrip');
+        if (mobileStrip) {
+            mobileStrip.dataset.dismissed = '1';
+            mobileStrip.style.display = 'none';
+            mobileStrip.innerHTML = '';
+        }
         const overview = await api('/api/admin/advisor/health-overview').catch(() => null);
         renderAdvisorBanner(overview);
         await renderAdvisorOps('advisorOpsPage');
