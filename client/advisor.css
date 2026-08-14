@@ -896,12 +896,13 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
 
 /* ========================================================================
    Full-page advisor mode
-   - Keep only the title and return button in the header
-   - Let the avatar span the page width
-   - Remove nonessential navigation chrome
+   - Keep only title + Normal view button in the header
+   - Controls row directly below header
+   - Avatar occupies most visible area
+   - Composer/input fixed at the bottom of the view
    ===================================================================== */
 body.advisor-full-view .top-bar {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     padding: 8px 14px;
 }
@@ -910,21 +911,20 @@ body.advisor-full-view .brand small {
     display: none;
 }
 
-/* Keep all top actions visible on wide desktops; trim only on smaller screens. */
-@media (max-width: 1200px) {
-    body.advisor-full-view .top-actions > *:not(#advisorViewToggleBtn):not(#themeToggleBtn) {
-        display: none !important;
-    }
+body.advisor-full-view .top-actions > *:not(#advisorViewToggleBtn) {
+    display: none !important;
 }
 
 body.advisor-full-view .advisor-grid {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
     max-width: 1320px;
     padding: 8px 14px 10px;
     gap: 10px;
-    min-height: calc(100vh - var(--mobile-topbar-h, 64px));
-    overflow: visible;
+    height: calc(100vh - var(--mobile-topbar-h, 64px));
+    min-height: 0;
+    overflow: hidden;
 }
 
 body.advisor-full-view .avatar-pane {
@@ -932,25 +932,23 @@ body.advisor-full-view .avatar-pane {
     top: 0;
     align-self: stretch;
     width: 100%;
-    padding: 10px 14px;
-    gap: 10px;
-    flex-direction: column;
+    padding: 8px 12px;
+    gap: 8px;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
     align-items: stretch;
-    flex: 0 0 auto;
+    min-height: 0;
 }
 
 body.advisor-full-view .avatar-stage {
     width: 100%;
-    height: clamp(320px, 52vh, 680px);
-    min-height: 320px;
+    height: 100%;
+    min-height: 0;
 }
 
 body.advisor-full-view .avatar-meta {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    text-align: center;
+    display: none;
 }
 
 body.advisor-full-view .avatar-meta strong {
@@ -991,29 +989,10 @@ html[data-theme="dark"] body.advisor-full-view .avatar-stage-controls .icon-btn.
     border-color: var(--accent);
 }
 
-body.advisor-full-view #themeToggleBtn {
-    background: var(--bg-elev);
-    color: var(--accent);
-    border-color: var(--line);
-}
-
-body.advisor-full-view #themeToggleBtn:hover {
-    background: #eef3f3;
-}
-
-html[data-theme="dark"] body.advisor-full-view #themeToggleBtn {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--accent-soft);
-    border-color: rgba(255, 255, 255, 0.16);
-}
-
-html[data-theme="dark"] body.advisor-full-view #themeToggleBtn:hover {
-    background: rgba(255, 255, 255, 0.14);
-}
-
 body.advisor-full-view .history-pane,
 body.advisor-full-view .topics-bar,
-body.advisor-full-view .followups {
+body.advisor-full-view .followups,
+body.advisor-full-view .transcript {
     display: none !important;
 }
 
@@ -1022,28 +1001,14 @@ body.advisor-full-view .chat-pane {
     box-shadow: none;
     border-radius: 0;
     min-height: 0;
-    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    gap: 8px;
-    min-height: 260px;
-}
-
-body.advisor-full-view .transcript {
-    padding: 0;
-    overflow-y: auto;
-    min-height: 0;
-    flex: 1 1 auto;
-}
-
-body.advisor-full-view .bubble {
-    max-width: 100%;
+    overflow: visible;
+    gap: 0;
 }
 
 body.advisor-full-view .composer {
-    position: sticky;
-    bottom: 0;
+    position: static;
     z-index: 24;
     border: 1px solid var(--line);
     border-radius: 16px;
@@ -1063,7 +1028,8 @@ body.advisor-full-view #advisorViewToggleBtn {
     body.advisor-full-view .advisor-grid {
         padding: 8px 10px 10px;
         gap: 8px;
-        min-height: calc(100vh - var(--mobile-topbar-h, 64px));
+        height: calc(100vh - var(--mobile-topbar-h, 64px));
+        min-height: 0;
     }
 
     body.advisor-full-view .avatar-pane {
@@ -1072,12 +1038,12 @@ body.advisor-full-view #advisorViewToggleBtn {
     }
 
     body.advisor-full-view .avatar-stage {
-        height: clamp(260px, 56vw, 440px);
-        min-height: 260px;
+        height: 100%;
+        min-height: 0;
     }
 
     body.advisor-full-view .composer {
-        bottom: 0;
+        position: static;
     }
 }
 
@@ -1094,8 +1060,8 @@ body.advisor-full-view #advisorViewToggleBtn {
     }
 
     body.advisor-full-view .avatar-stage {
-        height: clamp(230px, 66vw, 360px);
-        min-height: 230px;
+        height: 100%;
+        min-height: 0;
     }
 
     body.advisor-full-view .avatar-meta strong {
