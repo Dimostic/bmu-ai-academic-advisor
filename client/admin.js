@@ -162,6 +162,7 @@
         const banner = document.getElementById('advisorAlertBanner');
         if (!banner) return;
         const pill = document.getElementById('advisorStatusPill');
+        const mobileStrip = document.getElementById('advisorMobileStrip');
 
         const metrics = data?.health?.metrics || {};
         const slo = metrics.slo || {};
@@ -195,6 +196,20 @@
             pill.className = `badge ${status === 'alert' ? 'badge-danger' : status === 'warning' ? 'badge-warn' : 'badge-ok'}`;
             pill.dataset.status = status;
             pill.textContent = `Advisor ${statusLabel}`;
+        }
+
+        if (mobileStrip) {
+            mobileStrip.innerHTML = `
+                <div style="${tone} border-radius: 16px; padding: 12px 14px; border: 1px solid; display:flex; align-items:center; justify-content:space-between; gap: 10px; box-shadow: 0 14px 24px rgba(0,0,0,.06); backdrop-filter: blur(10px);">
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 800; font-size: .95rem; line-height: 1.1;">Advisor ${escapeHtml(statusLabel)}</div>
+                        <div style="opacity: .9; font-size: .82rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            p95 ${escapeHtml(String(Number(metrics.p95LatencyMs || 0)))} ms · ${escapeHtml(Number(metrics.errorRatePct || 0).toFixed(2))}% error
+                        </div>
+                    </div>
+                    <span class="badge ${status === 'alert' ? 'badge-danger' : status === 'warning' ? 'badge-warn' : 'badge-ok'}">${escapeHtml(statusLabel)}</span>
+                </div>
+            `;
         }
     }
 

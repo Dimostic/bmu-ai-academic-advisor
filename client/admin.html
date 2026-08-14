@@ -38,6 +38,16 @@
             #advisorStatusPill {
                 display: none !important;
             }
+
+            #advisorMobileStrip {
+                display: block !important;
+            }
+        }
+
+        @media (min-width: 721px) {
+            #advisorMobileStrip {
+                display: none !important;
+            }
         }
     </style>
 </head>
@@ -58,6 +68,9 @@
             <div id="authSlot"></div>
         </nav>
     </header>
+
+    <section id="advisorAlertBanner" aria-live="polite" style="margin: 0 auto; max-width: 1320px; padding: 14px 20px 0;"></section>
+    <div id="advisorMobileStrip" aria-live="polite" style="display:none; position: sticky; bottom: 0; z-index: 20; margin: 12px 14px 0; padding-bottom: 10px;"></div>
 
     <main class="admin-shell">
         <aside class="admin-nav" aria-label="Admin sections">
