@@ -14,8 +14,8 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260814-6" />
-    <link rel="stylesheet" href="/pages.css?v=20260814-6" />
+    <link rel="stylesheet" href="/advisor.css?v=20260814-7" />
+    <link rel="stylesheet" href="/pages.css?v=20260814-7" />
 </head>
 <body>
     <header class="top-bar">
@@ -57,6 +57,17 @@
     <main class="advisor-grid">
         <!-- Avatar pane -->
         <section class="avatar-pane" aria-label="Academic advisor">
+            <div class="avatar-stage-controls" aria-label="Speech controls">
+                <button type="button" id="avatarMuteBtn" class="icon-btn" title="Mute advisor" aria-pressed="false">
+                    <i class="fa-solid fa-volume-high"></i>
+                </button>
+                <button type="button" id="avatarPauseBtn" class="icon-btn" title="Pause advisor speech" aria-pressed="false">
+                    <i class="fa-solid fa-pause"></i>
+                </button>
+                <button type="button" id="avatarGenderToggleBtn" class="icon-btn icon-btn--wide" title="Switch avatar gender">
+                    <i class="fa-solid fa-venus-mars"></i>
+                </button>
+            </div>
             <div class="avatar-stage" id="avatarStage">
                 <!-- The animatable SVG avatar is rendered into here by
                      advisor.js (see applyAvatar()). The exact SVG depends on
@@ -68,17 +79,6 @@
                 <button type="button" id="avatarCompactToggleBtn" class="avatar-compact-toggle" title="Show compact avatar">
                     <i class="fa-solid fa-compress"></i>
                 </button>
-                <div class="avatar-stage-controls" aria-label="Speech controls">
-                    <button type="button" id="avatarMuteBtn" class="icon-btn" title="Mute advisor" aria-pressed="false">
-                        <i class="fa-solid fa-volume-high"></i>
-                    </button>
-                    <button type="button" id="avatarPauseBtn" class="icon-btn" title="Pause advisor speech" aria-pressed="false">
-                        <i class="fa-solid fa-pause"></i>
-                    </button>
-                    <button type="button" id="avatarGenderToggleBtn" class="icon-btn icon-btn--wide" title="Switch avatar gender">
-                        <i class="fa-solid fa-venus-mars"></i>
-                    </button>
-                </div>
             </div>
             <div class="avatar-meta">
                 <div class="avatar-status" id="avatarStatus" data-state="idle">
@@ -205,8 +205,8 @@
 
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
-    <script src="/avatars-svg.js?v=20260814-6" defer></script>
-    <script src="/advisor.js?v=20260814-6" defer></script>
-    <script src="/footer.js?v=20260814-6" defer></script>
+    <script src="/avatars-svg.js?v=20260814-7" defer></script>
+    <script src="/advisor.js?v=20260814-7" defer></script>
+    <script src="/footer.js?v=20260814-7" defer></script>
 </body>
 </html>
