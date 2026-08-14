@@ -93,6 +93,7 @@
     const navButtons = document.querySelectorAll('.admin-nav button');
     const sections = {
         dashboard: renderDashboard,
+        advisorOps: renderAdvisorOpsPage,
         documents: renderDocuments,
         faqs:      renderFAQs,
         users:     renderUsers,
@@ -151,6 +152,15 @@
             <div class="value">${escapeHtml(String(value))}</div>
             ${delta ? `<div class="delta">${escapeHtml(delta)}</div>` : ''}
         </div>`;
+    }
+
+    async function renderAdvisorOpsPage() {
+        main.innerHTML = `
+            <h2>Advisor Ops</h2>
+            <p class="lede">Operational health, quality, trend, export, and alert drill controls for the advisor service.</p>
+            <div id="advisorOpsPage"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+        `;
+        await renderAdvisorOps('advisorOpsPage');
     }
 
     function trendSparkline(rows) {
