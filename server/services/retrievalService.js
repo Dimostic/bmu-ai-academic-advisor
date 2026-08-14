@@ -69,6 +69,8 @@ class RetrievalService {
             enableQueryExpansion: process.env.ENABLE_QUERY_EXPANSION !== 'false',
             enableHybridSearch: process.env.ENABLE_HYBRID_SEARCH !== 'false',
             enableReRanking: process.env.ENABLE_RERANKING !== 'false',
+            enableCanonicalRewrite: process.env.ADVISOR_PHASE3_CANONICAL_REWRITE !== 'false',
+            enableSourceRankingPolicy: process.env.ADVISOR_PHASE3_SOURCE_POLICY !== 'false',
 
             // Primary-source boost — the Students' Handbook is the canonical
             // BMU knowledge base; other documents merely expand on it. Any
@@ -151,6 +153,9 @@ class RetrievalService {
                 : searchResults;
 
             const policyBoosted = this._applyProgrammePolicyBoost(reRankedResults, processedQuery);
+            const sourceRanked = this.config.enableSourceRankingPolicy
+                ? this._applySourceRankingPolicy(policyBoosted, processedQuery)
+                : policyBoosted;
 
             // 5b. Re-apply primary-source boost after re-ranking. The
             // re-ranker rebuilds `score` from scratch (only ~40% of it comes
@@ -158,7 +163,7 @@ class RetrievalService {
             // handbook would lose its lead to other documents with strong
             // term coverage. We re-sort afterwards so the boosted order is
             // what feeds the context compressor.
-            const boosted = this._applyPrimarySourceBoost(policyBoosted, processedQuery)
+            const boosted = this._applyPrimarySourceBoost(sourceRanked, processedQuery)
                 .sort((a, b) => b.score - a.score);
 
             // 6. Select top results and compress context
@@ -181,8 +186,11 @@ class RetrievalService {
                 retrievalTimeMs: Date.now() - startTime,
                 metadata: includeMetadata ? {
                     queryExpanded: processedQuery.expanded,
+                    canonicalQuery: processedQuery.canonicalQuery || processedQuery.normalized,
                     totalCandidates: searchResults.length,
-                    reRanked: this.config.enableReRanking
+                    reRanked: this.config.enableReRanking,
+                    phase: 'phase3',
+                    sourcePolicy: processedQuery.sourcePolicy || 'default'
                 } : undefined
             };
             
@@ -213,9 +221,13 @@ class RetrievalService {
      */
     async _processQuery(userQuery, sessionContext = {}) {
         const normalized = userQuery.trim().toLowerCase();
+        const canonicalQuery = this.config.enableCanonicalRewrite
+            ? this._rewriteCanonicalQuery(normalized)
+            : normalized;
+        const sourcePolicy = this._detectSourcePolicy(canonicalQuery);
         
         // Simple query expansion using synonyms and related terms
-        let expanded = normalized;
+        let expanded = canonicalQuery;
         
         if (this.config.enableQueryExpansion) {
             // BMU-specific term expansion - comprehensive list
@@ -347,9 +359,87 @@ class RetrievalService {
         return {
             original: userQuery,
             normalized,
+            canonicalQuery,
             expanded: expanded.trim(),
-            intent: this._detectQueryIntent(normalized)
+            intent: this._detectQueryIntent(canonicalQuery),
+            sourcePolicy
         };
+    }
+
+    _rewriteCanonicalQuery(queryText) {
+        const q = String(queryText || '').trim().toLowerCase();
+        if (!q) return q;
+
+        const replacements = [
+            [/\bprogrammes?\b/g, 'programme'],
+            [/\bcourses?\b/g, 'course'],
+            [/\bfees?\b/g, 'fee'],
+            [/\bfees structure\b/g, 'fee structure'],
+            [/\btuition fees?\b/g, 'tuition fee'],
+            [/\brequirements?\b/g, 'requirement'],
+            [/\bresults?\b/g, 'result'],
+            [/\bexaminations?\b/g, 'exam'],
+            [/\bhostel\b/g, 'hostel accommodation'],
+            [/\bhostels?\b/g, 'hostel accommodation']
+        ];
+
+        let rewritten = q;
+        for (const [pattern, replacement] of replacements) {
+            rewritten = rewritten.replace(pattern, replacement);
+        }
+
+        return rewritten;
+    }
+
+    _detectSourcePolicy(queryText) {
+        const q = String(queryText || '').toLowerCase();
+        if (/(fee|tuition|payment|charges|cost|scholarship|allowance)/.test(q)) return 'fee_policy';
+        if (/(progress|promotion|probation|withdraw|graduation|cgpa|gpa|result|exam|grade|carry over|repeat)/.test(q)) return 'programme_policy';
+        if (/(programme|program|course|admission|requirement|curriculum|department|faculty)/.test(q)) return 'academic_programme';
+        return 'general';
+    }
+
+    _applySourceRankingPolicy(results, processedQuery) {
+        if (!Array.isArray(results) || !results.length || !processedQuery) return results;
+
+        const policy = processedQuery.sourcePolicy || 'general';
+        const matchers = {
+            fee_policy: [/fees?|tuition|payment|charges|cost|financial/i],
+            programme_policy: [/ccmas|progression|probation|withdrawal|graduation|academic.*standard|result|exam|grade/i],
+            academic_programme: [/programme|program|curriculum|admission|requirement|course|faculty|department/i]
+        };
+
+        const boostRules = matchers[policy] || [];
+        if (!boostRules.length) return results;
+
+        const boosted = results.map((result) => {
+            const title = String(result.documentTitle || '').toLowerCase();
+            const content = String(result.content || '').toLowerCase();
+            let score = Number(result.score || 0);
+
+            if (boostRules.some(re => re.test(title) || re.test(content))) {
+                score = score * 1.28;
+                result.sourcePolicyBoosted = true;
+            }
+
+            if (policy === 'programme_policy' && /ccmas/.test(title)) {
+                score = score * 1.40;
+            }
+
+            if (policy === 'fee_policy' && /(fees|tuition|payment|finance)/.test(title)) {
+                score = score * 1.35;
+            }
+
+            if ((policy === 'academic_programme' || policy === 'general') && /students' handbook|student handbook|quick facts/.test(title)) {
+                score = score * 1.10;
+            }
+
+            result.score = score;
+            return result;
+        });
+
+        console.log(`[RetrievalService] Source-ranking policy applied: ${policy} (${boosted.filter(r => r.sourcePolicyBoosted).length} candidates boosted)`);
+        return boosted.sort((a, b) => (b.score || 0) - (a.score || 0));
     }
 
     /**

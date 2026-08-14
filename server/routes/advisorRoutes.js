@@ -205,6 +205,10 @@ router.get('/history/:sessionToken/messages', authenticateToken, async (req, res
 // GET /api/advisor/health
 // ---------------------------------------------------------------------------
 router.get('/health', (_req, res) => {
+    const streamMetrics = typeof advisorStreamService.getStreamMetrics === 'function'
+        ? advisorStreamService.getStreamMetrics()
+        : null;
+
     res.json({
         success: true,
         providers: {
@@ -212,7 +216,9 @@ router.get('/health', (_req, res) => {
             tts: ttsService.isConfigured(),
             stt: sttService.isConfigured(),
             rag: process.env.ENABLE_RAG !== 'false'
-        }
+        },
+        metrics: streamMetrics,
+        slo: streamMetrics?.slo || null
     });
 });
 

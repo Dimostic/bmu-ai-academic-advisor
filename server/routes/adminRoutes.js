@@ -5,6 +5,7 @@ const Document = require('../models/Document');
 const ChatMessage = require('../models/ChatMessage');
 const User = require('../models/User');
 const Advisor = require('../models/Advisor');
+const advisorStreamService = require('../services/advisorStreamService');
 const responseQualityService = require('../services/responseQualityService');
 const emailService = (() => {
     try { return require('../services/emailService'); }
@@ -1972,6 +1973,167 @@ router.get('/advisor/quality-summary', authenticateToken, requireAdmin, async (r
     } catch (err) {
         console.error('Advisor quality summary error:', err);
         res.status(500).json({ success: false, error: 'Could not load quality summary' });
+    }
+});
+
+// Combined operational health view for advisor service, response quality, and SLO state.
+router.get('/advisor/health-overview', authenticateToken, requireAdmin, async (_req, res) => {
+    try {
+        const metrics = typeof advisorStreamService.getStreamMetrics === 'function'
+            ? advisorStreamService.getStreamMetrics()
+            : {};
+
+        await responseQualityService.ensureTable();
+        const qualityRows = await query(`
+            SELECT
+                COUNT(*) AS total_scored,
+                AVG(overall_score) AS avg_overall,
+                SUM(CASE WHEN overall_score < 0.70 THEN 1 ELSE 0 END) AS low_quality,
+                SUM(CASE WHEN auto_cache_eligible = 1 THEN 1 ELSE 0 END) AS eligible_for_auto_cache,
+                SUM(CASE WHEN auto_cached = 1 THEN 1 ELSE 0 END) AS auto_cached_count,
+                SUM(COALESCE(helpful_count, 0)) AS helpful_votes,
+                SUM(COALESCE(not_helpful_count, 0)) AS unhelpful_votes
+            FROM advisor_response_quality
+        `);
+
+        res.json({
+            success: true,
+            generated_at: new Date().toISOString(),
+            health: {
+                providers: {
+                    llm: Boolean(process.env.DEEPSEEK_API_KEY),
+                    tts: Boolean(process.env.AZURE_SPEECH_KEY || process.env.EDGE_TTS_API_KEY || process.env.TTS_PROVIDER),
+                    stt: Boolean(process.env.OPENAI_API_KEY || process.env.AZURE_SPEECH_KEY),
+                    rag: process.env.ENABLE_RAG !== 'false'
+                },
+                metrics
+            },
+            quality: qualityRows[0] || {}
+        });
+    } catch (err) {
+        console.error('Advisor health overview error:', err);
+        res.status(500).json({ success: false, error: 'Could not load advisor health overview' });
+    }
+});
+
+router.post('/advisor/test-alert', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const status = String(req.body?.status || 'warning').trim().toLowerCase();
+        if (!['warning', 'alert'].includes(status)) {
+            return res.status(400).json({ success: false, error: 'status must be warning or alert' });
+        }
+
+        const metrics = typeof advisorStreamService.getStreamMetrics === 'function'
+            ? advisorStreamService.getStreamMetrics()
+            : {};
+
+        const result = typeof advisorStreamService.triggerSloAlert === 'function'
+            ? await advisorStreamService.triggerSloAlert({
+                status,
+                p95: Number(req.body?.p95 ?? metrics.p95LatencyMs ?? 0),
+                errorRatePct: Number(req.body?.errorRatePct ?? metrics.errorRatePct ?? 0)
+            })
+            : { success: false, error: 'SLO alert trigger not available' };
+
+        res.json({ success: true, alert: result });
+    } catch (err) {
+        console.error('Advisor test alert error:', err);
+        res.status(500).json({ success: false, error: err.message || 'Could not send test alert' });
+    }
+});
+
+router.get('/advisor/quality-export', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await responseQualityService.ensureTable();
+        const limit = Math.max(1, Math.min(5000, parseInt(req.query?.limit, 10) || 500));
+        const rows = await query(`
+            SELECT
+                advisor_message_id,
+                conversation_id,
+                addressed_score,
+                grounding_score,
+                citation_score,
+                completeness_score,
+                overall_score,
+                auto_cache_eligible,
+                auto_cached,
+                helpful_count,
+                not_helpful_count,
+                feedback_score,
+                admin_cache_decision,
+                created_at
+            FROM advisor_response_quality
+            ORDER BY advisor_message_id DESC
+            LIMIT ?
+        `, [limit]);
+
+        const columns = [
+            'advisor_message_id',
+            'conversation_id',
+            'addressed_score',
+            'grounding_score',
+            'citation_score',
+            'completeness_score',
+            'overall_score',
+            'auto_cache_eligible',
+            'auto_cached',
+            'helpful_count',
+            'not_helpful_count',
+            'feedback_score',
+            'admin_cache_decision',
+            'created_at'
+        ];
+
+        const csvRows = [columns.join(',')];
+        for (const row of rows) {
+            const values = columns.map((col) => {
+                const value = row[col] ?? '';
+                const str = String(value).replace(/\r?\n/g, ' ');
+                return /[",]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+            });
+            csvRows.push(values.join(','));
+        }
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="advisor-quality-export.csv"');
+        return res.send(csvRows.join('\n'));
+    } catch (err) {
+        console.error('Advisor quality export error:', err);
+        return res.status(500).json({ success: false, error: 'Could not export advisor quality report' });
+    }
+});
+
+router.get('/advisor/quality-trend', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await responseQualityService.ensureTable();
+        const days = Math.max(7, Math.min(30, parseInt(req.query?.days, 10) || 14));
+        const rows = await query(`
+            SELECT
+                DATE(created_at) AS day,
+                COUNT(*) AS total_scored,
+                AVG(overall_score) AS avg_overall,
+                SUM(CASE WHEN overall_score < 0.70 THEN 1 ELSE 0 END) AS low_quality,
+                SUM(CASE WHEN auto_cache_eligible = 1 THEN 1 ELSE 0 END) AS eligible_for_auto_cache
+            FROM advisor_response_quality
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            GROUP BY DATE(created_at)
+            ORDER BY day DESC
+        `, [days]);
+
+        res.json({
+            success: true,
+            rangeDays: days,
+            trend: rows.map(r => ({
+                day: r.day,
+                total_scored: Number(r.total_scored || 0),
+                avg_overall: Number(r.avg_overall || 0),
+                low_quality: Number(r.low_quality || 0),
+                eligible_for_auto_cache: Number(r.eligible_for_auto_cache || 0)
+            }))
+        });
+    } catch (err) {
+        console.error('Advisor quality trend error:', err);
+        res.status(500).json({ success: false, error: 'Could not load advisor quality trend' });
     }
 });
 

@@ -28,6 +28,9 @@ const KEYWORD_FALLBACK_LIMIT = parseInt(process.env.ADVISOR_KEYWORD_FALLBACK_LIM
 const PRIMARY_SOURCE_PATTERN = (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || 'quick facts').toLowerCase();
 const PRIMARY_SOURCE_BOOST   = parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.20');
 const SUGGESTION_MIN_CONFIDENCE = parseFloat(process.env.ADVISOR_SUGGESTION_MIN_CONFIDENCE || '0.30');
+const ADVISOR_PHASE2_GROUNDED_MODE = process.env.ADVISOR_PHASE2_GROUNDED_MODE === 'true' || process.env.ADVISOR_PHASE2_GROUNDED_MODE === '1';
+const ADVISOR_MIN_GROUNDED_CONFIDENCE = parseFloat(process.env.ADVISOR_MIN_GROUNDED_CONFIDENCE || '0.55');
+const ADVISOR_MIN_CITATIONS = parseInt(process.env.ADVISOR_MIN_CITATIONS || '1', 10);
 
 let retrievalService = null;
 try { retrievalService = require('./retrievalService'); }
@@ -494,6 +497,55 @@ function _isAlwaysAllowedAction(action) {
         || (typeof action === 'string' && action.startsWith('open_url:'));
 }
 
+function _isLikelyFactualQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    if (!q.trim()) return false;
+    return /(what|when|where|which|who|how much|how many|fee|fees|tuition|programme|program|course|courses|requirement|requirements|deadline|admission|calendar|hostel|exam|result|policy|rules|grading)/i.test(q);
+}
+
+function _buildGroundedFallback(question, parsed, ragContext) {
+    if (!ADVISOR_PHASE2_GROUNDED_MODE || !_isLikelyFactualQuestion(question)) {
+        return { grounded_mode: false, fallback_reason: null, retrieval_confidence: 0, override: null };
+    }
+
+    const parsedConfidence = Number(parsed?.confidence || 0);
+    const citations = Array.isArray(parsed?.citations) ? parsed.citations : [];
+    const retrievalConfidence = Number((ragContext && String(ragContext).trim().length > 0) ? 0.8 : 0);
+    const insufficientCitations = citations.length < ADVISOR_MIN_CITATIONS;
+    const lowConfidence = parsedConfidence < ADVISOR_MIN_GROUNDED_CONFIDENCE;
+
+    if (!insufficientCitations && !lowConfidence && retrievalConfidence > 0) {
+        return { grounded_mode: true, fallback_reason: null, retrieval_confidence: retrievalConfidence, override: null };
+    }
+
+    let reason = 'insufficient_evidence';
+    if (lowConfidence && insufficientCitations) reason = 'low_confidence_and_insufficient_citations';
+    else if (lowConfidence) reason = 'low_confidence';
+    else if (insufficientCitations) reason = 'insufficient_citations';
+
+    return {
+        grounded_mode: true,
+        fallback_reason: reason,
+        retrieval_confidence: retrievalConfidence,
+        override: {
+            speech_text: 'I have some BMU information, but I am not fully confident enough to give a definitive answer on this point yet. Please ask a more specific question or check the official BMU guidance.',
+            display_markdown: 'I have some BMU information, but I am not fully confident enough to give a definitive answer on this point yet.\n\nPlease ask a more specific question or check the official BMU guidance.',
+            topic_slug: null,
+            citations: citations.slice(0, 2),
+            suggested_actions: [
+                { label: 'Ask a more specific BMU question', action: 'escalate_to_human' },
+                { label: 'Show me BMU programme information', action: 'open_topic:programmes' }
+            ],
+            follow_up_questions: [
+                'What is the current BMU admission requirement for my course?',
+                'Can you explain the BMU fee structure in more detail?'
+            ],
+            needs_escalation: false,
+            confidence: Math.min(parsedConfidence || 0.5, ADVISOR_MIN_GROUNDED_CONFIDENCE - 0.05)
+        }
+    };
+}
+
 async function _isRetrievableQuestion(text) {
     if (!retrievalService) return true;
     const q = String(text || '').trim();
@@ -876,10 +928,15 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     // 5. Parse + persist + TTS
     const parsedRaw = persona.parseAdvisorReply(llmResult.content, trimmed);
     const parsed = await _sanitizeInteractiveSuggestions(parsedRaw);
+    const groundedState = _buildGroundedFallback(trimmed, parsed, ragContext);
+    const safeParsed = groundedState.override
+        ? { ...parsed, ...groundedState.override, confidence: groundedState.override.confidence }
+        : parsed;
     return await _persistAndPackage({
-        conversation, parsed, llmUsage: llmResult.usage, voiceEnabled, startedAt, advisorGender,
+        conversation, parsed: safeParsed, llmUsage: llmResult.usage, voiceEnabled, startedAt, advisorGender,
         questionText: trimmed,
-        ragContext
+        ragContext,
+        groundedState
     });
 }
 
@@ -892,7 +949,8 @@ async function _persistAndPackage({
     errorMsg = null,
     advisorGender = 'female',
     questionText = '',
-    ragContext = ''
+    ragContext = '',
+    groundedState = { grounded_mode: false, fallback_reason: null, retrieval_confidence: 0 }
 }) {
     // Resolve topic id for tagging
     let topicId = null;
@@ -955,7 +1013,10 @@ async function _persistAndPackage({
             suggested_actions:   parsed.suggested_actions,
             follow_up_questions: parsed.follow_up_questions,
             needs_escalation:    parsed.needs_escalation,
-            confidence:          parsed.confidence
+            confidence:          parsed.confidence,
+            grounded_mode:      groundedState.grounded_mode,
+            fallback_reason:     groundedState.fallback_reason,
+            retrieval_confidence: groundedState.retrieval_confidence
         },
         audio: {
             provider:           audio.provider,
@@ -967,6 +1028,9 @@ async function _persistAndPackage({
             tokens_in:  llmUsage?.prompt_tokens || null,
             tokens_out: llmUsage?.completion_tokens || null,
             error:      errorMsg,
+            grounded_mode: groundedState.grounded_mode,
+            fallback_reason: groundedState.fallback_reason,
+            retrieval_confidence: groundedState.retrieval_confidence,
             quality:    quality ? {
                 overall: quality.metrics?.overall_score || null,
                 addressed: quality.metrics?.addressed_score || null,

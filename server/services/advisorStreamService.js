@@ -36,12 +36,154 @@ const KEYWORD_FALLBACK_LIMIT = parseInt(process.env.ADVISOR_KEYWORD_FALLBACK_LIM
 const PRIMARY_SOURCE_PATTERN = (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || 'quick facts').toLowerCase();
 const PRIMARY_SOURCE_BOOST   = parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.20');
 const SUGGESTION_MIN_CONFIDENCE = parseFloat(process.env.ADVISOR_SUGGESTION_MIN_CONFIDENCE || '0.30');
+const ADVISOR_FAST_INTENT_ENABLED = process.env.ADVISOR_FAST_INTENT_ENABLED !== 'false';
+const ADVISOR_PHASE2_GROUNDED_MODE = process.env.ADVISOR_PHASE2_GROUNDED_MODE === 'true' || process.env.ADVISOR_PHASE2_GROUNDED_MODE === '1';
+const ADVISOR_MIN_GROUNDED_CONFIDENCE = parseFloat(process.env.ADVISOR_MIN_GROUNDED_CONFIDENCE || '0.55');
+const ADVISOR_MIN_CITATIONS = parseInt(process.env.ADVISOR_MIN_CITATIONS || '1', 10);
+const ADVISOR_PHASE5_SLO_ENABLED = process.env.ADVISOR_PHASE5_SLO_ENABLED !== 'false';
+const ADVISOR_SLO_P95_MS = parseInt(process.env.ADVISOR_SLO_P95_MS || '6000', 10);
+const ADVISOR_SLO_ERROR_RATE_PCT = parseFloat(process.env.ADVISOR_SLO_ERROR_RATE_PCT || '10', 10);
+const ADVISOR_ALERT_EMAIL = String(process.env.ADVISOR_ALERT_EMAIL || '').trim();
+const ADVISOR_ALERT_WEBHOOK = String(process.env.ADVISOR_ALERT_WEBHOOK || '').trim();
 
 let retrievalService = null;
 try { retrievalService = require('./retrievalService'); }
 catch (_) { /* missing optional service */ }
 
 const { query } = require('../../config/db');
+
+let emailService = null;
+try { emailService = require('./emailService'); }
+catch (_) { /* optional */ }
+
+const _metrics = {
+    startedAt: new Date().toISOString(),
+    totalRequests: 0,
+    fastIntentHits: 0,
+    faqCacheHits: 0,
+    llmCalls: 0,
+    errors: 0,
+    avgLatencyMs: 0,
+    p95Window: []
+};
+
+let _lastSloStatus = 'ok';
+
+async function _dispatchSloAlert({ status, p95, errorRatePct }) {
+    const summary = `BMU advisor SLO ${status}: p95=${Math.round(p95 || 0)}ms threshold=${ADVISOR_SLO_P95_MS}ms; errorRate=${Number(errorRatePct.toFixed(2))}% threshold=${ADVISOR_SLO_ERROR_RATE_PCT}%`;
+
+    if (ADVISOR_ALERT_WEBHOOK) {
+        try {
+            await fetch(ADVISOR_ALERT_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    service: 'bmu-advisor',
+                    status,
+                    p95LatencyMs: Math.round(p95 || 0),
+                    errorRatePct: Number(errorRatePct.toFixed(2)),
+                    summary,
+                    generatedAt: new Date().toISOString()
+                })
+            });
+        } catch (err) {
+            console.warn('[advisorStreamService] SLO webhook alert failed:', err.message);
+        }
+    }
+
+    if (ADVISOR_ALERT_EMAIL && emailService && typeof emailService.sendMail === 'function') {
+        try {
+            await emailService.sendMail({
+                to: ADVISOR_ALERT_EMAIL,
+                subject: `BMU Advisor SLO ${status.toUpperCase()}`,
+                text: `${summary}\n\nPlease review the advisor health overview and inspect the latest production trend.`
+            });
+        } catch (err) {
+            console.warn('[advisorStreamService] SLO email alert failed:', err.message);
+        }
+    }
+}
+
+function _getSloState({ p95, errorRatePct }) {
+    if (!ADVISOR_PHASE5_SLO_ENABLED) {
+        return { enabled: false, status: 'disabled', p95LatencyMs: Math.round(p95 || 0), p95ThresholdMs: ADVISOR_SLO_P95_MS, errorRatePct: Number(errorRatePct.toFixed(2)), errorRateThresholdPct: ADVISOR_SLO_ERROR_RATE_PCT, requestsInWindow: Number(_metrics.totalRequests || 0) };
+    }
+
+    let status = 'ok';
+    if (p95 > ADVISOR_SLO_P95_MS || errorRatePct > ADVISOR_SLO_ERROR_RATE_PCT) {
+        status = 'alert';
+    } else if (p95 > ADVISOR_SLO_P95_MS * 0.8 || errorRatePct > ADVISOR_SLO_ERROR_RATE_PCT * 0.75) {
+        status = 'warning';
+    }
+
+    if (status !== _lastSloStatus) {
+        const level = status === 'alert' ? 'warn' : status === 'warning' ? 'warn' : 'log';
+        const msg = `[advisorStreamService] SLO status changed to ${status} | p95=${Math.round(p95 || 0)}ms threshold=${ADVISOR_SLO_P95_MS}ms | errorRate=${Number(errorRatePct.toFixed(2))}% threshold=${ADVISOR_SLO_ERROR_RATE_PCT}%`;
+        if (level === 'warn') console.warn(msg); else console.log(msg);
+        if (status === 'warning' || status === 'alert') {
+            Promise.resolve().then(() => _dispatchSloAlert({ status, p95, errorRatePct }));
+        }
+        _lastSloStatus = status;
+    }
+
+    return {
+        enabled: true,
+        status,
+        p95LatencyMs: Math.round(p95 || 0),
+        p95ThresholdMs: ADVISOR_SLO_P95_MS,
+        errorRatePct: Number(errorRatePct.toFixed(2)),
+        errorRateThresholdPct: ADVISOR_SLO_ERROR_RATE_PCT,
+        requestsInWindow: Number(_metrics.totalRequests || 0)
+    };
+}
+
+function _trackOutcome({ latencyMs = 0, source = 'llm', isError = false }) {
+    _metrics.totalRequests += 1;
+    if (source === 'fast_intent') _metrics.fastIntentHits += 1;
+    if (source === 'faq_cache') _metrics.faqCacheHits += 1;
+    if (source === 'llm') _metrics.llmCalls += 1;
+    if (isError) _metrics.errors += 1;
+
+    const n = _metrics.totalRequests;
+    const current = Number(_metrics.avgLatencyMs || 0);
+    _metrics.avgLatencyMs = Math.round(((current * (n - 1)) + Number(latencyMs || 0)) / n);
+    _metrics.p95Window.push(Number(latencyMs || 0));
+    if (_metrics.p95Window.length > 200) _metrics.p95Window.shift();
+}
+
+function getStreamMetrics() {
+    const sample = [..._metrics.p95Window].sort((a, b) => a - b);
+    const p95 = sample.length ? sample[Math.min(sample.length - 1, Math.floor(sample.length * 0.95))] : 0;
+    const total = Number(_metrics.totalRequests || 0);
+    const errorRatePct = total ? (Number(_metrics.errors || 0) / total) * 100 : 0;
+    const slo = _getSloState({ p95, errorRatePct });
+
+    return {
+        ..._metrics,
+        p95LatencyMs: Math.round(p95 || 0),
+        errorRatePct: Number(errorRatePct.toFixed(2)),
+        slo
+    };
+}
+
+async function triggerSloAlert({ status = 'warning', p95 = 0, errorRatePct = 0 } = {}) {
+    const safeStatus = ['warning', 'alert'].includes(String(status || '').toLowerCase())
+        ? String(status).toLowerCase()
+        : 'warning';
+
+    await _dispatchSloAlert({
+        status: safeStatus,
+        p95: Number(p95 || 0),
+        errorRatePct: Number(errorRatePct || 0)
+    });
+
+    return {
+        success: true,
+        status: safeStatus,
+        p95LatencyMs: Number(p95 || 0),
+        errorRatePct: Number(errorRatePct || 0)
+    };
+}
 
 const OFFICE_HOLDER_DOC_TITLE = '%profile of bmu%';
 
@@ -528,6 +670,105 @@ async function _sanitizeInteractiveSuggestions(parsed) {
     };
 }
 
+function _isLikelyFactualQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    if (!q.trim()) return false;
+    return /(what|when|where|which|who|how much|how many|fee|fees|tuition|programme|program|course|courses|requirement|requirements|deadline|admission|calendar|hostel|exam|result|policy|rules|grading)/i.test(q);
+}
+
+function _buildGroundedFallback(question, parsed, ragContext) {
+    if (!ADVISOR_PHASE2_GROUNDED_MODE || !_isLikelyFactualQuestion(question)) {
+        return { grounded_mode: false, fallback_reason: null, retrieval_confidence: 0, override: null };
+    }
+
+    const parsedConfidence = Number(parsed?.confidence || 0);
+    const citations = Array.isArray(parsed?.citations) ? parsed.citations : [];
+    const retrievalConfidence = Number((ragContext && String(ragContext).trim().length > 0) ? 0.8 : 0);
+    const insufficientCitations = citations.length < ADVISOR_MIN_CITATIONS;
+    const lowConfidence = parsedConfidence < ADVISOR_MIN_GROUNDED_CONFIDENCE;
+
+    if (!insufficientCitations && !lowConfidence && retrievalConfidence > 0) {
+        return { grounded_mode: true, fallback_reason: null, retrieval_confidence: retrievalConfidence, override: null };
+    }
+
+    let reason = 'insufficient_evidence';
+    if (lowConfidence && insufficientCitations) reason = 'low_confidence_and_insufficient_citations';
+    else if (lowConfidence) reason = 'low_confidence';
+    else if (insufficientCitations) reason = 'insufficient_citations';
+
+    const fallbackText = 'I have some BMU information, but I am not fully confident enough to give a definitive answer on this point yet. Please ask a more specific question or check the official BMU guidance.';
+
+    return {
+        grounded_mode: true,
+        fallback_reason: reason,
+        retrieval_confidence: retrievalConfidence,
+        override: {
+            speech_text: fallbackText,
+            display_markdown: fallbackText,
+            topic_slug: null,
+            citations: citations.slice(0, 2),
+            suggested_actions: [
+                { label: 'Ask a more specific BMU question', action: 'escalate_to_human' },
+                { label: 'Show me BMU programme information', action: 'open_topic:programmes' }
+            ],
+            follow_up_questions: [
+                'What is the current BMU admission requirement for my course?',
+                'Can you explain the BMU fee structure in more detail?'
+            ],
+            needs_escalation: false,
+            confidence: Math.min(parsedConfidence || 0.5, ADVISOR_MIN_GROUNDED_CONFIDENCE - 0.05)
+        }
+    };
+}
+
+function _buildFastIntentReply(question) {
+    const q = String(question || '').trim().toLowerCase();
+    if (!q) return null;
+
+    if (/^(hi|hello|hey|good\s+(morning|afternoon|evening))(\b|[!.,?\s])/.test(q)) {
+        return {
+            speech_text: 'Hello. I am Dr Tari, your BMU academic advisor. Ask me about programmes, fees, courses, exams, or student policies.',
+            display_markdown: 'Hello. I am Dr Tari, your BMU Academic Advisor. Ask me about programmes, fees, courses, exams, hostel, or student policies.',
+            topic_slug: null,
+            citations: [],
+            suggested_actions: [
+                { label: 'Show me BMU programmes and requirements', action: 'open_topic:programmes' },
+                { label: 'What are current BMU fees by programme?', action: 'open_topic:fees' }
+            ],
+            follow_up_questions: [
+                'What courses are offered in Medicine and Surgery?',
+                'What is the current BMU tuition fee for Nursing Science?',
+                'What are the exam and grading rules at BMU?'
+            ],
+            needs_escalation: false,
+            confidence: 0.95,
+            _source: 'fast_intent'
+        };
+    }
+
+    if (/(what\s+can\s+you\s+do|help\s+me|how\s+do\s+i\s+use\s+this|how\s+to\s+use)/.test(q)) {
+        return {
+            speech_text: 'I can answer BMU questions on programmes, courses, fees, calendar, hostel, and student rules. You can type, tap follow ups, or use voice.',
+            display_markdown: 'I can help with BMU programmes, course requirements, fees, academic calendar, hostel, and student rules.\n\nYou can type your question, use voice, or tap suggested follow-up prompts.',
+            topic_slug: null,
+            citations: [],
+            suggested_actions: [
+                { label: 'Show me key BMU student handbook topics', action: 'open_topic:conduct' },
+                { label: 'What are BMU admission programme options?', action: 'open_topic:programmes' }
+            ],
+            follow_up_questions: [
+                'What are BMU hostel rules for students?',
+                'What is the BMU academic calendar for this session?'
+            ],
+            needs_escalation: false,
+            confidence: 0.92,
+            _source: 'fast_intent'
+        };
+    }
+
+    return null;
+}
+
 /**
  * Fast keyword-only RAG fallback: a direct FULLTEXT MATCH against documents.
  *
@@ -798,6 +1039,7 @@ async function askStream({
     }
     const trimmed = question.trim().slice(0, 4000);
     const isOfficeHolderIdentity = _isOfficeHolderIdentityQuestion(trimmed);
+    const fastIntentReply = ADVISOR_FAST_INTENT_ENABLED ? _buildFastIntentReply(trimmed) : null;
 
     let conversation;
     try {
@@ -820,6 +1062,65 @@ async function askStream({
         });
     } catch (err) {
         console.warn('[advisorStreamService] persist student turn failed:', err.message);
+    }
+
+    if (fastIntentReply) {
+        send('speech_ready', { speech_text: fastIntentReply.speech_text });
+        if (fastIntentReply.display_markdown) send('token', { text: fastIntentReply.display_markdown });
+        send('audio', {
+            provider: 'browser',
+            use_browser_fallback: true,
+            speech_text: fastIntentReply.speech_text
+        });
+
+        let messageId = null;
+        try {
+            messageId = await Advisor.addMessage({
+                conversationId: conversation.id,
+                role: 'advisor',
+                inputMode: 'text',
+                text: fastIntentReply.display_markdown,
+                speechText: fastIntentReply.speech_text,
+                displayMarkdown: fastIntentReply.display_markdown,
+                citationsJson: JSON.stringify(fastIntentReply.citations || []),
+                suggestedActionsJson: JSON.stringify(fastIntentReply.suggested_actions || []),
+                followUpsJson: JSON.stringify(fastIntentReply.follow_up_questions || []),
+                latencyMs: Date.now() - startedAt
+            });
+            await Advisor.touchConversation(conversation.id, null);
+        } catch (err) {
+            console.warn('[advisorStreamService] persist fast-intent advisor turn failed:', err.message);
+        }
+
+        send('done', {
+            success: true,
+            sessionToken: conversation.session_token,
+            conversationId: conversation.id,
+            messageId,
+            reply: {
+                speech_text: fastIntentReply.speech_text,
+                display_markdown: fastIntentReply.display_markdown,
+                topic_slug: fastIntentReply.topic_slug,
+                citations: fastIntentReply.citations,
+                suggested_actions: fastIntentReply.suggested_actions,
+                follow_up_questions: fastIntentReply.follow_up_questions,
+                needs_escalation: fastIntentReply.needs_escalation,
+                confidence: fastIntentReply.confidence
+            },
+            audio: {
+                provider: 'browser',
+                audio_url: null,
+                from_cache: false,
+                use_browser_fallback: true
+            },
+            meta: {
+                latency_ms: Date.now() - startedAt,
+                source: 'fast_intent',
+                quality: null
+            }
+        });
+        _trackOutcome({ latencyMs: Date.now() - startedAt, source: 'fast_intent', isError: false });
+        return;
     }
 
     // ------------------------------------------------------------------
@@ -929,6 +1230,7 @@ async function askStream({
                         quality: null
                     }
                 });
+                _trackOutcome({ latencyMs: Date.now() - startedAt, source: 'faq_cache', isError: false });
                 return;
             }
         } catch (err) {
@@ -1027,6 +1329,7 @@ async function askStream({
                 quality: null
             }
         });
+        _trackOutcome({ latencyMs: Date.now() - startedAt, source: 'llm', isError: false });
         return;
     }
 
@@ -1123,6 +1426,16 @@ async function askStream({
 
     parsed = await _sanitizeInteractiveSuggestions(parsed);
 
+    const groundedState = _buildGroundedFallback(trimmed, parsed, ragContext);
+    if (groundedState.override) {
+        parsed = {
+            ...parsed,
+            ...groundedState.override,
+            confidence: groundedState.override.confidence,
+            citations: groundedState.override.citations || parsed.citations || []
+        };
+    }
+
     // If [SPEECH] never closed (model didn't emit [ANSWER]), kick off TTS now
     // using the parsed speech_text — better late than never.
     if (!speechEmitted && parsed.speech_text) startTtsIfReady(parsed.speech_text);
@@ -1192,7 +1505,10 @@ async function askStream({
             suggested_actions:   parsed.suggested_actions,
             follow_up_questions: parsed.follow_up_questions,
             needs_escalation:    parsed.needs_escalation,
-            confidence:          parsed.confidence
+            confidence:          parsed.confidence,
+            grounded_mode:      groundedState.grounded_mode,
+            fallback_reason:     groundedState.fallback_reason,
+            retrieval_confidence: groundedState.retrieval_confidence
         },
         audio: {
             provider:             audio.provider,
@@ -1206,6 +1522,9 @@ async function askStream({
             tokens_in:  llmUsage?.prompt_tokens || null,
             tokens_out: llmUsage?.completion_tokens || null,
             error:      llmError,
+            grounded_mode: groundedState.grounded_mode,
+            fallback_reason: groundedState.fallback_reason,
+            retrieval_confidence: groundedState.retrieval_confidence,
             quality:    quality ? {
                 overall: quality.metrics?.overall_score || null,
                 addressed: quality.metrics?.addressed_score || null,
@@ -1216,6 +1535,7 @@ async function askStream({
             } : null
         }
     });
+    _trackOutcome({ latencyMs: Date.now() - startedAt, source: 'llm', isError: Boolean(llmError && !accumulated) });
 }
 
-module.exports = { askStream };
+module.exports = { askStream, getStreamMetrics, triggerSloAlert };
