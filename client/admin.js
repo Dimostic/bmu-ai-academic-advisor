@@ -153,6 +153,46 @@
         </div>`;
     }
 
+    function trendSparkline(rows) {
+        const values = (rows || [])
+            .map(row => Number(row.avg_overall || 0))
+            .filter(value => Number.isFinite(value));
+        if (!values.length) return '';
+
+        const width = 520;
+        const height = 96;
+        const padding = 10;
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const range = (max - min) || 1;
+        const step = values.length > 1 ? (width - padding * 2) / (values.length - 1) : 0;
+        const points = values.map((value, index) => {
+            const x = padding + (step * index);
+            const y = height - padding - (((value - min) / range) * (height - padding * 2));
+            return { x, y, value };
+        });
+        const polyline = points.map(point => `${point.x},${point.y}`).join(' ');
+        const bars = points.map(point => {
+            const barHeight = height - padding - point.y;
+            return `<rect x="${point.x - 4}" y="${point.y}" width="8" height="${Math.max(2, barHeight)}" rx="3" ry="3" fill="rgba(15,61,62,.18)" />`;
+        }).join('');
+
+        return `
+            <div class="advisor-trend-chart" style="margin: 12px 0 16px; padding: 12px; border: 1px solid rgba(15,61,62,.12); border-radius: 16px; background: rgba(255,255,255,.66);">
+                <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:8px; color:var(--muted); font-size:.85rem;">
+                    <span>Trend range: ${(min * 100).toFixed(1)}% - ${(max * 100).toFixed(1)}%</span>
+                    <span>${values.length} point${values.length === 1 ? '' : 's'}</span>
+                </div>
+                <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Advisor quality trend chart" style="display:block; width:100%; height:auto; overflow:visible;">
+                    <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="rgba(15,61,62,.12)" stroke-width="2" />
+                    ${bars}
+                    <polyline fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${polyline}" />
+                    ${points.map(point => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="var(--accent)" />`).join('')}
+                </svg>
+            </div>
+        `;
+    }
+
     async function renderAdvisorOps(targetId) {
         const el = document.getElementById(targetId);
         if (!el) return;
@@ -169,6 +209,7 @@
             const summary = quality.summary || overview.quality || {};
             const trendRows = trend.trend || [];
             const overall = Number(summary.avg_overall || 0);
+            const chart = trendSparkline(trendRows);
 
             const statusClass = slo.status === 'alert' ? 'badge-danger' : (slo.status === 'warning' ? 'badge-warn' : 'badge-ok');
 
@@ -207,6 +248,7 @@
                     <button class="btn btn-primary" id="opsTestAlert"><i class="fa-solid fa-bell"></i> Send test alert</button>
                 </div>
                 <h4 style="margin: 12px 0 8px; color: var(--bg-deep);">Quality trend (14 days)</h4>
+                ${chart}
                 ${trendHtml}
             `;
 
