@@ -1,0 +1,19 @@
+{
+  "id": "/advisor",
+  "name": "BMU AI Academic Advisor",
+  "short_name": "BMU Advisor",
+  "description": "Interactive talking academic advisor for Bayelsa Medical University students.",
+  "start_url": "/advisor",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0f3d3e",
+  "background_color": "#f4f7f8",
+  "icons": [
+    {
+      "src": "/bmulogo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
