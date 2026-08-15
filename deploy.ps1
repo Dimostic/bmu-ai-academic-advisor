@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $VpsHost  = if ($env:BMU_VPS_HOST) { $env:BMU_VPS_HOST } else { 'bmu-server' }
 $AppDir   = '/var/www/bmu-ai-academic-advisor'
-$AppName  = 'bmu-ai-academic-advisor'
+$AppName  = 'bmuaiadvisor'
 $AppEntry = 'server/app.js'
 
 function Invoke-Remote([string]$Cmd) {

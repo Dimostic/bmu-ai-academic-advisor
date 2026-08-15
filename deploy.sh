@@ -1,15 +1,15 @@
 #!/bin/bash
-# Deploy BMU AI Assistant to VPS
+# Deploy BMU AI Academic Advisor to VPS
 # Usage: ./deploy.sh
 
 set -e
 
 VPS_HOST="${BMU_VPS_HOST:-bmu-server}"
 APP_DIR="/var/www/bmu-ai-academic-advisor"
-APP_NAME="bmuaiagent"
+APP_NAME="bmuaiadvisor"
 APP_ENTRY="server/app.js"
 
-echo "🚀 Deploying BMU AI Assistant to VPS..."
+echo "🚀 Deploying BMU AI Academic Advisor to VPS..."
 
 # Pull latest code (safe fast-forward only)
 echo "📥 Pulling latest code (ff-only)..."
