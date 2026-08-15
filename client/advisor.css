@@ -1150,42 +1150,60 @@ body.advisor-full-view .avatar-stage {
 
 /* Fill more of the stage with the character while keeping proportions. */
 body.advisor-full-view .avatar-stage .avatar-svg-host svg {
-    transform: scale(1.16);
+    transform: translateY(-3.5%) scale(1.16);
     transform-origin: center 62%;
 }
 
 body.advisor-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
-    transform: scale(1.1);
+    transform: translateY(-3%) scale(1.1);
     transform-origin: center 58%;
 }
 
 body.advisor-full-view .avatar-meta {
+    display: block;
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    z-index: 22;
+    min-width: min(260px, 88vw);
+    text-align: center;
+    pointer-events: none;
+}
+
+body.advisor-full-view .avatar-meta > .avatar-status {
     display: none;
 }
 
-body.advisor-full-view.guest-demo-mode .avatar-meta {
+body.advisor-full-view .avatar-meta strong {
     display: block;
-    position: absolute;
+    color: #fff;
+    font-size: 1.18rem;
+    text-shadow: 0 2px 14px rgba(0,0,0,.35);
+}
+
+body.advisor-full-view .avatar-meta > span {
+    display: block;
+    color: rgba(255,255,255,.86);
+    font-size: .92rem;
+    font-weight: 700;
+    text-shadow: 0 2px 14px rgba(0,0,0,.35);
+}
+
+body.advisor-full-view.guest-demo-mode .guest-demo-mini {
+    position: fixed;
     top: 76px;
     right: 18px;
     z-index: 23;
     text-align: left;
-}
-
-body.advisor-full-view.guest-demo-mode .avatar-meta > .avatar-status,
-body.advisor-full-view.guest-demo-mode .avatar-meta > strong,
-body.advisor-full-view.guest-demo-mode .avatar-meta > span {
-    display: none;
-}
-
-body.advisor-full-view.guest-demo-mode .guest-demo-mini {
     margin-top: 0;
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
+    pointer-events: auto;
 }
 
 body.advisor-full-view .avatar-meta strong {
-    font-size: 1.2rem;
+    font-size: 1.18rem;
 }
 
 body.advisor-full-view .avatar-meta span {
