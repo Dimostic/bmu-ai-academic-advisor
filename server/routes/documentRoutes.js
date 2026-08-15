@@ -4,6 +4,7 @@ const fs = require('fs').promises;
 const Document = require('../models/Document');
 const AuditTrail = require('../models/AuditTrail');
 const documentProcessor = require('../services/documentProcessor');
+const documentQualityService = require('../services/documentQualityService');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { uploadDocument, handleUploadError } = require('../middleware/upload');
 const { documentValidation } = require('../middleware/validation');
@@ -120,6 +121,11 @@ router.get('/:id', authenticateToken, async (req, res) => {
                 category: document.category,
                 tags: document.tags ? JSON.parse(document.tags) : [],
                 embeddingStatus: document.embedding_status,
+                aiReviewStatus: document.ai_review_status,
+                aiReviewScore: document.ai_review_score,
+                aiReview: document.ai_review_json ? JSON.parse(document.ai_review_json) : null,
+                authorityRank: document.authority_rank,
+                authorityLabel: document.authority_label,
                 uploadedBy: document.uploaded_by_email,
                 uploadedByName: document.uploaded_by_name,
                 createdAt: document.created_at,
@@ -173,12 +179,19 @@ router.post('/upload', authenticateToken, requireAdmin, uploadDocument.single('f
             uploadedBy: req.user.id
         });
 
+        let review = null;
+        try {
+            review = await documentQualityService.reviewDocument(documentId);
+        } catch (reviewError) {
+            console.warn('[Documents] Upload review failed:', reviewError.message);
+        }
+
         await AuditTrail.log({
             userId: req.user.id,
             action: 'DOCUMENT_UPLOADED',
             entityType: 'document',
             entityId: documentId,
-            details: { title, category, fileName: file.originalname },
+            details: { title, category, fileName: file.originalname, reviewStatus: review?.status, reviewScore: review?.score },
             ipAddress: req.ip
         });
 
@@ -192,7 +205,8 @@ router.post('/upload', authenticateToken, requireAdmin, uploadDocument.single('f
                 fileName: file.originalname,
                 fileSize: file.size,
                 category: category || 'general'
-            }
+            },
+            review
         });
 
     } catch (error) {
@@ -200,6 +214,127 @@ router.post('/upload', authenticateToken, requireAdmin, uploadDocument.single('f
         res.status(500).json({
             success: false,
             error: 'Failed to upload document'
+        });
+    }
+});
+
+// Review all active documents for AI ingestion readiness (admin only)
+router.post('/review-all', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { documents } = await Document.getAll(1, 500, {});
+        const results = [];
+
+        for (const document of documents) {
+            try {
+                const review = await documentQualityService.reviewDocument(document.id);
+                results.push({ id: document.id, title: document.title, success: true, status: review.status, score: review.score });
+            } catch (error) {
+                results.push({ id: document.id, title: document.title, success: false, error: error.message });
+            }
+        }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENTS_AI_REVIEWED_BATCH',
+            details: {
+                total: results.length,
+                successful: results.filter(r => r.success).length,
+                failed: results.filter(r => !r.success).length
+            },
+            ipAddress: req.ip
+        });
+
+        res.json({
+            success: true,
+            message: `Reviewed ${results.length} documents`,
+            results
+        });
+    } catch (error) {
+        console.error('Batch review error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to review documents'
+        });
+    }
+});
+
+// Review document suitability for AI ingestion (admin only)
+router.post('/:id/review', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const document = await Document.findById(id);
+        if (!document) {
+            return res.status(404).json({
+                success: false,
+                error: 'Document not found'
+            });
+        }
+
+        const review = await documentQualityService.reviewDocument(id);
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_AI_REVIEWED',
+            entityType: 'document',
+            entityId: parseInt(id),
+            details: { status: review.status, score: review.score },
+            ipAddress: req.ip
+        });
+
+        res.json({
+            success: true,
+            message: 'Document review completed',
+            review
+        });
+    } catch (error) {
+        console.error('Review document error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to review document'
+        });
+    }
+});
+
+// Set admin authority ranking for retrieval (admin only)
+router.put('/:id/authority', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { rank, label } = req.body;
+
+        const document = await Document.findById(id);
+        if (!document) {
+            return res.status(404).json({
+                success: false,
+                error: 'Document not found'
+            });
+        }
+
+        const success = await documentQualityService.updateAuthority(id, { rank, label });
+        if (!success) {
+            return res.status(400).json({
+                success: false,
+                error: 'Could not update authority ranking'
+            });
+        }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_AUTHORITY_UPDATED',
+            entityType: 'document',
+            entityId: parseInt(id),
+            details: { rank, label },
+            ipAddress: req.ip
+        });
+
+        res.json({
+            success: true,
+            message: 'Authority ranking updated'
+        });
+    } catch (error) {
+        console.error('Update authority error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update authority ranking'
         });
     }
 });

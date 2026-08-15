@@ -90,6 +90,7 @@
 
     // ---------------------------------------------------------- Section nav
     const main = document.getElementById('adminMain');
+    let latestDocumentReviewHtml = '';
     const navButtons = document.querySelectorAll('.admin-nav button');
     const sections = {
         dashboard: renderDashboard,
@@ -397,15 +398,17 @@
     async function renderDocuments() {
         main.innerHTML = `
             <h2>Documents</h2>
-            <p class="lede">Upload BMU documents (PDF, Word, Excel, Markdown). Each upload is automatically extracted, chunked, and embedded.</p>
+            <p class="lede">Upload BMU documents for AI readiness review, then process approved documents for retrieval.</p>
             <div class="admin-actions">
                 <label class="dropzone" id="dropzone">
                     <i class="fa-solid fa-cloud-arrow-up"></i>
-                    <strong>Click or drop a file here to upload</strong>
+                    <strong>Click or drop a file here to upload and review</strong>
                     <small style="display:block; margin-top:4px;">PDF, DOCX, XLSX, TXT, MD up to 100MB</small>
                     <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md" />
                 </label>
+                <button class="btn btn-ghost" id="reviewAllDocsBtn" type="button"><i class="fa-solid fa-list-check"></i> Review all</button>
             </div>
+            <div id="docReviewResult">${latestDocumentReviewHtml}</div>
             <div id="docList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading documents…</div></div>
         `;
         document.getElementById('fileInput').addEventListener('change', async (e) => {
@@ -416,11 +419,29 @@
             fd.append('category', 'general');
             try {
                 toast('Uploading ' + file.name + '…');
-                await api('/api/documents/upload', { method: 'POST', body: fd, formData: true });
-                toast('Uploaded — processing in the background.');
+                const uploaded = await api('/api/documents/upload', { method: 'POST', body: fd, formData: true });
+                toast('Uploaded and reviewed.');
+                showDocumentReview(uploaded.review, file.name);
                 renderDocuments();
             } catch (err) {
                 toast(err.message || 'Upload failed', 'error');
+            }
+        });
+        document.getElementById('reviewAllDocsBtn').addEventListener('click', async () => {
+            if (!confirm('Review all active documents for AI readiness? Large PDFs may take a little while.')) return;
+            const btn = document.getElementById('reviewAllDocsBtn');
+            btn.disabled = true;
+            try {
+                toast('Reviewing documents…');
+                const r = await api('/api/documents/review-all', { method: 'POST' });
+                const failed = (r.results || []).filter(x => !x.success).length;
+                toast(failed ? `Review completed with ${failed} failure(s)` : 'All documents reviewed');
+                latestDocumentReviewHtml = `<div class="doc-review-panel"><div><span class="badge badge-success">batch review</span><strong>${escapeHtml(r.message || 'Review complete')}</strong><small>${escapeHtml((r.results || []).filter(x => x.success).length)} successful · ${escapeHtml(failed)} failed</small></div></div>`;
+                renderDocuments();
+            } catch (err) {
+                toast(err.message || 'Batch review failed', 'error');
+            } finally {
+                btn.disabled = false;
             }
         });
 
@@ -435,13 +456,17 @@
                 `<div><strong>${escapeHtml(d.title || d.fileName)}</strong>
                   <div style="color:var(--muted); font-size:.82rem;">${escapeHtml(d.fileType || '')} · ${escapeHtml(d.category || '')} · ${escapeHtml(formatBytes(d.fileSize))}</div></div>`,
                 statusBadge(d.embeddingStatus || d.embedding_status),
+                reviewBadge(d),
+                authorityCell(d),
                 escapeHtml(d.uploadedByName || d.uploadedBy || '—'),
                 escapeHtml(formatDate(d.createdAt || d.created_at)),
                 `<button class="btn btn-ghost" data-act="reprocess" data-id="${d.id}" title="Re-extract + re-embed"><i class="fa-solid fa-rotate"></i></button>
+                 <button class="btn btn-ghost" data-act="review"    data-id="${d.id}" title="Review AI readiness"><i class="fa-solid fa-clipboard-check"></i></button>
+                 <button class="btn btn-ghost" data-act="authority" data-id="${d.id}" data-rank="${escapeHtml(d.authorityRank || d.authority_rank || 50)}" data-label="${escapeHtml(d.authorityLabel || d.authority_label || 'Standard')}" title="Set source authority"><i class="fa-solid fa-ranking-star"></i></button>
                  <button class="btn btn-ghost" data-act="delete"    data-id="${d.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>`
             ]);
             document.getElementById('docList').innerHTML = table(
-                ['Title', 'Status', 'Uploaded by', 'Date', 'Actions'], rows
+                ['Title', 'Embedding', 'AI readiness', 'Authority', 'Uploaded by', 'Date', 'Actions'], rows
             );
             document.getElementById('docList').addEventListener('click', async (e) => {
                 const btn = e.target.closest('button[data-act]'); if (!btn) return;
@@ -453,11 +478,79 @@
                 } else if (btn.dataset.act === 'reprocess') {
                     try { await api('/api/documents/' + id + '/process', { method: 'POST' }); toast('Re-processing started'); renderDocuments(); }
                     catch (err) { toast(err.message, 'error'); }
+                } else if (btn.dataset.act === 'review') {
+                    try {
+                        const r = await api('/api/documents/' + id + '/review', { method: 'POST' });
+                        toast('Review completed');
+                        showDocumentReview(r.review, 'Document #' + id);
+                        renderDocuments();
+                    } catch (err) { toast(err.message, 'error'); }
+                } else if (btn.dataset.act === 'authority') {
+                    const current = btn.dataset.rank || '50';
+                    const rank = prompt('Authority rank from 0 to 100. Use higher values for official BMU/canonical sources.', current);
+                    if (rank === null) return;
+                    const label = prompt('Authority label', btn.dataset.label || 'Admin ranked');
+                    if (label === null) return;
+                    try {
+                        await api('/api/documents/' + id + '/authority', { method: 'PUT', body: { rank, label } });
+                        toast('Authority ranking updated');
+                        renderDocuments();
+                    } catch (err) { toast(err.message, 'error'); }
                 }
             });
         } catch (err) {
             document.getElementById('docList').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
         }
+    }
+    function showDocumentReview(review, title) {
+        const el = document.getElementById('docReviewResult');
+        if (!el || !review) return;
+        const warnings = (review.warnings || []).slice(0, 4).map(w => `<li>${escapeHtml(w)}</li>`).join('');
+        const recs = (review.recommendations || []).slice(0, 4).map(r => `<li>${escapeHtml(r)}</li>`).join('');
+        el.innerHTML = `
+            <div class="doc-review-panel">
+                <div>
+                    <span class="badge ${reviewStatusClass(review.status)}">${escapeHtml(review.status || 'reviewed')}</span>
+                    <strong>${escapeHtml(title || review.file?.title || 'Document review')}</strong>
+                    <small>${escapeHtml(Math.round(Number(review.score || 0)))} / 100 · ${escapeHtml(review.metrics?.estimatedChunks || 0)} estimated chunks · ${escapeHtml(review.metrics?.textChars || 0)} readable chars</small>
+                </div>
+                <div>
+                    <strong>Suggested authority</strong>
+                    <small>${escapeHtml(review.suggestedAuthorityLabel || 'Standard')} · ${escapeHtml(review.suggestedAuthorityRank || 50)}/100</small>
+                </div>
+                <div>
+                    <strong>Suggested category</strong>
+                    <small>${escapeHtml(review.suggestedCategory || 'general')}</small>
+                </div>
+                ${(warnings || recs) ? `<div class="doc-review-notes">${warnings ? `<ul>${warnings}</ul>` : ''}${recs ? `<ul>${recs}</ul>` : ''}</div>` : ''}
+            </div>
+        `;
+        latestDocumentReviewHtml = el.innerHTML;
+    }
+    function reviewBadge(d) {
+        const status = d.aiReviewStatus || d.ai_review_status || 'not_reviewed';
+        const score = d.aiReviewScore || d.ai_review_score;
+        const review = parseReviewJson(d.aiReview || d.ai_review_json);
+        const warnings = review?.warnings?.length ? ` · ${review.warnings.length} warning${review.warnings.length === 1 ? '' : 's'}` : '';
+        return `<span class="badge ${reviewStatusClass(status)}">${escapeHtml(status.replace(/_/g, ' '))}${score ? ` · ${Math.round(Number(score))}/100` : ''}${escapeHtml(warnings)}</span>`;
+    }
+    function authorityCell(d) {
+        const rank = d.authorityRank || d.authority_rank || 50;
+        const label = d.authorityLabel || d.authority_label || 'Standard';
+        return `<div><strong>${escapeHtml(rank)}/100</strong><div style="color:var(--muted); font-size:.82rem;">${escapeHtml(label)}</div></div>`;
+    }
+    function reviewStatusClass(status) {
+        const s = String(status || '').toLowerCase();
+        if (s === 'ready') return 'badge-success';
+        if (s === 'ready_with_warnings') return 'badge-warn';
+        if (s === 'needs_cleanup' || s === 'needs_splitting') return 'badge-warn';
+        if (s === 'reject' || s === 'failed') return 'badge-danger';
+        return 'badge-info';
+    }
+    function parseReviewJson(value) {
+        if (!value) return null;
+        if (typeof value === 'object') return value;
+        try { return JSON.parse(value); } catch (_) { return null; }
     }
     function statusBadge(s) {
         const k = String(s || '').toLowerCase();

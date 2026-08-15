@@ -1443,6 +1443,16 @@ app.listen(PORT, async () => {
         console.warn('[App] Cache warming initialization skipped:', err.message);
     }
 
+    // Ensure document review/ranking columns exist before admins upload or
+    // retrieval uses authority metadata.
+    try {
+        const documentQualityService = require('./services/documentQualityService');
+        await documentQualityService.ensureSchema();
+        console.log('[App] Document AI review schema ready');
+    } catch (err) {
+        console.warn('[App] Document AI review schema setup skipped:', err.message);
+    }
+
     // Sync FAISS vector index with database on startup
     // This prevents issues where documents are in DB but missing from search index
     try {

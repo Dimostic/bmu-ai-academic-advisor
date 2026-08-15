@@ -41,6 +41,10 @@ function getLangChainService() {
     return _langchainService;
 }
 
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
 class RetrievalService {
     constructor() {
         // Configuration
@@ -87,7 +91,17 @@ class RetrievalService {
             ccmasPattern: (process.env.ADVISOR_CCMAS_PATTERN || 'ccmas').toLowerCase(),
             ccmasBoost: parseFloat(process.env.ADVISOR_CCMAS_BOOST || '1.35'),
             alliedHealthPattern: (process.env.ADVISOR_ALLIED_HEALTH_PATTERN || 'allied health sciences').toLowerCase(),
-            alliedHealthBoost: parseFloat(process.env.ADVISOR_ALLIED_HEALTH_BOOST || '1.45')
+            alliedHealthBoost: parseFloat(process.env.ADVISOR_ALLIED_HEALTH_BOOST || '1.45'),
+
+            // Admin and evidence ranking. Admin authority is a human-curated
+            // source-quality signal; cross-source occurrence is a confidence
+            // signal when the current query retrieves relevant chunks from
+            // multiple independent documents.
+            enableAdminAuthorityRanking: process.env.ADVISOR_AUTHORITY_RANKING !== 'false',
+            authorityRankingStrength: parseFloat(process.env.ADVISOR_AUTHORITY_RANKING_STRENGTH || '0.24'),
+            enableCrossSourceOccurrenceRanking: process.env.ADVISOR_OCCURRENCE_RANKING !== 'false',
+            crossSourceOccurrenceMinSources: parseInt(process.env.ADVISOR_OCCURRENCE_MIN_SOURCES || '3', 10),
+            crossSourceOccurrenceMaxBoost: parseFloat(process.env.ADVISOR_OCCURRENCE_MAX_BOOST || '0.18')
         };
         
         // Multi-level caches
@@ -156,6 +170,12 @@ class RetrievalService {
             const sourceRanked = this.config.enableSourceRankingPolicy
                 ? this._applySourceRankingPolicy(policyBoosted, processedQuery)
                 : policyBoosted;
+            const authorityRanked = this.config.enableAdminAuthorityRanking
+                ? this._applyAdminAuthorityRanking(sourceRanked)
+                : sourceRanked;
+            const occurrenceRanked = this.config.enableCrossSourceOccurrenceRanking
+                ? this._applyCrossSourceOccurrenceRanking(authorityRanked)
+                : authorityRanked;
 
             // 5b. Re-apply primary-source boost after re-ranking. The
             // re-ranker rebuilds `score` from scratch (only ~40% of it comes
@@ -163,7 +183,7 @@ class RetrievalService {
             // handbook would lose its lead to other documents with strong
             // term coverage. We re-sort afterwards so the boosted order is
             // what feeds the context compressor.
-            const boosted = this._applyPrimarySourceBoost(sourceRanked, processedQuery)
+            const boosted = this._applyPrimarySourceBoost(occurrenceRanked, processedQuery)
                 .sort((a, b) => b.score - a.score);
 
             // 6. Select top results and compress context
@@ -178,6 +198,9 @@ class RetrievalService {
                     content: r.content,
                     documentId: r.documentId,
                     documentTitle: r.documentTitle,
+                    authorityRank: r.authorityRank,
+                    authorityLabel: r.authorityLabel,
+                    sourceOccurrenceDocs: r.sourceOccurrenceDocs,
                     score: r.score,
                     chunkIndex: r.chunkIndex
                 })),
@@ -440,6 +463,63 @@ class RetrievalService {
 
         console.log(`[RetrievalService] Source-ranking policy applied: ${policy} (${boosted.filter(r => r.sourcePolicyBoosted).length} candidates boosted)`);
         return boosted.sort((a, b) => (b.score || 0) - (a.score || 0));
+    }
+
+    _applyAdminAuthorityRanking(results) {
+        if (!Array.isArray(results) || !results.length) return results;
+
+        const strength = this.config.authorityRankingStrength;
+        if (!(strength > 0)) return results;
+
+        let boosted = 0;
+        for (const result of results) {
+            const rank = Number.isFinite(Number(result.authorityRank))
+                ? clamp(Number(result.authorityRank), 0, 100)
+                : 50;
+            const normalized = (rank - 50) / 50;
+            const factor = 1 + (normalized * strength);
+            result.authorityRank = rank;
+            result.authorityBoostFactor = factor;
+            result.score = Number(result.score || 0) * factor;
+            if (Math.abs(factor - 1) > 0.01) boosted++;
+        }
+
+        if (boosted > 0) {
+            console.log(`[RetrievalService] Admin authority ranking applied to ${boosted} chunk(s)`);
+        }
+        return results.sort((a, b) => (b.score || 0) - (a.score || 0));
+    }
+
+    _applyCrossSourceOccurrenceRanking(results) {
+        if (!Array.isArray(results) || !results.length) return results;
+
+        const minSources = Math.max(2, this.config.crossSourceOccurrenceMinSources || 3);
+        const distinctDocs = new Set(results.map(r => r.documentId).filter(Boolean));
+        if (distinctDocs.size < minSources) return results;
+
+        const docCounts = new Map();
+        for (const result of results) {
+            docCounts.set(result.documentId, (docCounts.get(result.documentId) || 0) + 1);
+        }
+
+        const globalBoost = Math.min(
+            this.config.crossSourceOccurrenceMaxBoost,
+            Math.max(0, distinctDocs.size - minSources + 1) * 0.045
+        );
+
+        if (!(globalBoost > 0)) return results;
+
+        for (const result of results) {
+            const docCount = docCounts.get(result.documentId) || 1;
+            const docBoost = Math.min(0.06, Math.max(0, docCount - 1) * 0.015);
+            result.sourceOccurrenceDocs = distinctDocs.size;
+            result.documentOccurrenceCount = docCount;
+            result.sourceOccurrenceBoostFactor = 1 + globalBoost + docBoost;
+            result.score = Number(result.score || 0) * result.sourceOccurrenceBoostFactor;
+        }
+
+        console.log(`[RetrievalService] Cross-source occurrence ranking applied across ${distinctDocs.size} document(s)`);
+        return results.sort((a, b) => (b.score || 0) - (a.score || 0));
     }
 
     /**
@@ -741,7 +821,9 @@ class RetrievalService {
                     dc.chunk_index as chunkIndex,
                     dc.content,
                     d.title as documentTitle,
-                    d.category as documentCategory
+                    d.category as documentCategory,
+                    d.authority_rank as authorityRank,
+                    d.authority_label as authorityLabel
                 FROM document_chunks dc
                 JOIN documents d ON dc.document_id = d.id
                 WHERE ${whereClause}
@@ -780,6 +862,8 @@ class RetrievalService {
                     content: row.content,
                     documentTitle: row.documentTitle,
                     documentCategory: row.documentCategory,
+                    authorityRank: row.authorityRank,
+                    authorityLabel: row.authorityLabel,
                     score: Math.min(score, 1.0)
                 };
             });
@@ -857,7 +941,9 @@ class RetrievalService {
                     dc.chunk_index as chunkIndex,
                     dc.content,
                     d.title as documentTitle,
-                    d.category as documentCategory
+                    d.category as documentCategory,
+                    d.authority_rank as authorityRank,
+                    d.authority_label as authorityLabel
                 FROM document_chunks dc
                 JOIN documents d ON dc.document_id = d.id
                 WHERE ${whereClause}
@@ -895,6 +981,8 @@ class RetrievalService {
                     content: row.content,
                     documentTitle: row.documentTitle,
                     documentCategory: row.documentCategory,
+                    authorityRank: row.authorityRank,
+                    authorityLabel: row.authorityLabel,
                     score: Math.max(score, 0.5)
                 };
             });
@@ -944,7 +1032,9 @@ class RetrievalService {
                     return {
                         ...hit,
                         documentTitle: docMeta?.title || 'Unknown Document',
-                        documentCategory: docMeta?.category || 'general'
+                        documentCategory: docMeta?.category || 'general',
+                        authorityRank: docMeta?.authority_rank ?? 50,
+                        authorityLabel: docMeta?.authority_label || 'Standard'
                     };
                 })
             );
@@ -1022,6 +1112,8 @@ class RetrievalService {
                     dc.content,
                     d.title as documentTitle,
                     d.category as documentCategory,
+                    d.authority_rank as authorityRank,
+                    d.authority_label as authorityLabel,
                     (${scoreExpr}) AS match_count
                 FROM document_chunks dc
                 JOIN documents d ON dc.document_id = d.id
@@ -1042,6 +1134,8 @@ class RetrievalService {
                     content: row.content,
                     documentTitle: row.documentTitle,
                     documentCategory: row.documentCategory,
+                    authorityRank: row.authorityRank,
+                    authorityLabel: row.authorityLabel,
                     score: Math.min(score, 1.0)
                 };
             }).filter(r => r.score > 0);
@@ -1242,7 +1336,7 @@ class RetrievalService {
         
         try {
             const rows = await query(
-                'SELECT id, title, category, file_type FROM documents WHERE id = ?',
+                'SELECT id, title, category, file_type, authority_rank, authority_label FROM documents WHERE id = ?',
                 [documentId]
             );
             
@@ -1269,7 +1363,10 @@ class RetrievalService {
                 sources.push({
                     documentId: result.documentId,
                     title: result.documentTitle,
-                    category: result.documentCategory
+                    category: result.documentCategory,
+                    authorityRank: result.authorityRank,
+                    authorityLabel: result.authorityLabel,
+                    sourceOccurrenceDocs: result.sourceOccurrenceDocs
                 });
             }
         }
