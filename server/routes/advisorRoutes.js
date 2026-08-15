@@ -17,7 +17,7 @@ const multer = require('multer');
 const router = express.Router();
 
 const { optionalAuth, authenticateToken } = require('../middleware/auth');
-const { enforceLimits, recordUsage, getUsage } = require('../middleware/usageLimits');
+const { enforceLimits, recordUsage, getUsage, enforceGuestDemoLimit, recordGuestDemoUsage } = require('../middleware/usageLimits');
 const { query } = require('../../config/db');
 const Advisor = require('../models/Advisor');
 const advisorService = require('../services/advisorService');
@@ -278,7 +278,7 @@ router.get('/sse-test', (req, res) => {
 // POST /api/advisor/ask
 // Body: { question, sessionToken?, voiceEnabled?, inputMode? }
 // ---------------------------------------------------------------------------
-router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
+router.post('/ask', optionalAuth, enforceLimits, enforceGuestDemoLimit, async (req, res) => {
     try {
         const { question, sessionToken, voiceEnabled = true, inputMode = 'text' } = req.body || {};
         if (!question || typeof question !== 'string' || !question.trim()) {
@@ -288,6 +288,7 @@ router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
         const normalizedQuestion = String(question).toLowerCase();
         if (/(governor|visitor\s+to\s+the\s+university|visitor\s+of\s+the\s+university|bayelsa\s+state)/i.test(normalizedQuestion)
             && /(who\s+is|name\s+of|current|serves\s+as|visitor)/i.test(normalizedQuestion)) {
+            const guestDemo = recordGuestDemoUsage(req);
             return res.json({
                 success: true,
                 reply: {
@@ -301,7 +302,8 @@ router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
                     confidence: 0.99
                 },
                 audio: { provider: 'none', audio_url: null, from_cache: false, use_browser_fallback: false },
-                meta: { latency_ms: 0, source: 'route_override', quality: null }
+                meta: { latency_ms: 0, source: 'route_override', quality: null },
+                guestDemo
             });
         }
 
@@ -328,6 +330,8 @@ router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
         // Increment quota counters AFTER a successful reply so failed calls
         // don't burn quota.
         await recordUsage(req);
+        const guestDemo = recordGuestDemoUsage(req);
+        if (guestDemo) result.guestDemo = guestDemo;
         res.json(result);
     } catch (err) {
         console.error('[advisorRoutes] ask:', err);
@@ -347,7 +351,7 @@ router.post('/ask', optionalAuth, enforceLimits, async (req, res) => {
 //   done          — final structured payload
 //   error         — fatal error (stream then ends)
 // ---------------------------------------------------------------------------
-router.post('/ask/stream', optionalAuth, enforceLimits, async (req, res) => {
+router.post('/ask/stream', optionalAuth, enforceLimits, enforceGuestDemoLimit, async (req, res) => {
     const { question, sessionToken, voiceEnabled = true, inputMode = 'text' } = req.body || {};
     if (!question || typeof question !== 'string' || !question.trim()) {
         return res.status(400).json({ success: false, error: 'question is required' });
@@ -402,6 +406,8 @@ router.post('/ask/stream', optionalAuth, enforceLimits, async (req, res) => {
         });
         // Quota credit for streamed conversations as well
         await recordUsage(req);
+        const guestDemo = recordGuestDemoUsage(req);
+        if (guestDemo) send('guest_demo_usage', guestDemo);
     } catch (err) {
         console.error('[advisorRoutes] ask/stream:', err);
         send('error', { error: err.message || 'Advisor stream failed' });

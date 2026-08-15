@@ -34,6 +34,70 @@
 .hero-cta .btn-primary:hover { background: #e8f4ee; }
 .hero-cta .btn-ghost { background: transparent; border-color: rgba(255,255,255,.4); color: #fff; }
 .hero-cta .btn-ghost:hover { background: rgba(255,255,255,.12); }
+.hero-cta .landing-demo-cta {
+    background: var(--accent-soft);
+    color: #063333;
+}
+.hero-cta .landing-demo-cta:hover {
+    background: #9af0cc;
+}
+
+.onboarding-open {
+    overflow: hidden;
+}
+.onboarding-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 22px;
+    background: rgba(4, 19, 20, .72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.onboarding-panel {
+    width: min(560px, 100%);
+    background: var(--bg-elev);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px;
+    box-shadow: 0 24px 80px rgba(0,0,0,.28);
+}
+.onboarding-kicker {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(26,130,112,.1);
+    color: var(--accent);
+    font-size: .78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.onboarding-panel h2 {
+    margin: 14px 0 8px;
+    color: var(--bg-deep);
+    font-size: clamp(1.5rem, 4vw, 2.1rem);
+}
+.onboarding-panel p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.65;
+}
+.onboarding-actions {
+    display: grid;
+    gap: 10px;
+    margin-top: 22px;
+}
+.onboarding-actions .btn {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    text-decoration: none;
+}
 .hero-illust {
     background: rgba(255,255,255,.08);
     border: 1px solid rgba(255,255,255,.18);
@@ -424,6 +488,11 @@ html[data-theme="dark"] .icon-btn:hover { background: rgba(255,255,255,.08); }
 html[data-theme="dark"] .hero-cta .btn-primary { background: var(--accent); color: #061215; }
 html[data-theme="dark"] .hero-cta .btn-primary:hover { background: var(--accent-soft); }
 html[data-theme="dark"] .hero-cta .btn-ghost { color: #fff; border-color: rgba(255,255,255,.4); }
+html[data-theme="dark"] .onboarding-panel h2 { color: var(--text); }
+html[data-theme="dark"] .onboarding-kicker {
+    background: rgba(47,191,158,.12);
+    color: var(--accent-soft);
+}
 
 /* Sections / cards / tiles on landing + admin */
 html[data-theme="dark"] .section,

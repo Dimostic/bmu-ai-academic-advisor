@@ -23,8 +23,11 @@
     // on (so the login page can come back here). Any ?q=... param survives
     // the round-trip via the login page.
     // -----------------------------------------------------------------------
+    const advisorViewParams = new URLSearchParams(location.search);
     const _existingToken = sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token');
-    if (!_existingToken) {
+    const _guestDemoRequested = advisorViewParams.get('demo') === '1';
+    const _isGuestDemo = !_existingToken && _guestDemoRequested;
+    if (!_existingToken && !_isGuestDemo) {
         const here = location.pathname + location.search;
         const params = new URLSearchParams();
         params.set('next', '/advisor');
@@ -80,7 +83,6 @@
     const adminLink         = $('adminLink');
     const advisorViewToggleBtn = $('advisorViewToggleBtn');
 
-    const advisorViewParams = new URLSearchParams(location.search);
     const advisorViewMode = advisorViewParams.get('view');
     const advisorFullView = advisorViewMode === 'normal' ? false : true;
 
@@ -111,7 +113,15 @@
         historyLoaded: false,
         loadingHistory: false,
         usageIntroShown: false,
-        usage: null
+        usage: null,
+        guestDemo: {
+            enabled: _isGuestDemo,
+            limit: 5,
+            storageKey: 'bmu_advisor_guest_demo_used',
+            idKey: 'bmu_advisor_guest_demo_id',
+            used: 0,
+            id: ''
+        }
     };
 
     if (state.sessionToken && !state.localSessionTokens.includes(state.sessionToken)) {
@@ -276,6 +286,88 @@
 
     function authHeaders() {
         return state.token ? { Authorization: `Bearer ${state.token}` } : {};
+    }
+
+    function guestDemoHeaders() {
+        return state.guestDemo.enabled
+            ? { 'X-Advisor-Guest-Demo-Id': getGuestDemoId() }
+            : {};
+    }
+
+    function getGuestDemoId() {
+        if (!state.guestDemo.enabled) return '';
+        if (state.guestDemo.id) return state.guestDemo.id;
+        let id = '';
+        try { id = localStorage.getItem(state.guestDemo.idKey) || ''; } catch (_) {}
+        if (!id) {
+            const rand = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            id = `guest-${rand}`;
+            try { localStorage.setItem(state.guestDemo.idKey, id); } catch (_) {}
+        }
+        state.guestDemo.id = id;
+        return id;
+    }
+
+    function loadGuestDemoUsage() {
+        if (!state.guestDemo.enabled) return;
+        try {
+            const used = parseInt(localStorage.getItem(state.guestDemo.storageKey) || '0', 10);
+            state.guestDemo.used = Math.max(0, Math.min(state.guestDemo.limit, Number.isFinite(used) ? used : 0));
+        } catch (_) {
+            state.guestDemo.used = 0;
+        }
+        getGuestDemoId();
+        updateGuestDemoUi();
+    }
+
+    function updateGuestDemoUi() {
+        if (!state.guestDemo.enabled) return;
+        const remaining = Math.max(0, state.guestDemo.limit - state.guestDemo.used);
+        const banner = $('guestDemoBanner');
+        const text = $('guestDemoQuotaText');
+        banner?.classList.remove('hidden');
+        if (text) {
+            text.textContent = remaining === 1
+                ? '1 question remaining'
+                : `${remaining} questions remaining`;
+        }
+        const locked = remaining <= 0;
+        if (questionInput) {
+            questionInput.disabled = locked;
+            questionInput.placeholder = locked
+                ? 'Guest demo limit reached. Create an account to continue.'
+                : 'Ask one of your five guest demo questions...';
+        }
+        if (sendBtn) sendBtn.disabled = locked;
+        if (micBtn) micBtn.disabled = locked || micBtn.classList.contains('mic-btn--disabled');
+        if (avatarMicBtn) avatarMicBtn.disabled = locked || avatarMicBtn.classList.contains('is-disabled');
+        document.body.classList.toggle('guest-demo-mode', true);
+        document.body.classList.toggle('guest-demo-locked', locked);
+    }
+
+    function incrementGuestDemoUsage(serverUsed) {
+        if (!state.guestDemo.enabled) return;
+        const next = Number.isFinite(Number(serverUsed))
+            ? Number(serverUsed)
+            : state.guestDemo.used + 1;
+        state.guestDemo.used = Math.max(0, Math.min(state.guestDemo.limit, next));
+        try { localStorage.setItem(state.guestDemo.storageKey, String(state.guestDemo.used)); } catch (_) {}
+        updateGuestDemoUi();
+    }
+
+    function showGuestDemoLimit() {
+        setAvatarState('idle', 'Demo limit reached');
+        showUsageOverlay({
+            title: 'Guest Demo Complete',
+            body: 'You have used all five guest demo questions. Create an account to keep asking Dr. Tari.',
+            hints: [
+                'Your free demo questions are complete in this browser.',
+                'Creating an account unlocks the full Academic Advisor experience.',
+                'You can return to the home page or register now.'
+            ]
+        });
     }
 
     function rememberSessionToken(token) {
@@ -684,7 +776,7 @@
     async function api(path, opts = {}) {
         const init = {
             method: opts.method || 'GET',
-            headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(opts.headers || {}) },
+            headers: { 'Content-Type': 'application/json', ...authHeaders(), ...guestDemoHeaders(), ...(opts.headers || {}) },
             body: opts.body ? JSON.stringify(opts.body) : undefined
         };
         const res = await fetch(path, init);
@@ -1446,6 +1538,11 @@
     async function askNow() {
         const q = questionInput.value.trim();
         if (!q) return;
+        if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) {
+            showGuestDemoLimit();
+            updateGuestDemoUi();
+            return;
+        }
         questionInput.value = '';
         sendBtn.disabled = true;
         followups.innerHTML = '';
@@ -1463,10 +1560,11 @@
         try {
             const res = await fetch('/api/advisor/ask/stream', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                headers: { 'Content-Type': 'application/json', ...authHeaders(), ...guestDemoHeaders() },
                 body: JSON.stringify({
                     question: q,
                     sessionToken: state.sessionToken,
+                    guestDemo: state.guestDemo.enabled,
                     voiceEnabled: true,
                     inputMode: 'text',
                     responseStyle: 'concise_conversational',
@@ -1499,9 +1597,12 @@
                             code === 'MONTHLY_LIMIT_REACHED'
                                 ? 'Your monthly prompt quota resets on the 1st day of next month.'
                                 : 'Your daily prompt quota resets after midnight.',
-                            'You can still browse conversation history while waiting for reset.'
+                            state.guestDemo.enabled ? 'Create an account to continue asking Dr. Tari.' : 'You can still browse conversation history while waiting for reset.'
                         ]
                     });
+                    if (state.guestDemo.enabled) {
+                        incrementGuestDemoUsage(used);
+                    }
                     return;
                 }
                 throw new Error(`HTTP ${res.status}`);
@@ -1559,6 +1660,8 @@
                         }
                     } else if (event === 'done') {
                         final = data;
+                    } else if (event === 'guest_demo_usage') {
+                        incrementGuestDemoUsage(data?.used);
                     } else if (event === 'error') {
                         throw new Error(data.error || 'stream error');
                     }
@@ -1583,8 +1686,14 @@
                     audio_url:         final.audio?.audio_url || audioUrl,
                     message_id:        final.messageId || final.message_id || null
                 });
-                renderFollowups(final.reply?.follow_up_questions);
-                if (final.reply?.needs_escalation) addEscalationHint();
+                renderFollowups(state.guestDemo.enabled ? [] : final.reply?.follow_up_questions);
+                if (!state.guestDemo.enabled && final.reply?.needs_escalation) addEscalationHint();
+                if (state.guestDemo.enabled) {
+                    incrementGuestDemoUsage(final.guestDemo?.used);
+                    if (state.guestDemo.used >= state.guestDemo.limit) {
+                        showGuestDemoLimit();
+                    }
+                }
 
                 // Pick a mood for the avatar based on the reply content.
                 // Heuristic-only (no extra tokens needed): escalation =>
@@ -1608,7 +1717,7 @@
             toast(err.message || 'Could not reach the advisor.', 'error');
             setAvatarState('idle', 'Ready');
         } finally {
-            sendBtn.disabled = false;
+            sendBtn.disabled = state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit;
             if (!audioStarted) setAvatarState('idle', 'Ready');
             if (state.token && state.historyLoaded) {
                 loadHistoryList(true).catch(() => {});
@@ -1864,7 +1973,7 @@
                 form.append('audio', blob, 'voice.webm');
                 form.append('language', 'en');
                 try {
-                    const res = await fetch('/api/advisor/stt', { method: 'POST', headers: authHeaders(), body: form });
+                    const res = await fetch('/api/advisor/stt', { method: 'POST', headers: { ...authHeaders(), ...guestDemoHeaders() }, body: form });
                     const data = await res.json();
                     if (data?.success && data.text) {
                         questionInput.value = data.text;
@@ -2372,6 +2481,8 @@
 
     // ---------- Boot ----------
     (async () => {
+        loadGuestDemoUsage();
+
         // Establish provider availability before wiring the mic, so Firefox
         // users (no Web Speech API) and any deployment without a Whisper
         // key get a disabled mic + a clear tooltip instead of a confusing
@@ -2387,6 +2498,7 @@
             serverSttAvailable = false;
         }
         updateMicAvailability();
+        updateGuestDemoUi();
         bindWakeWordGestureArmer();
         scheduleWakeWordListener(1100);
         loadTopics();
@@ -2404,13 +2516,28 @@
         // -------------------------------------------------------------------
         let user = null;
         try { user = JSON.parse(localStorage.getItem('bmu_user') || 'null'); } catch (_) {}
-        if (!user) {
+        if (!user && state.token) {
             // Fall back to /api/users/me if we somehow didn't cache the user.
             try { const me = await api('/api/users/me'); user = me?.user || null; }
             catch (_) { /* leave null */ }
         }
         const authSlot = document.getElementById('authSlot');
-        if (authSlot) {
+        if (authSlot && state.guestDemo.enabled) {
+            authSlot.innerHTML = `
+                <span class="quota-badge" id="guestDemoTopBadge"><i class="fa-solid fa-circle-play"></i> Guest demo</span>
+                <button id="themeToggleBtn" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+                <a href="/" class="btn btn-ghost"><i class="fa-solid fa-house"></i> Home</a>
+                <a href="/register" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Create account</a>
+            `;
+            historyToggle?.classList.add('hidden');
+            handbookBtn?.classList.add('hidden');
+            advisorViewToggleBtn?.classList.add('hidden');
+            document.querySelectorAll('.top-actions a[href="/academic-calendar"], .top-actions a[href="/handbook"]').forEach(el => {
+                el.classList.add('hidden');
+            });
+        } else if (authSlot) {
             const name = (user?.firstName || user?.first_name || user?.email || 'You').toString().split(' ')[0];
             // Hide quota for superadmin (they're unlimited and don't need to
             // see "0 / -1"); render a placeholder we'll fill from the API.
@@ -2427,20 +2554,14 @@
                     <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out
                 </button>
             `;
-            document.getElementById('logoutBtn').addEventListener('click', async () => {
+            document.getElementById('logoutBtn')?.addEventListener('click', async () => {
                 try { await api('/api/users/logout', { method: 'POST' }); } catch (_) {}
                 localStorage.removeItem('bmu_token');
                 localStorage.removeItem('bmu_user');
                 sessionStorage.removeItem('bmu_token');
                 location.replace('/');
             });
-
-
-        syncMobileLayoutVars();
-        setTimeout(syncMobileLayoutVars, 200);
             // Pull live quota and refresh the badge.
-
-    window.addEventListener('resize', syncMobileLayoutVars, { passive: true });
             if (showQuota) {
                 await refreshQuotaBadge();
                 maybeShowUsageIntro(user);
@@ -2449,6 +2570,10 @@
                 window.refreshAdvisorQuota = refreshQuotaBadge;
             }
         }
+
+        syncMobileLayoutVars();
+        setTimeout(syncMobileLayoutVars, 200);
+        window.addEventListener('resize', syncMobileLayoutVars, { passive: true });
 
         async function refreshQuotaBadge() {
             const badge = document.getElementById('quotaBadge');

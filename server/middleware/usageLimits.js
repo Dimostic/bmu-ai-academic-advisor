@@ -26,6 +26,15 @@
 
 const { query } = require('../../config/db');
 
+const GUEST_DEMO_LIMIT = parseInt(process.env.GUEST_DEMO_PROMPT_LIMIT, 10) || 5;
+const guestDemoUsage = new Map();
+
+function _guestDemoKey(req) {
+    const raw = String(req.get?.('x-advisor-guest-demo-id') || req.body?.guestDemoId || '').trim();
+    if (!raw) return '';
+    return raw.replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 120);
+}
+
 /**
  * Lazily reset the rolling-window counters before any check / write.
  *
@@ -124,6 +133,42 @@ async function enforceLimits(req, res, next) {
     }
 }
 
+function enforceGuestDemoLimit(req, res, next) {
+    const user = req.user;
+    if (user?.id) return next();
+    if (!req.body?.guestDemo) {
+        return res.status(401).json({
+            success: false,
+            code: 'AUTH_OR_GUEST_DEMO_REQUIRED',
+            error: 'Please sign in or start the guest demo to ask Dr. Tari.'
+        });
+    }
+
+    const key = _guestDemoKey(req);
+    if (!key) {
+        return res.status(400).json({
+            success: false,
+            code: 'GUEST_DEMO_ID_REQUIRED',
+            error: 'Guest demo session is required.'
+        });
+    }
+
+    const used = Number(guestDemoUsage.get(key) || 0);
+    if (used >= GUEST_DEMO_LIMIT) {
+        return res.status(429).json({
+            success: false,
+            code: 'GUEST_DEMO_LIMIT_REACHED',
+            error: `You've used all ${GUEST_DEMO_LIMIT} guest demo questions. Create an account to continue.`,
+            limit: GUEST_DEMO_LIMIT,
+            used,
+            window: 'guest_demo'
+        });
+    }
+
+    req._guestDemoUsage = { key, used, limit: GUEST_DEMO_LIMIT };
+    return next();
+}
+
 /**
  * Increment both daily and monthly counters for the user. Idempotent enough
  * for our purposes — call once per successful advisor reply.
@@ -143,6 +188,17 @@ async function recordUsage(req) {
     } catch (err) {
         console.error('[usageLimits.recordUsage] error:', err.message);
     }
+}
+
+function recordGuestDemoUsage(req) {
+    const user = req?.user;
+    if (user?.id || !req?.body?.guestDemo) return null;
+    const key = req?._guestDemoUsage?.key || _guestDemoKey(req);
+    if (!key) return null;
+
+    const used = Math.min(GUEST_DEMO_LIMIT, Number(guestDemoUsage.get(key) || 0) + 1);
+    guestDemoUsage.set(key, used);
+    return { used, limit: GUEST_DEMO_LIMIT, remaining: Math.max(0, GUEST_DEMO_LIMIT - used) };
 }
 
 /**
@@ -171,4 +227,4 @@ async function getUsage(req, res) {
     }
 }
 
-module.exports = { enforceLimits, recordUsage, getUsage };
+module.exports = { enforceLimits, recordUsage, getUsage, enforceGuestDemoLimit, recordGuestDemoUsage };

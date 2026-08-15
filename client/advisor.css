@@ -87,9 +87,48 @@ button, input, textarea, select { font: inherit; color: inherit; }
     gap: 20px; padding: 20px; max-width: 1240px; margin: 0 auto;
     width: 100%;
 }
+.guest-demo-banner {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid rgba(26,130,112,.28);
+    border-radius: var(--radius);
+    background: rgba(26,130,112,.1);
+    box-shadow: var(--shadow);
+}
+.guest-demo-banner > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.guest-demo-banner strong {
+    color: var(--bg-deep);
+}
+.guest-demo-banner span {
+    color: var(--muted);
+    font-weight: 600;
+}
+.guest-demo-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.guest-demo-locked .composer,
+.guest-demo-locked .avatar-stage-controls {
+    opacity: .72;
+}
 @media (max-width: 1024px) {
     .advisor-grid { grid-template-columns: 1fr; }
     .avatar-pane { order: -1; }
+    .guest-demo-banner {
+        align-items: flex-start;
+        flex-direction: column;
+    }
 }
 
 /* -------- Avatar pane -------- */
@@ -171,6 +210,13 @@ html[data-theme="dark"] .avatar-stage {
     background:
         radial-gradient(140% 90% at 50% 25%, rgba(47,191,158,.12), rgba(0,0,0,.55) 70%),
         linear-gradient(180deg, #0d1518 0%, #060c0e 100%);
+}
+html[data-theme="dark"] .guest-demo-banner {
+    background: rgba(47,191,158,.1);
+    border-color: rgba(47,191,158,.24);
+}
+html[data-theme="dark"] .guest-demo-banner strong {
+    color: var(--accent-soft);
 }
 .avatar-pane .avatar-stage .avatar-compact-toggle {
     background: rgba(255,255,255,.88);

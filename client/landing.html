@@ -14,8 +14,8 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="advisor.css" />
-    <link rel="stylesheet" href="pages.css" />
+    <link rel="stylesheet" href="advisor.css?v=20260815-guest-demo" />
+    <link rel="stylesheet" href="pages.css?v=20260815-guest-demo" />
 </head>
 <body>
     <header class="top-bar">
@@ -41,6 +41,7 @@
                 <h1>Meet <span class="accent">Dr. Tari</span> — your AI advisor for life at BMU.</h1>
                 <p>Programmes, courses, fees, exam schedules, hostel rules, scholarships — ask in plain English (or Nigerian English) and get an answer cited from the official BMU documents in seconds.</p>
                 <div class="hero-cta">
+                    <a href="/advisor?demo=1" class="btn btn-primary landing-demo-cta hidden" id="returningDemoBtn"><i class="fa-solid fa-circle-play"></i> Watch demo</a>
                     <a href="/register" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Create your account</a>
                     <a href="/login" class="btn btn-ghost"><i class="fa-solid fa-arrow-right-to-bracket"></i> I already have an account</a>
                 </div>
@@ -155,8 +156,23 @@
         </section>
     </main>
 
+    <div class="onboarding-overlay hidden" id="advisorOnboardingOverlay" role="dialog" aria-modal="true" aria-labelledby="advisorOnboardingTitle">
+        <div class="onboarding-panel">
+            <span class="onboarding-kicker">Welcome to Dr. Tari</span>
+            <h2 id="advisorOnboardingTitle">How would you like to begin?</h2>
+            <p>Try the full-page avatar demo with five guest questions, browse the home page, or create an account for the full advisor experience.</p>
+            <div class="onboarding-actions">
+                <a href="/advisor?demo=1" class="btn btn-primary" id="onboardingWatchDemoBtn"><i class="fa-solid fa-circle-play"></i> Watch demo</a>
+                <button type="button" class="btn btn-ghost" id="onboardingExploreBtn"><i class="fa-solid fa-compass"></i> Explore home page</button>
+                <a href="/register" class="btn btn-ghost" id="onboardingRegisterBtn"><i class="fa-solid fa-user-plus"></i> Create account</a>
+            </div>
+        </div>
+    </div>
+
     <script>
     (() => {
+        const ONBOARDING_KEY = 'bmu_advisor_onboarding_seen';
+
         // Backward compatibility for older emailed hash links.
         const h = String(window.location.hash || '');
         if (h.startsWith('#/reset')) {
@@ -176,6 +192,34 @@
             window.location.replace('/advisor');
             return;
         }
+
+        function markOnboardingSeen() {
+            try { localStorage.setItem(ONBOARDING_KEY, '1'); } catch (_) {}
+        }
+
+        const overlay = document.getElementById('advisorOnboardingOverlay');
+        const returningDemoBtn = document.getElementById('returningDemoBtn');
+        const hasSeenOnboarding = (() => {
+            try { return localStorage.getItem(ONBOARDING_KEY) === '1'; }
+            catch (_) { return false; }
+        })();
+
+        if (!hasSeenOnboarding && overlay) {
+            overlay.classList.remove('hidden');
+            document.body.classList.add('onboarding-open');
+        } else if (returningDemoBtn) {
+            returningDemoBtn.classList.remove('hidden');
+        }
+
+        document.getElementById('onboardingExploreBtn')?.addEventListener('click', () => {
+            markOnboardingSeen();
+            overlay?.classList.add('hidden');
+            document.body.classList.remove('onboarding-open');
+            returningDemoBtn?.classList.remove('hidden');
+        });
+        document.getElementById('onboardingWatchDemoBtn')?.addEventListener('click', markOnboardingSeen);
+        document.getElementById('onboardingRegisterBtn')?.addEventListener('click', markOnboardingSeen);
+        returningDemoBtn?.addEventListener('click', markOnboardingSeen);
 
         // Load top FAQs publicly (no auth required) and also surface document count.
         async function bootstrap() {

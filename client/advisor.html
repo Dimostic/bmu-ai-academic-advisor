@@ -14,8 +14,8 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260814-15" />
-    <link rel="stylesheet" href="/pages.css?v=20260814-15" />
+    <link rel="stylesheet" href="/advisor.css?v=20260815-guest-demo" />
+    <link rel="stylesheet" href="/pages.css?v=20260815-guest-demo" />
 </head>
 <body>
     <header class="top-bar">
@@ -55,6 +55,17 @@
     </header>
 
     <main class="advisor-grid">
+        <section class="guest-demo-banner hidden" id="guestDemoBanner" aria-live="polite">
+            <div>
+                <strong><i class="fa-solid fa-circle-play"></i> Guest demo</strong>
+                <span id="guestDemoQuotaText">5 questions remaining</span>
+            </div>
+            <div class="guest-demo-actions">
+                <a href="/" class="btn btn-ghost">Home</a>
+                <a href="/register" class="btn btn-primary">Create account</a>
+            </div>
+        </section>
+
         <!-- Avatar pane -->
         <section class="avatar-pane" aria-label="Academic advisor">
             <div class="avatar-stage-controls" aria-label="Speech controls">
@@ -208,8 +219,8 @@
 
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
-    <script src="/avatars-svg.js?v=20260814-15" defer></script>
-    <script src="/advisor.js?v=20260814-15" defer></script>
-    <script src="/footer.js?v=20260814-15" defer></script>
+    <script src="/avatars-svg.js?v=20260815-guest-demo" defer></script>
+    <script src="/advisor.js?v=20260815-guest-demo" defer></script>
+    <script src="/footer.js?v=20260815-guest-demo" defer></script>
 </body>
 </html>
