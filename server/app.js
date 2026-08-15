@@ -948,10 +948,7 @@ app.get('/bmulogo.png', (req, res) => {
 //   /advisor   -> the talking advisor (login required client-side)
 //   /admin     -> advisor-styled admin portal (admin role required client-side)
 //   /legacy    -> the inherited assistant SPA (kept for backwards compat)
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/index.html'));
-});
-app.get('/landing', (req, res) => {
+app.get(['/', '/landing'], (req, res) => {
     res.sendFile(path.join(__dirname, '../client/landing.html'));
 });
 app.get('/login', (req, res) => {
