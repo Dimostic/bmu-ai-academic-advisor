@@ -166,7 +166,7 @@ function splitByHeadings(markdown, title, targetChars = DEFAULT_TARGET_CHARS) {
             let partLen = 0;
             let partNo = 1;
             for (const paragraph of paragraphs) {
-                if (partLen && partLen + paragraph.length > targetChars) {
+                if (partLen >= 800 && partLen + paragraph.length > targetChars) {
                     chunks.push({ title: `${section.title} - Part ${partNo++}`, content: part.join('\n\n').trim() });
                     part = [];
                     partLen = 0;
@@ -182,7 +182,54 @@ function splitByHeadings(markdown, title, targetChars = DEFAULT_TARGET_CHARS) {
     }
 
     if (buffer.length) chunks.push({ title: bufferTitle, content: buffer.join('\n\n').trim() });
-    return chunks.length ? chunks : [{ title: cleanTitle(title), content: text }];
+    const merged = mergeThinSplitChunks(chunks, title);
+    return merged.length ? merged : [{ title: cleanTitle(title), content: text }];
+}
+
+function isThinSplitChunk(chunk) {
+    const content = String(chunk?.content || '').trim();
+    if (content.length < 350) return true;
+    const withoutHeadings = content
+        .split(/\r?\n/)
+        .filter(line => !/^#{1,6}\s+/.test(line.trim()))
+        .join('\n')
+        .trim();
+    return withoutHeadings.length < 180;
+}
+
+function mergeThinSplitChunks(chunks, fallbackTitle) {
+    const source = (chunks || [])
+        .filter(chunk => String(chunk?.content || '').trim())
+        .map(chunk => ({
+            title: cleanTitle(chunk.title || fallbackTitle),
+            content: String(chunk.content || '').trim()
+        }));
+    if (source.length <= 1) return source;
+
+    const merged = [];
+    for (const chunk of source) {
+        if (isThinSplitChunk(chunk)) {
+            const next = source[source.indexOf(chunk) + 1];
+            if (next) {
+                next.content = `${chunk.content}\n\n${next.content}`.trim();
+                if (!next.title || next.title === cleanTitle(fallbackTitle)) {
+                    next.title = chunk.title;
+                }
+                continue;
+            }
+            if (merged.length) {
+                const previous = merged[merged.length - 1];
+                previous.content = `${previous.content}\n\n${chunk.content}`.trim();
+                continue;
+            }
+        }
+        merged.push(chunk);
+    }
+
+    return merged.map((chunk, index) => ({
+        title: chunk.title || `${cleanTitle(fallbackTitle)} - Part ${index + 1}`,
+        content: chunk.content
+    }));
 }
 
 class DocumentLabService {
