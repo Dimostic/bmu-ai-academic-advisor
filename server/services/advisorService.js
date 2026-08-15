@@ -44,7 +44,7 @@ const BMU_PRINCIPAL_OFFICERS = [
     { position: 'Deputy Vice-Chancellor Administration', name: 'Prof. Ebi Aloysius Lihah', note: '' },
     { position: 'Deputy Vice-Chancellor Academic', name: 'Prof. Godwill Ziriki', note: 'in charge of Sampou campus' },
     { position: 'Registrar', name: 'Dr. (Mrs) Felicia Akusu', note: '' },
-    { position: 'Bursar', name: 'Mr. Ebiapiado Ombu', note: '' },
+    { position: 'Bursar', name: 'Dr Ebipiado Ombu', note: '' },
     { position: 'University Librarian', name: 'Dr. Abraham Etebu', note: '' }
 ];
 const BMU_VISITOR = {
@@ -55,8 +55,23 @@ const BMU_VISITOR = {
 
 function _isPrincipalOfficersQuestion(question) {
     const q = String(question || '').toLowerCase();
-    return /(principal\s+officers?|current\s+(?:name|names)\s+and\s+their\s+positions?|their\s+positions|who\s+are\s+the\s+principal\s+officers)/i.test(q)
-        || (/(who\s+is|name\s+of|current)/i.test(q) && /(vice[-\s]?chancellor|\bvc\b|registrar|bursar|deputy\s+vice[-\s]?chancellor|librarian|university\s+librarian)/i.test(q));
+    return /(principal\s+officers?|current\s+(?:name|names)\s+and\s+their\s+positions?|their\s+positions|who\s+are\s+the\s+principal\s+officers)/i.test(q);
+}
+
+function _detectPrincipalOfficerRole(question) {
+    const q = String(question || '').toLowerCase();
+    const isIdentityQuestion = /(who\s+is|name\s+of|current|tell\s+me\s+about|which\s+person|who\s+serves\s+as)/i.test(q);
+    if (!isIdentityQuestion) return null;
+    if (/deputy\s+vice[-\s]?chancellor|(^|\W)dvc(\W|$)/i.test(q)) {
+        if (/academic|sampou/i.test(q)) return 'Deputy Vice-Chancellor Academic';
+        if (/admin|administration/i.test(q)) return 'Deputy Vice-Chancellor Administration';
+        return null;
+    }
+    if (/vice[-\s]?chancellor|(^|\W)vc(\W|$)/i.test(q)) return 'Vice-Chancellor';
+    if (/registrar/i.test(q)) return 'Registrar';
+    if (/bursar/i.test(q)) return 'Bursar';
+    if (/university\s+librarian|\blibrarian\b/i.test(q)) return 'University Librarian';
+    return null;
 }
 
 function _isGovernorVisitorQuestion(question) {
@@ -89,6 +104,22 @@ function _buildPrincipalOfficersReply() {
     };
 }
 
+function _buildPrincipalOfficerReply(position) {
+    const officer = BMU_PRINCIPAL_OFFICERS.find(item => item.position === position);
+    if (!officer) return null;
+    const note = officer.note ? ` ${officer.note}.` : '';
+    return {
+        speech_text: `The ${officer.position} of Bayelsa Medical University is ${officer.name}.${note}`,
+        display_markdown: `The **${officer.position}** of Bayelsa Medical University is **${officer.name}**.${note}`,
+        topic_slug: 'bmu_principal_officer',
+        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99
+    };
+}
+
 function _buildGovernorVisitorReply() {
     return {
         speech_text: `The Governor of Bayelsa State is ${BMU_VISITOR.name}, and he serves as the Visitor to Bayelsa Medical University (BMU).`,
@@ -100,6 +131,40 @@ function _buildGovernorVisitorReply() {
         needs_escalation: false,
         confidence: 0.99
     };
+}
+
+function _buildCommonStaticReply(question) {
+    const q = String(question || '').trim().toLowerCase();
+    if (!q) return null;
+
+    if (/(tell\s+me\s+about\s+bmu|what\s+is\s+bmu|about\s+bayelsa\s+medical\s+university|about\s+bmu)/i.test(q)) {
+        return {
+            speech_text: 'Bayelsa Medical University, BMU, is a Bayelsa State medical university in Yenagoa focused on training health professionals through medicine, nursing, medical laboratory science, public health and related health-science programmes.',
+            display_markdown: 'Bayelsa Medical University (BMU) is a Bayelsa State medical university in Yenagoa focused on training health professionals through medicine, nursing, medical laboratory science, public health, and related health-science programmes.\n\nYou can ask me next about BMU programmes, fees, admission requirements, hostels, exams, or student rules.',
+            topic_slug: 'about_bmu',
+            citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.95
+        };
+    }
+
+    if (/(courses?\s+offered|programmes?\s+offered|programs?\s+offered|list\s+(?:the\s+)?(?:courses?|programmes?|programs?)|how\s+many\s+(?:courses?|programmes?|programs?))/i.test(q)
+        && /\bbmu\b|bayelsa\s+medical\s+university/i.test(q)) {
+        return {
+            speech_text: 'BMU offers health-science programmes including Medicine and Surgery, Nursing Science, Medical Laboratory Science, Public Health, Anatomy, Physiology and Biochemistry. For exact course units, ask by programme and level.',
+            display_markdown: 'BMU offers health-science programmes including **Medicine and Surgery, Nursing Science, Medical Laboratory Science, Public Health, Anatomy, Physiology, and Biochemistry**, with related course units varying by programme and level.\n\nFor exact course-unit lists, ask something specific like: **What courses are offered in Medicine and Surgery at 100 level?**',
+            topic_slug: 'programmes',
+            citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.92
+        };
+    }
+
+    return null;
 }
 
 async function _getProfileDocumentContent() {
@@ -884,6 +949,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     }
     const trimmed = question.trim().slice(0, 4000);
     const isOfficeHolderIdentity = _isOfficeHolderIdentityQuestion(trimmed);
+    const requestedPrincipalOfficerRole = _detectPrincipalOfficerRole(trimmed);
     const isPrincipalOfficersQuestion = _isPrincipalOfficersQuestion(trimmed);
     const isGovernorVisitorQuestion = _isGovernorVisitorQuestion(trimmed);
 
@@ -901,6 +967,22 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         inputMode,
         text: trimmed
     });
+
+    const commonStaticReply = !isOfficeHolderIdentity && !requestedPrincipalOfficerRole && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion
+        ? _buildCommonStaticReply(trimmed)
+        : null;
+    if (commonStaticReply) {
+        return await _persistAndPackage({
+            conversation,
+            parsed: commonStaticReply,
+            llmUsage: null,
+            voiceEnabled,
+            startedAt,
+            advisorGender,
+            questionText: trimmed,
+            ragContext: ''
+        });
+    }
 
     // 2b. FAQ-cache short-circuit. If we already have a curated/auto-
     // generated answer for a semantically equivalent question, serve it
@@ -947,8 +1029,10 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         }
     }
 
-    if (isPrincipalOfficersQuestion) {
-        const parsed = _buildPrincipalOfficersReply();
+    if (requestedPrincipalOfficerRole || isPrincipalOfficersQuestion) {
+        const parsed = requestedPrincipalOfficerRole
+            ? _buildPrincipalOfficerReply(requestedPrincipalOfficerRole)
+            : _buildPrincipalOfficersReply();
         return await _persistAndPackage({
             conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
             questionText: trimmed,

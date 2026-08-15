@@ -72,6 +72,10 @@
     const usageOverlayTitle = $('usageOverlayTitle');
     const usageOverlayBody  = $('usageOverlayBody');
     const usageOverlayHints = $('usageOverlayHints');
+    const guestDemoMini = $('guestDemoMini');
+    const guestDemoMiniCount = $('guestDemoMiniCount');
+    const guestDemoMiniFill = $('guestDemoMiniFill');
+    const guestDemoSuggestions = $('guestDemoSuggestions');
 
     // Handbook (FAQ) browser
     const handbookBtn       = $('handbookBtn');
@@ -85,6 +89,7 @@
 
     const advisorViewMode = advisorViewParams.get('view');
     const advisorFullView = advisorViewMode === 'normal' ? false : true;
+    const GUEST_DEMO_CLOSING_TEXT = 'You have exhausted your five guest questions. Please register or sign in to continue asking Dr. Tari.';
 
     // ---------- State ----------
     const state = {
@@ -329,11 +334,18 @@
         const text = $('guestDemoQuotaText');
         banner?.classList.remove('hidden');
         if (text) {
-            text.textContent = remaining === 1
-                ? '1 question remaining'
-                : `${remaining} questions remaining`;
+            text.textContent = `${state.guestDemo.used}/${state.guestDemo.limit} used · ${remaining} left`;
+        }
+        guestDemoMini?.classList.remove('hidden');
+        if (guestDemoMiniCount) {
+            guestDemoMiniCount.textContent = `${state.guestDemo.used}/${state.guestDemo.limit}`;
+        }
+        if (guestDemoMiniFill) {
+            const pct = state.guestDemo.limit ? (state.guestDemo.used / state.guestDemo.limit) * 100 : 0;
+            guestDemoMiniFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
         }
         const locked = remaining <= 0;
+        guestDemoSuggestions?.classList.toggle('hidden', locked);
         if (questionInput) {
             questionInput.disabled = locked;
             questionInput.placeholder = locked
@@ -357,20 +369,50 @@
         updateGuestDemoUi();
     }
 
+    function bindGuestDemoSuggestions() {
+        if (!guestDemoSuggestions) return;
+        guestDemoSuggestions.querySelectorAll('[data-demo-question]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (state.guestDemo.used >= state.guestDemo.limit) {
+                    showGuestDemoLimit();
+                    return;
+                }
+                questionInput.value = btn.dataset.demoQuestion || btn.textContent || '';
+                questionInput.focus();
+                askNow();
+            });
+        });
+    }
+
     function scheduleGuestDemoReturnHome(afterSpeechPromise = null) {
         if (!state.guestDemo.enabled || state.guestDemo.returningHome) return;
         state.guestDemo.returningHome = true;
         const finish = afterSpeechPromise && typeof afterSpeechPromise.finally === 'function'
             ? afterSpeechPromise.catch(() => 0)
             : Promise.resolve(0);
-        finish.finally(() => {
+        finish.finally(async () => {
+            const bubble = addAdvisorBubble();
+            if (bubble.caret) bubble.caret.remove();
+            bubble.body.textContent = GUEST_DEMO_CLOSING_TEXT;
+            setActiveResponseBubble(bubble.el);
+            setAvatarState('talking', 'Wrapping up');
+            try {
+                await speakWithBrowser(GUEST_DEMO_CLOSING_TEXT, bubble.el);
+            } catch (_) {
+                setAvatarState('idle', 'Demo complete');
+            }
             setTimeout(() => {
                 location.replace('/');
-            }, 2600);
+            }, 2200);
         });
     }
 
     function showGuestDemoLimit({ autoReturn = false, afterSpeech = null } = {}) {
+        if (autoReturn) {
+            setAvatarState('thinking', 'Wrapping up');
+            scheduleGuestDemoReturnHome(afterSpeech);
+            return;
+        }
         setAvatarState('idle', 'Demo limit reached');
         showUsageOverlay({
             title: 'Guest Demo Complete',
@@ -883,6 +925,24 @@
             cite:    el.querySelector('.cite'),
             playBtn: el.querySelector('.play-btn')
         };
+    }
+
+    function setAdvisorBubbleThinking(bubble, active, label = 'Dr. Tari is thinking') {
+        if (!bubble?.body) return;
+        if (!active) {
+            if (bubble.body.dataset.thinking === '1') {
+                bubble.body.textContent = '';
+                delete bubble.body.dataset.thinking;
+            }
+            return;
+        }
+        bubble.body.dataset.thinking = '1';
+        bubble.body.innerHTML = `
+            <span class="thinking-card" role="status" aria-live="polite">
+                <span class="thinking-orb" aria-hidden="true"></span>
+                <span class="thinking-text">${escapeHtml(label)}</span>
+                <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            </span>`;
     }
 
     function addAdvisorHistoryBubble(text) {
@@ -1567,6 +1627,7 @@
         setExpression('thinking');
 
         const bubble = addAdvisorBubble();
+        setAdvisorBubbleThinking(bubble, true);
         setActiveResponseBubble(bubble.el);
         let speechText = '';
         let audioUrl = null;
@@ -1661,7 +1722,11 @@
                         speechText = data.speech_text || '';
                         // Avatar status hint: voice is being prepared.
                         setAvatarState('thinking', 'Generating voice');
+                        if (bubble.body?.dataset.thinking === '1') {
+                            setAdvisorBubbleThinking(bubble, true, 'Preparing the answer');
+                        }
                     } else if (event === 'token') {
+                        setAdvisorBubbleThinking(bubble, false);
                         bubble.body.textContent += (data.text || '');
                         scrollToBottom();
                     } else if (event === 'audio') {
@@ -1732,6 +1797,7 @@
         } catch (err) {
             console.error('[advisor] stream error:', err);
             bubble.caret.remove();
+            setAdvisorBubbleThinking(bubble, false);
             if (!bubble.body.textContent) {
                 bubble.body.textContent = "I couldn't reach the advisor service. Please try again in a moment.";
             }
@@ -2503,6 +2569,7 @@
     // ---------- Boot ----------
     (async () => {
         loadGuestDemoUsage();
+        bindGuestDemoSuggestions();
 
         // Establish provider availability before wiring the mic, so Firefox
         // users (no Web Speech API) and any deployment without a Whisper
