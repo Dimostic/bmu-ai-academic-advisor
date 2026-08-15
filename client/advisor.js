@@ -90,6 +90,7 @@
     const advisorViewMode = advisorViewParams.get('view');
     const advisorFullView = advisorViewMode === 'normal' ? false : true;
     const GUEST_DEMO_CLOSING_TEXT = 'You have exhausted your five guest questions. Please register or sign in to continue asking Dr. Tari.';
+    const THINKING_MIN_VISIBLE_MS = 850;
 
     // ---------- State ----------
     const state = {
@@ -526,6 +527,7 @@
         advisorStatus.querySelector('.label').textContent = label || stateName;
         const speaking = stateName === 'speaking' || stateName === 'talking';
         document.body.classList.toggle('is-speaking', speaking);
+        document.body.classList.toggle('is-thinking', stateName === 'thinking');
 
         if (state.speakingFocusTimer) {
             clearInterval(state.speakingFocusTimer);
@@ -943,6 +945,17 @@
                 <span class="thinking-text">${escapeHtml(label)}</span>
                 <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
             </span>`;
+    }
+
+    function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, Math.max(0, ms || 0)));
+    }
+
+    async function holdThinkingMoment(startedAt) {
+        const elapsed = Date.now() - Number(startedAt || Date.now());
+        if (elapsed < THINKING_MIN_VISIBLE_MS) {
+            await delay(THINKING_MIN_VISIBLE_MS - elapsed);
+        }
     }
 
     function addAdvisorHistoryBubble(text) {
@@ -1629,6 +1642,7 @@
         const bubble = addAdvisorBubble();
         setAdvisorBubbleThinking(bubble, true);
         setActiveResponseBubble(bubble.el);
+        const thinkingStartedAt = Date.now();
         let speechText = '';
         let audioUrl = null;
         let audioStarted = false;
@@ -1726,7 +1740,10 @@
                             setAdvisorBubbleThinking(bubble, true, 'Preparing the answer');
                         }
                     } else if (event === 'token') {
-                        setAdvisorBubbleThinking(bubble, false);
+                        if (bubble.body?.dataset.thinking === '1') {
+                            await holdThinkingMoment(thinkingStartedAt);
+                            setAdvisorBubbleThinking(bubble, false);
+                        }
                         bubble.body.textContent += (data.text || '');
                         scrollToBottom();
                     } else if (event === 'audio') {
@@ -1755,6 +1772,10 @@
             bubble.caret.remove();
 
             if (final) {
+                if (bubble.body?.dataset.thinking === '1') {
+                    await holdThinkingMoment(thinkingStartedAt);
+                    setAdvisorBubbleThinking(bubble, false);
+                }
                 // Replace the streamed-in raw text with the server-cleaned
                 // display_markdown — that version has had vocatives and
                 // residual markdown symbols (** ## etc.) stripped, so the
