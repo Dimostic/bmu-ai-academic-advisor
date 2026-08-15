@@ -217,32 +217,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
     display: flex; align-items: center; justify-content: center;
     border: 1px solid rgba(255,255,255,.06);
 }
-body.is-thinking .avatar-stage::after {
-    content: "Dr. Tari is thinking";
-    position: absolute;
-    left: 50%;
-    bottom: 14px;
-    transform: translateX(-50%);
-    z-index: 5;
-    display: inline-flex;
-    align-items: center;
-    min-width: max-content;
-    padding: 8px 13px 8px 30px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,.28);
-    background:
-        radial-gradient(circle at 17px 50%, #ffd66e 0 4px, transparent 5px),
-        rgba(9, 31, 34, .84);
-    color: #ffffff;
-    box-shadow: 0 14px 36px rgba(0,0,0,.22);
-    font-size: .82rem;
-    font-weight: 800;
-    animation: avatar-thinking-badge 1.3s ease-in-out infinite;
-}
-@keyframes avatar-thinking-badge {
-    0%, 100% { opacity: .88; transform: translateX(-50%) translateY(0); }
-    50% { opacity: 1; transform: translateX(-50%) translateY(-2px); }
-}
 .avatar-stage-controls {
     position: static;
     z-index: 2;
@@ -1181,6 +1155,30 @@ body.advisor-full-view .avatar-meta {
 
 body.advisor-full-view .avatar-meta > .avatar-status {
     display: none;
+}
+
+body.advisor-full-view.is-thinking .avatar-meta::before {
+    content: "Dr. Tari is thinking";
+    display: inline-flex;
+    align-items: center;
+    min-width: max-content;
+    margin: 0 auto 6px;
+    padding: 6px 10px 6px 26px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,214,110,.55);
+    background:
+        radial-gradient(circle at 14px 50%, #ffd66e 0 4px, transparent 5px),
+        rgba(11,37,40,.92);
+    color: #ffffff;
+    box-shadow: 0 10px 24px rgba(0,0,0,.16);
+    font-size: .78rem;
+    font-weight: 800;
+    animation: avatar-thinking-label 1.25s ease-in-out infinite;
+}
+
+@keyframes avatar-thinking-label {
+    0%, 100% { opacity: .9; transform: translateY(0); }
+    50% { opacity: 1; transform: translateY(-1px); }
 }
 
 body.advisor-full-view .avatar-meta strong {
