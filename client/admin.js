@@ -409,6 +409,7 @@
                     <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md" />
                 </label>
                 <button class="btn btn-ghost" id="reviewAllDocsBtn" type="button"><i class="fa-solid fa-list-check"></i> Review all</button>
+                <button class="btn btn-ghost" id="sendFlaggedToLabBtn" type="button"><i class="fa-solid fa-flask-vial"></i> Send flagged to Lab</button>
             </div>
             <div id="docReviewResult">${latestDocumentReviewHtml}</div>
             <div id="docList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading documents…</div></div>
@@ -442,6 +443,21 @@
                 renderDocuments();
             } catch (err) {
                 toast(err.message || 'Batch review failed', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+        document.getElementById('sendFlaggedToLabBtn').addEventListener('click', async () => {
+            if (!confirm('Send documents with failed/low AI readiness into Document Lab? Already-imported documents will be skipped.')) return;
+            const btn = document.getElementById('sendFlaggedToLabBtn');
+            btn.disabled = true;
+            try {
+                toast('Importing flagged documents to Lab…');
+                const r = await api('/api/document-lab/import-flagged', { method: 'POST', body: { limit: 50 } });
+                toast(r.failed ? `Imported ${r.imported}; ${r.failed} failed` : `Imported ${r.imported} flagged document(s)`);
+                renderDocumentLab();
+            } catch (err) {
+                toast(err.message || 'Could not import flagged documents', 'error');
             } finally {
                 btn.disabled = false;
             }
@@ -637,6 +653,7 @@
                     <small style="display:block; margin-top:4px;">PDF, Office, text, Markdown, or image files</small>
                     <input type="file" id="labFileInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md,.rtf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp" />
                 </label>
+                <button class="btn btn-ghost" id="labImportFlaggedBtn" type="button"><i class="fa-solid fa-arrow-right-to-bracket"></i> Import flagged documents</button>
                 <button class="btn btn-ghost" id="labRefreshBtn" type="button"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
             </div>
             <div id="labQueue"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading lab queue…</div></div>
@@ -655,6 +672,21 @@
                 renderDocumentLab(r.job?.id);
             } catch (err) {
                 toast(err.message || 'Lab upload failed', 'error');
+            }
+        });
+        document.getElementById('labImportFlaggedBtn').addEventListener('click', async () => {
+            if (!confirm('Import existing Documents with failed/low AI readiness into this lab queue?')) return;
+            const btn = document.getElementById('labImportFlaggedBtn');
+            btn.disabled = true;
+            try {
+                toast('Importing flagged documents…');
+                const r = await api('/api/document-lab/import-flagged', { method: 'POST', body: { limit: 50 } });
+                toast(r.failed ? `Imported ${r.imported}; ${r.failed} failed` : `Imported ${r.imported} flagged document(s)`);
+                renderDocumentLab();
+            } catch (err) {
+                toast(err.message || 'Could not import flagged documents', 'error');
+            } finally {
+                btn.disabled = false;
             }
         });
         document.getElementById('labRefreshBtn').addEventListener('click', () => renderDocumentLab(selectedJobId));

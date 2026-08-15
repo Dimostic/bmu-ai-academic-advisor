@@ -97,6 +97,34 @@ router.post('/from-document/:id', authenticateToken, requireAdmin, async (req, r
     }
 });
 
+router.post('/import-flagged', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const result = await documentLabService.importFlaggedDocuments(req.user.id, {
+            limit: req.body?.limit,
+            includeUnreviewed: req.body?.includeUnreviewed === true
+        });
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_LAB_IMPORT_FLAGGED',
+            entityType: 'document_lab_job',
+            details: {
+                imported: result.imported,
+                failed: result.failed,
+                includeUnreviewed: req.body?.includeUnreviewed === true
+            },
+            ipAddress: req.ip
+        });
+        res.json({
+            success: true,
+            message: `Imported ${result.imported} flagged document(s) to Document Lab`,
+            ...result
+        });
+    } catch (error) {
+        console.error('Document Lab import flagged error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to import flagged documents' });
+    }
+});
+
 router.post('/jobs/:id/analyze', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const job = await documentLabService.analyzeJob(req.params.id, { prepareOutputs: true });

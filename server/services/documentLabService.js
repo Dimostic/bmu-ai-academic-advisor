@@ -309,6 +309,61 @@ class DocumentLabService {
         return this.analyzeJob(result.insertId, { prepareOutputs: true });
     }
 
+    async importFlaggedDocuments(userId, options = {}) {
+        await this.ensureSchema();
+        const limit = Math.min(Math.max(parseInt(options.limit, 10) || 25, 1), 100);
+        const includeUnreviewed = options.includeUnreviewed === true;
+        const params = [];
+        let where = `
+            d.is_active = TRUE
+            AND NOT EXISTS (
+                SELECT 1 FROM document_lab_jobs j
+                WHERE j.source_document_id = d.id
+            )
+            AND (
+                d.ai_review_status IN ('needs_cleanup', 'needs_splitting', 'reject')
+                OR (d.ai_review_score IS NOT NULL AND d.ai_review_score < 70)
+        `;
+        if (includeUnreviewed) {
+            where += " OR d.ai_review_status IS NULL OR d.ai_review_status = 'not_reviewed'";
+        }
+        where += ')';
+        params.push(limit);
+
+        const docs = await query(`
+            SELECT d.id, d.title, d.ai_review_status, d.ai_review_score
+            FROM documents d
+            WHERE ${where}
+            ORDER BY
+                CASE
+                    WHEN d.ai_review_status = 'reject' THEN 0
+                    WHEN d.ai_review_status = 'needs_cleanup' THEN 1
+                    WHEN d.ai_review_status = 'needs_splitting' THEN 2
+                    WHEN d.ai_review_score IS NULL THEN 3
+                    ELSE 4
+                END,
+                d.ai_review_score ASC,
+                d.updated_at DESC
+            LIMIT ?
+        `, params);
+
+        const results = [];
+        for (const doc of docs) {
+            try {
+                const job = await this.createFromDocument(doc.id, userId);
+                results.push({ success: true, documentId: doc.id, title: doc.title, jobId: job.id, issueType: job.issueType });
+            } catch (error) {
+                results.push({ success: false, documentId: doc.id, title: doc.title, error: error.message });
+            }
+        }
+
+        return {
+            imported: results.filter(r => r.success).length,
+            failed: results.filter(r => !r.success).length,
+            results
+        };
+    }
+
     async analyzeJob(jobId, options = {}) {
         await this.ensureSchema();
         const rows = await query('SELECT * FROM document_lab_jobs WHERE id = ?', [jobId]);
