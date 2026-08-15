@@ -461,7 +461,7 @@
                 escapeHtml(d.uploadedByName || d.uploadedBy || '—'),
                 escapeHtml(formatDate(d.createdAt || d.created_at)),
                 `<button class="btn btn-ghost" data-act="reprocess" data-id="${d.id}" title="Re-extract + re-embed"><i class="fa-solid fa-rotate"></i></button>
-                 <button class="btn btn-ghost" data-act="review"    data-id="${d.id}" title="Review AI readiness"><i class="fa-solid fa-clipboard-check"></i></button>
+                 <button class="btn btn-ghost" data-act="review"    data-id="${d.id}" data-title="${escapeHtml(d.title || d.fileName || 'Document')}" title="Review AI readiness"><i class="fa-solid fa-clipboard-check"></i></button>
                  <button class="btn btn-ghost" data-act="authority" data-id="${d.id}" data-rank="${escapeHtml(d.authorityRank || d.authority_rank || 50)}" data-label="${escapeHtml(d.authorityLabel || d.authority_label || 'Standard')}" title="Set source authority"><i class="fa-solid fa-ranking-star"></i></button>
                  <button class="btn btn-ghost" data-act="delete"    data-id="${d.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>`
             ]);
@@ -482,7 +482,7 @@
                     try {
                         const r = await api('/api/documents/' + id + '/review', { method: 'POST' });
                         toast('Review completed');
-                        showDocumentReview(r.review, 'Document #' + id);
+                        showDocumentReviewModal(r.review, btn.dataset.title || r.review?.file?.title || 'Document review');
                         renderDocuments();
                     } catch (err) { toast(err.message, 'error'); }
                 } else if (btn.dataset.act === 'authority') {
@@ -526,6 +526,60 @@
             </div>
         `;
         latestDocumentReviewHtml = el.innerHTML;
+    }
+    function showDocumentReviewModal(review, title) {
+        if (!review) return;
+        document.querySelector('.doc-review-modal')?.remove();
+        const warnings = (review.warnings || []).map(w => `<li>${escapeHtml(w)}</li>`).join('');
+        const recs = (review.recommendations || []).map(r => `<li>${escapeHtml(r)}</li>`).join('');
+        const metrics = review.metrics || {};
+        const scores = review.scores || {};
+        const modal = document.createElement('div');
+        modal.className = 'doc-review-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.innerHTML = `
+            <div class="doc-review-dialog">
+                <button type="button" class="icon-btn doc-review-close" aria-label="Close review"><i class="fa-solid fa-xmark"></i></button>
+                <div class="doc-review-head">
+                    <span class="badge ${reviewStatusClass(review.status)}">${escapeHtml(String(review.status || 'reviewed').replace(/_/g, ' '))}</span>
+                    <h3>${escapeHtml(title || review.file?.title || 'Document review')}</h3>
+                    <p>${escapeHtml(Math.round(Number(review.score || 0)))} / 100 readiness score</p>
+                </div>
+                <div class="doc-review-grid">
+                    <div>
+                        <strong>Text readiness</strong>
+                        <small>${escapeHtml(metrics.textChars || 0)} readable chars · ${escapeHtml(metrics.estimatedChunks || 0)} estimated chunks · ${escapeHtml(metrics.charsPerMb || 0)} chars/MB</small>
+                    </div>
+                    <div>
+                        <strong>Suggested authority</strong>
+                        <small>${escapeHtml(review.suggestedAuthorityLabel || 'Standard')} · ${escapeHtml(review.suggestedAuthorityRank || 50)}/100</small>
+                    </div>
+                    <div>
+                        <strong>Suggested category</strong>
+                        <small>${escapeHtml(review.suggestedCategory || 'general')}</small>
+                    </div>
+                    <div>
+                        <strong>Quality scores</strong>
+                        <small>Extract ${escapeHtml(scores.extraction ?? '—')} · Structure ${escapeHtml(scores.structure ?? '—')} · Embed ${escapeHtml(scores.embedding ?? '—')}</small>
+                    </div>
+                </div>
+                ${(warnings || recs) ? `<div class="doc-review-modal-notes">${warnings ? `<section><strong>Warnings</strong><ul>${warnings}</ul></section>` : ''}${recs ? `<section><strong>Recommendations</strong><ul>${recs}</ul></section>` : ''}</div>` : ''}
+            </div>
+        `;
+        document.body.appendChild(modal);
+        const close = () => modal.remove();
+        modal.querySelector('.doc-review-close')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                close();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
     }
     function reviewBadge(d) {
         const status = d.aiReviewStatus || d.ai_review_status || 'not_reviewed';
