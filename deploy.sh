@@ -19,10 +19,9 @@ ssh $VPS_HOST "cd $APP_DIR && git fetch origin main && git pull --ff-only origin
 echo "🔧 Checking pm2..."
 ssh $VPS_HOST "command -v pm2 >/dev/null 2>&1"
 
-# Stop systemd service if it exists to avoid port conflicts
-echo "🛑 Stopping systemd service (if present)..."
-ssh $VPS_HOST "if systemctl list-units --full -all | grep -Fq 'bmuaiagent.service'; then sudo systemctl stop bmuaiagent || true; fi"
-ssh $VPS_HOST "for legacy in bmu-ai-academic-advisor bmuaiagent; do if [ \"\$legacy\" != \"$APP_NAME\" ] && pm2 describe \"\$legacy\" >/dev/null 2>&1; then pm2 delete \"\$legacy\" || true; fi; done"
+# Stop old Academic Advisor PM2 process name if it exists to avoid port conflicts.
+echo "🛑 Stopping legacy Academic Advisor PM2 process (if present)..."
+ssh $VPS_HOST "legacy=bmu-ai-academic-advisor; if [ \"\$legacy\" != \"$APP_NAME\" ] && pm2 describe \"\$legacy\" >/dev/null 2>&1; then pm2 delete \"\$legacy\" || true; fi"
 
 # Restart via pm2
 echo "🔄 Restarting app with pm2..."

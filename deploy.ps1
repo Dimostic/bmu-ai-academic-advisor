@@ -23,9 +23,8 @@ Invoke-Remote "cd $AppDir && git fetch origin main && git pull --ff-only origin 
 Write-Host "[2/5] Checking pm2 is installed..."
 Invoke-Remote "command -v pm2 >/dev/null 2>&1"
 
-Write-Host "[3/5] Stopping legacy systemd service (if present)..."
-Invoke-Remote "if systemctl list-units --full -all | grep -Fq 'bmuaiagent.service'; then sudo systemctl stop bmuaiagent || true; fi"
-Invoke-Remote "for legacy in bmu-ai-academic-advisor bmuaiagent; do if [ `"`$legacy`" != `"$AppName`" ] && pm2 describe `"`$legacy`" >/dev/null 2>&1; then pm2 delete `"`$legacy`" || true; fi; done"
+Write-Host "[3/5] Stopping legacy Academic Advisor PM2 process (if present)..."
+Invoke-Remote "legacy=bmu-ai-academic-advisor; if [ `"`$legacy`" != `"$AppName`" ] && pm2 describe `"`$legacy`" >/dev/null 2>&1; then pm2 delete `"`$legacy`" || true; fi"
 
 Write-Host "[4/5] Restarting app with pm2..."
 Invoke-Remote "cd $AppDir && if pm2 describe $AppName >/dev/null 2>&1; then pm2 reload $AppName --update-env; else pm2 start $AppEntry --name $AppName; fi"
