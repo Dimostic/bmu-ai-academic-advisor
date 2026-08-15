@@ -12,6 +12,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const userRoutes = require('./routes/userRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const documentRoutes = require('./routes/documentRoutes');
+const documentLabRoutes = require('./routes/documentLabRoutes');
 const exportRoutes = require('./routes/exportRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const ragRoutes = require('./routes/ragRoutes');
@@ -1324,6 +1325,7 @@ app.get('/api/publications/file', async (req, res) => {
 app.use('/api/users', userRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/document-lab', documentLabRoutes);
 app.use('/api/exports', exportRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/rag', ragRoutes);
@@ -1451,6 +1453,14 @@ app.listen(PORT, async () => {
         console.log('[App] Document AI review schema ready');
     } catch (err) {
         console.warn('[App] Document AI review schema setup skipped:', err.message);
+    }
+
+    try {
+        const documentLabService = require('./services/documentLabService');
+        await documentLabService.ensureSchema();
+        console.log('[App] Document Lab schema ready');
+    } catch (err) {
+        console.warn('[App] Document Lab schema setup skipped:', err.message);
     }
 
     // Sync FAISS vector index with database on startup

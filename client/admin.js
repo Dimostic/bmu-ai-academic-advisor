@@ -91,11 +91,13 @@
     // ---------------------------------------------------------- Section nav
     const main = document.getElementById('adminMain');
     let latestDocumentReviewHtml = '';
+    let currentDocumentLabJobId = null;
     const navButtons = document.querySelectorAll('.admin-nav button');
     const sections = {
         dashboard: renderDashboard,
         advisorOps: renderAdvisorOpsPage,
         documents: renderDocuments,
+        documentLab: renderDocumentLab,
         faqs:      renderFAQs,
         users:     renderUsers,
         audit:     renderAudit,
@@ -462,6 +464,7 @@
                 escapeHtml(formatDate(d.createdAt || d.created_at)),
                 `<button class="btn btn-ghost" data-act="reprocess" data-id="${d.id}" title="Re-extract + re-embed"><i class="fa-solid fa-rotate"></i></button>
                  <button class="btn btn-ghost" data-act="review"    data-id="${d.id}" data-title="${escapeHtml(d.title || d.fileName || 'Document')}" title="Review AI readiness"><i class="fa-solid fa-clipboard-check"></i></button>
+                 <button class="btn btn-ghost" data-act="lab"       data-id="${d.id}" title="Send to Document Lab"><i class="fa-solid fa-flask-vial"></i></button>
                  <button class="btn btn-ghost" data-act="authority" data-id="${d.id}" data-rank="${escapeHtml(d.authorityRank || d.authority_rank || 50)}" data-label="${escapeHtml(d.authorityLabel || d.authority_label || 'Standard')}" title="Set source authority"><i class="fa-solid fa-ranking-star"></i></button>
                  <button class="btn btn-ghost" data-act="delete"    data-id="${d.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>`
             ]);
@@ -495,6 +498,13 @@
                         await api('/api/documents/' + id + '/authority', { method: 'PUT', body: { rank, label } });
                         toast('Authority ranking updated');
                         renderDocuments();
+                    } catch (err) { toast(err.message, 'error'); }
+                } else if (btn.dataset.act === 'lab') {
+                    try {
+                        toast('Sending document to lab…');
+                        const r = await api('/api/document-lab/from-document/' + id, { method: 'POST' });
+                        toast('Sent to Document Lab');
+                        renderDocumentLab(r.job?.id);
                     } catch (err) { toast(err.message, 'error'); }
                 }
             });
@@ -613,6 +623,178 @@
                 : k === 'failed'    ? 'badge-danger'
                 : 'badge-info';
         return `<span class="badge ${cls}">${escapeHtml(s || 'unknown')}</span>`;
+    }
+
+    // -------------------------------------------------------- DOCUMENT LAB
+    async function renderDocumentLab(selectedJobId) {
+        main.innerHTML = `
+            <h2>Document Lab</h2>
+            <p class="lede">Repair documents before they enter the live knowledge base. OCR scanned files, clean tables into Markdown, split long content, then approve outputs for Documents.</p>
+            <div class="admin-actions">
+                <label class="dropzone" id="labDropzone">
+                    <i class="fa-solid fa-microscope"></i>
+                    <strong>Upload to Document Lab</strong>
+                    <small style="display:block; margin-top:4px;">PDF, Office, text, Markdown, or image files</small>
+                    <input type="file" id="labFileInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md,.rtf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp" />
+                </label>
+                <button class="btn btn-ghost" id="labRefreshBtn" type="button"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+            </div>
+            <div id="labQueue"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading lab queue…</div></div>
+            <div id="labWorkspace"></div>
+        `;
+
+        document.getElementById('labFileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('title', file.name);
+            try {
+                toast('Uploading to Document Lab…');
+                const r = await api('/api/document-lab/upload', { method: 'POST', body: fd, formData: true });
+                toast('Lab review created');
+                renderDocumentLab(r.job?.id);
+            } catch (err) {
+                toast(err.message || 'Lab upload failed', 'error');
+            }
+        });
+        document.getElementById('labRefreshBtn').addEventListener('click', () => renderDocumentLab(selectedJobId));
+
+        try {
+            const r = await api('/api/document-lab/jobs?limit=200');
+            const jobs = r.jobs || [];
+            if (!jobs.length) {
+                document.getElementById('labQueue').innerHTML = '<p class="empty">No lab jobs yet.</p>';
+                return;
+            }
+            const rows = jobs.map(job => [
+                `<div><strong>${escapeHtml(job.title)}</strong><div style="color:var(--muted); font-size:.82rem;">${escapeHtml(job.fileType || '')} · ${escapeHtml(formatBytes(job.fileSize))}</div></div>`,
+                `<span class="badge ${labIssueClass(job.issueType)}">${escapeHtml(String(job.issueType || 'needs_review').replace(/_/g, ' '))}</span>`,
+                `<span class="badge ${reviewStatusClass(job.reviewStatus)}">${escapeHtml(job.reviewStatus || 'not reviewed')}${job.reviewScore ? ` · ${Math.round(Number(job.reviewScore))}/100` : ''}</span>`,
+                escapeHtml(String(job.outputCount || 0)),
+                escapeHtml(formatDate(job.updatedAt)),
+                `<button class="btn btn-ghost" data-lab-act="open" data-id="${job.id}" title="Open outputs"><i class="fa-solid fa-folder-open"></i></button>
+                 <button class="btn btn-ghost" data-lab-act="analyze" data-id="${job.id}" title="Analyze and repair"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+                 <button class="btn btn-ghost" data-lab-act="prepare" data-id="${job.id}" title="Regenerate split/clean outputs"><i class="fa-solid fa-scissors"></i></button>`
+            ]);
+            document.getElementById('labQueue').innerHTML = table(
+                ['Document', 'Issue', 'Readiness', 'Outputs', 'Updated', 'Actions'],
+                rows
+            );
+            document.getElementById('labQueue').onclick = async (e) => {
+                const btn = e.target.closest('button[data-lab-act]'); if (!btn) return;
+                const id = btn.dataset.id;
+                try {
+                    if (btn.dataset.labAct === 'open') return loadLabJob(id);
+                    if (btn.dataset.labAct === 'analyze') {
+                        toast('Analyzing lab job…');
+                        await api('/api/document-lab/jobs/' + id + '/analyze', { method: 'POST' });
+                        toast('Analysis complete');
+                        return renderDocumentLab(id);
+                    }
+                    if (btn.dataset.labAct === 'prepare') {
+                        toast('Preparing outputs…');
+                        await api('/api/document-lab/jobs/' + id + '/prepare', { method: 'POST' });
+                        toast('Outputs prepared');
+                        return renderDocumentLab(id);
+                    }
+                } catch (err) {
+                    toast(err.message || 'Lab action failed', 'error');
+                }
+            };
+            if (selectedJobId || jobs[0]?.id) loadLabJob(selectedJobId || jobs[0].id);
+        } catch (err) {
+            document.getElementById('labQueue').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    async function loadLabJob(jobId) {
+        currentDocumentLabJobId = jobId;
+        const workspace = document.getElementById('labWorkspace');
+        if (!workspace) return;
+        workspace.innerHTML = '<div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading lab workspace…</div>';
+        try {
+            const r = await api('/api/document-lab/jobs/' + jobId);
+            const job = r.job;
+            const recs = (job.recommendations || []).map(x => `<li>${escapeHtml(x)}</li>`).join('');
+            const outputs = job.outputs || [];
+            workspace.innerHTML = `
+                <div class="document-lab-workspace">
+                    <div class="document-lab-summary">
+                        <div>
+                            <span class="badge ${labIssueClass(job.issueType)}">${escapeHtml(String(job.issueType || 'needs_review').replace(/_/g, ' '))}</span>
+                            <h3>${escapeHtml(job.title)}</h3>
+                            <p>${escapeHtml(job.fileName || '')} · ${escapeHtml(formatBytes(job.fileSize))}</p>
+                        </div>
+                        <div>
+                            <strong>AI readiness</strong>
+                            <small>${escapeHtml(job.reviewStatus || 'not reviewed')}${job.reviewScore ? ` · ${Math.round(Number(job.reviewScore))}/100` : ''}</small>
+                        </div>
+                        ${recs ? `<div class="document-lab-recs"><strong>Recommendations</strong><ul>${recs}</ul></div>` : ''}
+                    </div>
+                    <h3 style="margin:18px 0 10px;color:var(--bg-deep);">Draft outputs</h3>
+                    <div id="labOutputs">
+                        ${outputs.length ? outputs.map(renderLabOutput).join('') : '<p class="empty">No outputs yet. Use Analyze or Regenerate outputs.</p>'}
+                    </div>
+                </div>
+            `;
+            document.getElementById('labOutputs')?.addEventListener('click', handleLabOutputClick);
+        } catch (err) {
+            workspace.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    function renderLabOutput(output) {
+        const ready = output.readinessStatus || 'not_reviewed';
+        return `
+            <section class="document-lab-output" data-output-id="${output.id}">
+                <div class="document-lab-output-head">
+                    <div>
+                        <span class="badge ${reviewStatusClass(ready)}">${escapeHtml(String(ready).replace(/_/g, ' '))}${output.readinessScore ? ` · ${Math.round(Number(output.readinessScore))}/100` : ''}</span>
+                        <input class="lab-output-title" value="${escapeHtml(output.title || '')}" aria-label="Output title" />
+                    </div>
+                    <div class="document-lab-output-actions">
+                        <button class="btn btn-ghost" data-output-act="save"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                        <button class="btn btn-ghost" data-output-act="review"><i class="fa-solid fa-clipboard-check"></i> Recheck</button>
+                        <button class="btn btn-primary" data-output-act="promote"><i class="fa-solid fa-arrow-up-from-bracket"></i> Approve to Documents</button>
+                    </div>
+                </div>
+                <textarea class="lab-output-content" spellcheck="false">${escapeHtml(output.contentMarkdown || '')}</textarea>
+                ${output.promotedDocumentId ? `<p class="lede" style="margin:8px 0 0;">Promoted document ID: ${escapeHtml(output.promotedDocumentId)}</p>` : ''}
+            </section>
+        `;
+    }
+
+    async function handleLabOutputClick(e) {
+        const btn = e.target.closest('button[data-output-act]'); if (!btn) return;
+        const card = btn.closest('.document-lab-output');
+        const id = card?.dataset.outputId;
+        if (!id) return;
+        const title = card.querySelector('.lab-output-title')?.value || '';
+        const contentMarkdown = card.querySelector('.lab-output-content')?.value || '';
+        try {
+            if (btn.dataset.outputAct === 'save') {
+                await api('/api/document-lab/outputs/' + id, { method: 'PUT', body: { title, contentMarkdown, status: 'draft' } });
+                toast('Output saved and rechecked');
+            } else if (btn.dataset.outputAct === 'review') {
+                await api('/api/document-lab/outputs/' + id, { method: 'PUT', body: { title, contentMarkdown } });
+                toast('Output rechecked');
+            } else if (btn.dataset.outputAct === 'promote') {
+                await api('/api/document-lab/outputs/' + id, { method: 'PUT', body: { title, contentMarkdown, status: 'approved' } });
+                const promoted = await api('/api/document-lab/outputs/' + id + '/promote', { method: 'POST', body: {} });
+                toast('Promoted to Documents as #' + promoted.documentId);
+            }
+            if (currentDocumentLabJobId) renderDocumentLab(currentDocumentLabJobId);
+        } catch (err) {
+            toast(err.message || 'Output action failed', 'error');
+        }
+    }
+
+    function labIssueClass(issue) {
+        const s = String(issue || '').toLowerCase();
+        if (s === 'ready_for_approval') return 'badge-success';
+        if (s === 'needs_readable_source') return 'badge-danger';
+        if (s.includes('ocr') || s.includes('split') || s.includes('table') || s.includes('structure')) return 'badge-warn';
+        return 'badge-info';
     }
 
     // -------------------------------------------------------- FAQs
