@@ -83,8 +83,81 @@
 
         <!-- Main Content -->
         <main id="mainContent">
+            <!-- Public Preview Page -->
+            <section id="public-previewPage" class="page active">
+                <div class="preview-page">
+                    <div class="preview-hero">
+                        <div class="preview-avatar">
+                            <img src="bmulogo.png" alt="BMU Logo" class="preview-avatar-image">
+                        </div>
+                        <div class="preview-copy">
+                            <span class="preview-kicker">Public preview</span>
+                            <h1>Welcome to BMU AI Assistant</h1>
+                            <p class="preview-lead">
+                                Ask up to five questions about Bayelsa Medical University before you log in.
+                                Use this preview to test the assistant, then continue to the normal view or register for a full account.
+                            </p>
+                            <div class="preview-actions">
+                                <button class="btn btn-primary btn-lg" id="previewAskBtn">
+                                    <i class="fas fa-comment-dots"></i> Ask a question
+                                </button>
+                                <button class="btn btn-outline btn-lg" id="previewNormalViewBtn">
+                                    <i class="fas fa-columns"></i> Normal view
+                                </button>
+                                <button class="btn btn-outline btn-lg" id="previewRegisterBtn">
+                                    <i class="fas fa-user-plus"></i> Register
+                                </button>
+                            </div>
+                            <div class="preview-meter" aria-live="polite">
+                                <div class="preview-meter-label">
+                                    <span>Guest questions</span>
+                                    <strong id="previewQuotaText">0 / 5 used</strong>
+                                </div>
+                                <div class="preview-meter-bar" aria-hidden="true">
+                                    <span id="previewQuotaFill"></span>
+                                </div>
+                                <p id="previewQuotaHelp">You have 5 preview questions available.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="preview-panel">
+                        <div class="preview-panel-card">
+                            <div class="preview-panel-header">
+                                <h2><i class="fas fa-robot"></i> Try BMU AI</h2>
+                                <span class="preview-status" id="previewStatus">Ready</span>
+                            </div>
+                            <div class="preview-suggestions">
+                                <button type="button" class="preview-suggestion-btn" data-preview-question="Who is the Visitor to BMU?">Who is the Visitor to BMU?</button>
+                                <button type="button" class="preview-suggestion-btn" data-preview-question="Who are the principal officers of BMU?">Who are the principal officers of BMU?</button>
+                                <button type="button" class="preview-suggestion-btn" data-preview-question="Who is the bursar of BMU?">Who is the bursar of BMU?</button>
+                                <button type="button" class="preview-suggestion-btn" data-preview-question="What can the assistant help me with?">What can the assistant help me with?</button>
+                            </div>
+                            <div id="previewMessages" class="preview-messages">
+                                <div class="preview-message preview-message-assistant">
+                                    <div class="preview-message-avatar"><i class="fas fa-robot"></i></div>
+                                    <div class="preview-message-bubble">
+                                        <p>Hi, I am the BMU AI preview assistant. Ask anything about the university and I will answer with public information before you sign in.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <form id="previewForm" class="preview-form">
+                                <label class="visually-hidden" for="previewQuestionInput">Ask a BMU question</label>
+                                <textarea id="previewQuestionInput" rows="2" placeholder="Type your BMU question here..."></textarea>
+                                <div class="preview-form-actions">
+                                    <span class="preview-form-note">Counts toward your five-question guest limit.</span>
+                                    <button type="submit" class="btn btn-primary" id="previewSendBtn">
+                                        <i class="fas fa-paper-plane"></i> Send
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Home Page -->
-            <section id="homePage" class="page active">
+            <section id="homePage" class="page">
                 <div class="hero">
                     <div class="hero-content">
                         <img src="bmulogo.png" alt="BMU Logo" class="hero-logo" id="heroLogo">

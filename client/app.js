@@ -26,6 +26,13 @@ const AppState = {
     mediaRecorder: null,
     recordedChunks: [],
     currentSessionToken: null,
+    preview: {
+        limit: 5,
+        used: 0,
+        locked: false,
+        initialized: false,
+        storageKey: 'bmu_preview_questions_used'
+    },
     chatSessions: [],
     usage: null, // User's usage stats (prompts used/remaining)
     chat: {
@@ -296,6 +303,154 @@ function clearAuth() {
     sessionStorage.removeItem('bmu_user');
 }
 
+function loadPreviewState() {
+    const raw = localStorage.getItem(AppState.preview.storageKey);
+    const used = Math.max(0, Math.min(AppState.preview.limit, parseInt(raw, 10) || 0));
+    AppState.preview.used = used;
+    AppState.preview.locked = used >= AppState.preview.limit;
+}
+
+function savePreviewState() {
+    localStorage.setItem(AppState.preview.storageKey, String(AppState.preview.used));
+    AppState.preview.locked = AppState.preview.used >= AppState.preview.limit;
+    updatePreviewQuotaUI();
+}
+
+function resetPreviewState() {
+    AppState.preview.used = 0;
+    AppState.preview.locked = false;
+    localStorage.removeItem(AppState.preview.storageKey);
+    updatePreviewQuotaUI();
+}
+
+function updatePreviewQuotaUI() {
+    const quotaText = $('previewQuotaText');
+    const quotaFill = $('previewQuotaFill');
+    const quotaHelp = $('previewQuotaHelp');
+    const status = $('previewStatus');
+    const used = Number(AppState.preview.used || 0);
+    const limit = Number(AppState.preview.limit || 5);
+    const remaining = Math.max(0, limit - used);
+    const percent = Math.min(100, Math.round((used / limit) * 100));
+
+    if (quotaText) quotaText.textContent = `${used} / ${limit} used`;
+    if (quotaFill) quotaFill.style.width = `${percent}%`;
+    if (quotaHelp) {
+        quotaHelp.textContent = AppState.preview.locked
+            ? 'Preview limit reached. Log in or register to continue.'
+            : `${remaining} preview question${remaining === 1 ? '' : 's'} remaining.`;
+    }
+    if (status) {
+        status.textContent = AppState.preview.locked ? 'Limit reached' : 'Ready';
+        status.classList.toggle('is-locked', AppState.preview.locked);
+    }
+
+    const sendBtn = $('previewSendBtn');
+    const input = $('previewQuestionInput');
+    const askBtn = $('previewAskBtn');
+    if (sendBtn) sendBtn.disabled = AppState.preview.locked;
+    if (input) input.disabled = AppState.preview.locked;
+    if (askBtn) askBtn.disabled = AppState.preview.locked;
+}
+
+function appendPreviewMessage(role, text) {
+    const wrap = $('previewMessages');
+    if (!wrap) return;
+
+    const message = document.createElement('div');
+    message.className = `preview-message preview-message-${role}`;
+    message.innerHTML = role === 'assistant'
+        ? `
+            <div class="preview-message-avatar"><i class="fas fa-robot"></i></div>
+            <div class="preview-message-bubble">${parseMarkdown(text)}</div>
+        `
+        : `
+            <div class="preview-message-avatar user"><i class="fas fa-user"></i></div>
+            <div class="preview-message-bubble">${parseMarkdown(text)}</div>
+        `;
+
+    wrap.appendChild(message);
+    wrap.scrollTop = wrap.scrollHeight;
+}
+
+async function handlePreviewQuestion(event) {
+    event?.preventDefault?.();
+    if (AppState.preview.locked) {
+        showToast('Preview limit reached. Please log in or register to continue.', 'warning');
+        showPage('login');
+        return;
+    }
+
+    const input = $('previewQuestionInput');
+    const question = input?.value?.trim();
+    if (!question) return;
+
+    input.value = '';
+    appendPreviewMessage('user', question);
+    $('previewStatus') && ($('previewStatus').textContent = 'Thinking...');
+
+    try {
+        const res = await apiFetch('/api/advisor/ask', {
+            method: 'POST',
+            body: { question, inputMode: 'text', voiceEnabled: false }
+        });
+
+        const reply = res?.reply?.display_markdown || res?.reply?.speech_text || res?.reply?.text || res?.display_markdown || res?.speech_text || res?.answer || 'No answer available.';
+        appendPreviewMessage('assistant', reply);
+        AppState.preview.used = Math.min(AppState.preview.limit, AppState.preview.used + 1);
+        savePreviewState();
+
+        if (AppState.preview.locked) {
+            showToast('You have used all five preview questions. Please log in or register to continue.', 'info');
+        }
+    } catch (e) {
+        appendPreviewMessage('assistant', e.message || 'Sorry, I could not answer that right now.');
+        showToast(e.message || 'Preview question failed', 'error');
+    } finally {
+        updatePreviewQuotaUI();
+        const status = $('previewStatus');
+        if (status) status.textContent = AppState.preview.locked ? 'Limit reached' : 'Ready';
+    }
+}
+
+function initPublicPreviewPage() {
+    if (AppState.preview.initialized) {
+        updatePreviewQuotaUI();
+        return;
+    }
+    AppState.preview.initialized = true;
+
+    loadPreviewState();
+    updatePreviewQuotaUI();
+
+    $('previewForm')?.addEventListener('submit', handlePreviewQuestion);
+    $('previewAskBtn')?.addEventListener('click', () => {
+        $('previewQuestionInput')?.focus();
+    });
+    $('previewNormalViewBtn')?.addEventListener('click', () => showPage('home'));
+    $('previewRegisterBtn')?.addEventListener('click', () => showPage('register'));
+    $('previewQuestionInput')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            $('previewForm')?.requestSubmit();
+        }
+    });
+
+    document.querySelectorAll('[data-preview-question]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (AppState.preview.locked) {
+                showToast('Preview limit reached. Please log in or register to continue.', 'warning');
+                showPage('login');
+                return;
+            }
+            const q = btn.getAttribute('data-preview-question') || '';
+            const input = $('previewQuestionInput');
+            if (input) input.value = q;
+            $('previewForm')?.requestSubmit();
+        });
+    });
+}
+
 function loadAuthFromStorage() {
     // Prefer session storage for non-remembered sessions.
     const token = sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token');
@@ -545,6 +700,7 @@ function showPage(page) {
 
     // page-specific bootstraps
     if (page === 'chat') initChatPage();
+    if (page === 'public-preview') initPublicPreviewPage();
     if (page === 'documents') loadDocuments(1);
     if (page === 'viewer') initViewerPage();
     if (page === 'faq') initFAQPage();
@@ -642,6 +798,7 @@ function updateNavForAuth() {
         AppState.vcDocuments.stats = null;
         AppState.documents.stats = null;
         updateResourcesBadge();
+        initPublicPreviewPage();
     }
 }
 
@@ -10550,6 +10707,7 @@ async function bootstrap() {
     initTtsVoiceSelectors();
     
     loadAuthFromStorage();
+    loadPreviewState();
     updateNavForAuth();
 
     // Check for reset/verify hash routes FIRST
@@ -10579,7 +10737,7 @@ async function bootstrap() {
     if (route && route !== 'reset' && route !== 'verify-email') {
         showPage(route);
     } else if (!AppState.token) {
-        showPage('home');
+        showPage('public-preview');
     } else {
         showPage('chat');
     }
