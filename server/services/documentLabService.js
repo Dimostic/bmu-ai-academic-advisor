@@ -504,6 +504,98 @@ class DocumentLabService {
         return this.getJob(jobId);
     }
 
+    async buildSplitPlan(jobId, options = {}) {
+        await this.ensureSchema();
+        const rows = await query('SELECT * FROM document_lab_jobs WHERE id = ?', [jobId]);
+        const job = rows[0];
+        if (!job) throw new Error('Lab job not found');
+        if (!String(job.repaired_text || '').trim()) {
+            throw new Error('No cleaned text is available for this job.');
+        }
+
+        const review = safeJson(job.review_json, {});
+        const targetChars = Math.min(Math.max(parseInt(options.targetChars, 10) || DEFAULT_TARGET_CHARS, 4000), 30000);
+        const shouldSplit = (review?.metrics?.estimatedChunks || 0) > 500 || job.issue_type === 'needs_splitting';
+        const rawParts = shouldSplit
+            ? splitByHeadings(job.repaired_text, job.title, targetChars)
+            : [{ title: job.title, content: job.repaired_text }];
+
+        const parts = [];
+        let order = 1;
+        for (const part of rawParts) {
+            const title = rawParts.length > 1
+                ? `${cleanTitle(job.title)} - ${cleanTitle(part.title)}`
+                : cleanTitle(part.title || job.title);
+            const readiness = await documentQualityService.reviewText(part.content, {
+                title,
+                fileType: '.md',
+                fileSize: Buffer.byteLength(part.content, 'utf8')
+            });
+            parts.push({
+                clientId: `part-${order}`,
+                sortOrder: order,
+                title: title.slice(0, 255),
+                contentMarkdown: part.content,
+                charCount: part.content.length,
+                estimatedChunks: readiness.metrics?.estimatedChunks || 0,
+                readinessStatus: readiness.status,
+                readinessScore: readiness.score,
+                readiness
+            });
+            order++;
+        }
+
+        return {
+            jobId: job.id,
+            title: job.title,
+            issueType: job.issue_type,
+            targetChars,
+            strategy: shouldSplit ? 'heading_and_size_split' : 'single_cleaned_output',
+            partCount: parts.length,
+            parts
+        };
+    }
+
+    async createOutputsFromPlan(jobId, parts = []) {
+        await this.ensureSchema();
+        const rows = await query('SELECT * FROM document_lab_jobs WHERE id = ?', [jobId]);
+        const job = rows[0];
+        if (!job) throw new Error('Lab job not found');
+        if (!Array.isArray(parts) || !parts.length) {
+            throw new Error('No approved split parts were submitted.');
+        }
+
+        await query("DELETE FROM document_lab_outputs WHERE job_id = ? AND status IN ('draft', 'needs_review', 'approved')", [jobId]);
+        let order = 1;
+        for (const part of parts) {
+            const title = cleanTitle(part.title || `${job.title} - Part ${order}`);
+            const content = String(part.contentMarkdown || '').trim();
+            if (!content) continue;
+            const readiness = await documentQualityService.reviewText(content, {
+                title,
+                fileType: '.md',
+                fileSize: Buffer.byteLength(content, 'utf8')
+            });
+            await query(`
+                INSERT INTO document_lab_outputs
+                    (job_id, title, output_type, content_markdown, status, readiness_status, readiness_score, readiness_json, sort_order)
+                VALUES (?, ?, 'split_part', ?, 'draft', ?, ?, ?, ?)
+            `, [
+                jobId,
+                title.slice(0, 255),
+                content,
+                readiness.status,
+                readiness.score,
+                JSON.stringify(readiness),
+                order++
+            ]);
+        }
+
+        if (order === 1) throw new Error('No non-empty approved parts were submitted.');
+        await query("UPDATE document_lab_jobs SET status = 'ready_for_approval', updated_at = NOW() WHERE id = ?", [jobId]);
+        return this.getJob(jobId);
+    }
+
     async updateOutput(outputId, updates = {}) {
         await this.ensureSchema();
         const fields = [];

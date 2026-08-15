@@ -706,7 +706,7 @@
                 escapeHtml(formatDate(job.updatedAt)),
                 `<button class="btn btn-ghost" data-lab-act="open" data-id="${job.id}" title="Open outputs"><i class="fa-solid fa-folder-open"></i></button>
                  <button class="btn btn-ghost" data-lab-act="analyze" data-id="${job.id}" title="Analyze and repair"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
-                 <button class="btn btn-ghost" data-lab-act="prepare" data-id="${job.id}" title="Regenerate split/clean outputs"><i class="fa-solid fa-scissors"></i></button>`
+                 <button class="btn btn-ghost" data-lab-act="plan" data-id="${job.id}" title="Review split/clean plan"><i class="fa-solid fa-scissors"></i></button>`
             ]);
             document.getElementById('labQueue').innerHTML = table(
                 ['Document', 'Issue', 'Readiness', 'Outputs', 'Updated', 'Actions'],
@@ -723,11 +723,9 @@
                         toast('Analysis complete');
                         return renderDocumentLab(id);
                     }
-                    if (btn.dataset.labAct === 'prepare') {
-                        toast('Preparing outputs…');
-                        await api('/api/document-lab/jobs/' + id + '/prepare', { method: 'POST' });
-                        toast('Outputs prepared');
-                        return renderDocumentLab(id);
+                    if (btn.dataset.labAct === 'plan') {
+                        toast('Building split plan…');
+                        return loadSplitPlan(id);
                     }
                 } catch (err) {
                     toast(err.message || 'Lab action failed', 'error');
@@ -773,6 +771,79 @@
         } catch (err) {
             workspace.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
         }
+    }
+
+    async function loadSplitPlan(jobId) {
+        currentDocumentLabJobId = jobId;
+        const workspace = document.getElementById('labWorkspace');
+        if (!workspace) return;
+        workspace.innerHTML = '<div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Building split proposal…</div>';
+        try {
+            const r = await api('/api/document-lab/jobs/' + jobId + '/split-plan');
+            const plan = r.plan;
+            workspace.innerHTML = `
+                <div class="document-lab-workspace">
+                    <div class="document-lab-summary">
+                        <div>
+                            <span class="badge ${labIssueClass(plan.issueType)}">${escapeHtml(String(plan.issueType || '').replace(/_/g, ' '))}</span>
+                            <h3>Split proposal: ${escapeHtml(plan.title)}</h3>
+                            <p>${escapeHtml(plan.partCount)} proposed part${plan.partCount === 1 ? '' : 's'} · ${escapeHtml(plan.strategy)}</p>
+                        </div>
+                        <div>
+                            <strong>Admin approval</strong>
+                            <small>Select the parts to create as draft outputs. You can edit each part before approving.</small>
+                        </div>
+                    </div>
+                    <div class="document-lab-plan-actions">
+                        <button class="btn btn-primary" id="approveSplitPlanBtn"><i class="fa-solid fa-check"></i> Create approved outputs</button>
+                        <button class="btn btn-ghost" id="backToLabJobBtn"><i class="fa-solid fa-arrow-left"></i> Back to outputs</button>
+                    </div>
+                    <div id="splitPlanParts">
+                        ${(plan.parts || []).map(renderSplitPlanPart).join('')}
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToLabJobBtn')?.addEventListener('click', () => loadLabJob(jobId));
+            document.getElementById('approveSplitPlanBtn')?.addEventListener('click', async () => {
+                const parts = [...document.querySelectorAll('.document-lab-plan-part')]
+                    .filter(card => card.querySelector('.split-plan-approve')?.checked)
+                    .map(card => ({
+                        title: card.querySelector('.split-plan-title')?.value || '',
+                        contentMarkdown: card.querySelector('.split-plan-content')?.value || ''
+                    }));
+                if (!parts.length) {
+                    toast('Select at least one part to approve', 'error');
+                    return;
+                }
+                try {
+                    toast('Creating approved outputs…');
+                    await api('/api/document-lab/jobs/' + jobId + '/outputs-from-plan', { method: 'POST', body: { parts } });
+                    toast('Approved outputs created');
+                    renderDocumentLab(jobId);
+                } catch (err) {
+                    toast(err.message || 'Could not approve split plan', 'error');
+                }
+            });
+        } catch (err) {
+            workspace.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    function renderSplitPlanPart(part) {
+        return `
+            <section class="document-lab-plan-part">
+                <div class="document-lab-output-head">
+                    <label class="split-plan-check">
+                        <input type="checkbox" class="split-plan-approve" checked />
+                        <span>Approve part ${escapeHtml(part.sortOrder || '')}</span>
+                    </label>
+                    <span class="badge ${reviewStatusClass(part.readinessStatus)}">${escapeHtml(String(part.readinessStatus || 'not reviewed').replace(/_/g, ' '))}${part.readinessScore ? ` · ${Math.round(Number(part.readinessScore))}/100` : ''}</span>
+                </div>
+                <input class="lab-output-title split-plan-title" value="${escapeHtml(part.title || '')}" aria-label="Split title" />
+                <small class="split-plan-meta">${escapeHtml(part.charCount || 0)} chars · ${escapeHtml(part.estimatedChunks || 0)} estimated chunks</small>
+                <textarea class="lab-output-content split-plan-content" spellcheck="false">${escapeHtml(part.contentMarkdown || '')}</textarea>
+            </section>
+        `;
     }
 
     function renderLabOutput(output) {

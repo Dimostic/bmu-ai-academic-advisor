@@ -145,6 +145,36 @@ router.post('/jobs/:id/prepare', authenticateToken, requireAdmin, async (req, re
     }
 });
 
+router.get('/jobs/:id/split-plan', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const plan = await documentLabService.buildSplitPlan(req.params.id, {
+            targetChars: req.query.targetChars
+        });
+        res.json({ success: true, plan });
+    } catch (error) {
+        console.error('Document Lab split plan error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to build split plan' });
+    }
+});
+
+router.post('/jobs/:id/outputs-from-plan', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const job = await documentLabService.createOutputsFromPlan(req.params.id, req.body?.parts || []);
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_LAB_SPLIT_PLAN_APPROVED',
+            entityType: 'document_lab_job',
+            entityId: parseInt(req.params.id, 10),
+            details: { parts: req.body?.parts?.length || 0 },
+            ipAddress: req.ip
+        });
+        res.json({ success: true, message: 'Approved split outputs created', job });
+    } catch (error) {
+        console.error('Document Lab outputs from plan error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to create outputs from split plan' });
+    }
+});
+
 router.put('/outputs/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const output = await documentLabService.updateOutput(req.params.id, req.body || {});
