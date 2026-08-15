@@ -232,6 +232,117 @@ function mergeThinSplitChunks(chunks, fallbackTitle) {
     }));
 }
 
+function uniqueLines(lines, limit = 80) {
+    const seen = new Set();
+    const out = [];
+    for (const line of lines || []) {
+        const cleaned = String(line || '').replace(/\s+/g, ' ').trim();
+        if (cleaned.length < 8) continue;
+        const key = cleaned.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(cleaned);
+        if (out.length >= limit) break;
+    }
+    return out;
+}
+
+function bulletLines(lines) {
+    return lines.length ? lines.map(line => `- ${line}`).join('\n') : '- No clear matching lines detected.';
+}
+
+function extractMarkdownTables(text, limit = 8) {
+    const lines = String(text || '').split(/\r?\n/);
+    const tables = [];
+    let current = [];
+    for (const line of lines) {
+        if (/^\s*\|.+\|\s*$/.test(line)) {
+            current.push(line.trim());
+            continue;
+        }
+        if (current.length >= 2) tables.push(current.join('\n'));
+        current = [];
+        if (tables.length >= limit) break;
+    }
+    if (current.length >= 2 && tables.length < limit) tables.push(current.join('\n'));
+    return tables;
+}
+
+function extractHeadings(text, limit = 60) {
+    const headings = String(text || '').split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => /^#{1,4}\s+/.test(line) || /^[A-Z][A-Z0-9 ,.'&()/:-]{8,}$/.test(line))
+        .map(line => line.replace(/^#{1,4}\s+/, ''));
+    return uniqueLines(headings, limit);
+}
+
+function selectDigestLines(text, regex, limit = 80) {
+    const lines = String(text || '').split(/\r?\n/)
+        .map(line => line.replace(/^[-*]\s+/, '').trim())
+        .filter(line => line.length >= 10 && line.length <= 420)
+        .filter(line => regex.test(line));
+    return uniqueLines(lines, limit);
+}
+
+function extractCourseCreditLines(text) {
+    return selectDigestLines(
+        text,
+        /\b([A-Z]{2,5}\s*\d{3}[A-Z]?|credit units?|units?|course code|course title|semester|level|programme|department)\b/i,
+        120
+    );
+}
+
+function buildStructuredDigest(markdown, title) {
+    const text = String(markdown || '').trim();
+    const headings = extractHeadings(text);
+    const tables = extractMarkdownTables(text);
+    const keyFacts = selectDigestLines(text, /\b(BMU|Bayelsa Medical University|vision|mission|motto|established|located|college|faculty|department|programme|principal officer|registrar|bursar|librarian|vice[- ]chancellor)\b/i, 70);
+    const requirements = selectDigestLines(text, /\b(requirements?|admission|eligib|entry|UTME|JAMB|direct entry|O'?level|SSCE|WAEC|NECO|credit pass|five credits?|minimum|qualification|criteria)\b/i, 100);
+    const courses = extractCourseCreditLines(text);
+    const fees = selectDigestLines(text, /\b(fees?|tuition|payment|charge|levy|acceptance|accommodation|hostel|Naira|NGN|₦|\bN\s?\d|amount|cost)\b/i, 80);
+    const dates = selectDigestLines(text, /\b(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|20\d{2}|January|February|March|April|May|June|July|August|September|October|November|December|semester|session|deadline|resumption|examination|registration)\b/i, 80);
+    const policies = selectDigestLines(text, /\b(policy|shall|must|required|prohibited|approved|senate|council|regulation|discipline|withdrawal|probation|graduation|CGPA|GPA|pass mark|carry.?over|repeat)\b/i, 100);
+
+    const sections = [
+        `# Structured Digest - ${cleanTitle(title)}`,
+        [
+            '## Admin Verification Note',
+            '- This digest is a structured companion for AI ingestion.',
+            '- It groups exact source lines and converted table blocks; it should be reviewed by an admin before promotion.',
+            '- Do not treat this as replacing the original document. Keep the source document as provenance.'
+        ].join('\n'),
+        ['## Detected Source Outline', bulletLines(headings)].join('\n\n'),
+        ['## Key Facts And Institutional Information', bulletLines(keyFacts)].join('\n\n'),
+        ['## Programmes, Courses, Levels, And Credits', bulletLines(courses)].join('\n\n'),
+        ['## Admission, Eligibility, And Requirements', bulletLines(requirements)].join('\n\n'),
+        ['## Fees, Payments, And Charges', bulletLines(fees)].join('\n\n'),
+        ['## Dates, Sessions, Calendar, And Deadlines', bulletLines(dates)].join('\n\n'),
+        ['## Policies, Rules, Progression, And Academic Decisions', bulletLines(policies)].join('\n\n')
+    ];
+
+    if (tables.length) {
+        sections.push([
+            '## Detected Tables Converted To Markdown',
+            tables.map((table, index) => `### Table ${index + 1}\n\n${table}`).join('\n\n')
+        ].join('\n\n'));
+    }
+
+    const digest = sections.join('\n\n').replace(/\n{4,}/g, '\n\n\n').trim();
+    return {
+        digest,
+        metrics: {
+            headings: headings.length,
+            keyFacts: keyFacts.length,
+            requirements: requirements.length,
+            courses: courses.length,
+            fees: fees.length,
+            dates: dates.length,
+            policies: policies.length,
+            tables: tables.length
+        }
+    };
+}
+
 class DocumentLabService {
     async ensureDirs() {
         await fs.mkdir(LAB_DIR, { recursive: true });
@@ -639,6 +750,45 @@ class DocumentLabService {
         }
 
         if (order === 1) throw new Error('No non-empty approved parts were submitted.');
+        await query("UPDATE document_lab_jobs SET status = 'ready_for_approval', updated_at = NOW() WHERE id = ?", [jobId]);
+        return this.getJob(jobId);
+    }
+
+    async createStructuredDigest(jobId) {
+        await this.ensureSchema();
+        const rows = await query('SELECT * FROM document_lab_jobs WHERE id = ?', [jobId]);
+        const job = rows[0];
+        if (!job) throw new Error('Lab job not found');
+        const sourceText = String(job.repaired_text || job.extracted_text || '').trim();
+        if (!sourceText) throw new Error('No cleaned text is available for structured digest generation.');
+
+        const built = buildStructuredDigest(sourceText, job.title);
+        const title = `${cleanTitle(job.title)} - Structured Digest`;
+        const readiness = await documentQualityService.reviewText(built.digest, {
+            title,
+            fileType: '.md',
+            fileSize: Buffer.byteLength(built.digest, 'utf8')
+        });
+
+        await query("DELETE FROM document_lab_outputs WHERE job_id = ? AND output_type = 'structured_digest' AND status IN ('draft', 'needs_review', 'approved')", [jobId]);
+        const maxOrder = await query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM document_lab_outputs WHERE job_id = ?', [jobId]);
+        await query(`
+            INSERT INTO document_lab_outputs
+                (job_id, title, output_type, content_markdown, status, readiness_status, readiness_score, readiness_json, sort_order)
+            VALUES (?, ?, 'structured_digest', ?, 'draft', ?, ?, ?, ?)
+        `, [
+            jobId,
+            title.slice(0, 255),
+            built.digest,
+            readiness.status,
+            readiness.score,
+            JSON.stringify({
+                ...readiness,
+                digestMetrics: built.metrics
+            }),
+            Number(maxOrder[0]?.max_order || 0) + 1
+        ]);
+
         await query("UPDATE document_lab_jobs SET status = 'ready_for_approval', updated_at = NOW() WHERE id = ?", [jobId]);
         return this.getJob(jobId);
     }

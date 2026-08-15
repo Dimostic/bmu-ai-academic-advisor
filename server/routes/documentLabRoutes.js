@@ -175,6 +175,24 @@ router.post('/jobs/:id/outputs-from-plan', authenticateToken, requireAdmin, asyn
     }
 });
 
+router.post('/jobs/:id/structured-digest', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const job = await documentLabService.createStructuredDigest(req.params.id);
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_LAB_STRUCTURED_DIGEST_CREATED',
+            entityType: 'document_lab_job',
+            entityId: parseInt(req.params.id, 10),
+            details: { title: job.title },
+            ipAddress: req.ip
+        });
+        res.json({ success: true, message: 'Structured digest created', job });
+    } catch (error) {
+        console.error('Document Lab structured digest error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to create structured digest' });
+    }
+});
+
 router.put('/outputs/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const output = await documentLabService.updateOutput(req.params.id, req.body || {});

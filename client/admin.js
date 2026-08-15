@@ -706,7 +706,8 @@
                 escapeHtml(formatDate(job.updatedAt)),
                 `<button class="btn btn-ghost" data-lab-act="open" data-id="${job.id}" title="Open outputs"><i class="fa-solid fa-folder-open"></i></button>
                  <button class="btn btn-ghost" data-lab-act="analyze" data-id="${job.id}" title="Analyze and repair"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
-                 <button class="btn btn-ghost" data-lab-act="plan" data-id="${job.id}" title="Review split/clean plan"><i class="fa-solid fa-scissors"></i></button>`
+                 <button class="btn btn-ghost" data-lab-act="plan" data-id="${job.id}" title="Review split/clean plan"><i class="fa-solid fa-scissors"></i></button>
+                 <button class="btn btn-ghost" data-lab-act="digest" data-id="${job.id}" title="Create structured digest"><i class="fa-solid fa-layer-group"></i></button>`
             ]);
             document.getElementById('labQueue').innerHTML = table(
                 ['Document', 'Issue', 'Readiness', 'Outputs', 'Updated', 'Actions'],
@@ -726,6 +727,12 @@
                     if (btn.dataset.labAct === 'plan') {
                         toast('Building split plan…');
                         return loadSplitPlan(id);
+                    }
+                    if (btn.dataset.labAct === 'digest') {
+                        toast('Creating structured digest…');
+                        await api('/api/document-lab/jobs/' + id + '/structured-digest', { method: 'POST' });
+                        toast('Structured digest created');
+                        return renderDocumentLab(id);
                     }
                 } catch (err) {
                     toast(err.message || 'Lab action failed', 'error');
@@ -848,11 +855,13 @@
 
     function renderLabOutput(output) {
         const ready = output.readinessStatus || 'not_reviewed';
+        const outputLabel = String(output.outputType || '').replace(/_/g, ' ') || 'draft output';
         return `
             <section class="document-lab-output" data-output-id="${output.id}">
                 <div class="document-lab-output-head">
                     <div>
                         <span class="badge ${reviewStatusClass(ready)}">${escapeHtml(String(ready).replace(/_/g, ' '))}${output.readinessScore ? ` · ${Math.round(Number(output.readinessScore))}/100` : ''}</span>
+                        <span class="badge badge-info">${escapeHtml(outputLabel)}</span>
                         <input class="lab-output-title" value="${escapeHtml(output.title || '')}" aria-label="Output title" />
                     </div>
                     <div class="document-lab-output-actions">
