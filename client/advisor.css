@@ -1167,6 +1167,14 @@ body.advisor-full-view .avatar-meta {
     transform: translateX(-50%);
     z-index: 22;
     min-width: min(260px, 88vw);
+    width: fit-content;
+    padding: 8px 14px;
+    border: 1px solid rgba(255,255,255,.62);
+    border-radius: 12px;
+    background: rgba(255,255,255,.84);
+    box-shadow: 0 14px 34px rgba(0,0,0,.16);
+    -webkit-backdrop-filter: blur(7px);
+    backdrop-filter: blur(7px);
     text-align: center;
     pointer-events: none;
 }
@@ -1177,17 +1185,17 @@ body.advisor-full-view .avatar-meta > .avatar-status {
 
 body.advisor-full-view .avatar-meta strong {
     display: block;
-    color: #fff;
+    color: #0b2528;
     font-size: 1.18rem;
-    text-shadow: 0 2px 14px rgba(0,0,0,.35);
+    text-shadow: none;
 }
 
 body.advisor-full-view .avatar-meta > span {
     display: block;
-    color: rgba(255,255,255,.86);
+    color: #315b60;
     font-size: .92rem;
     font-weight: 700;
-    text-shadow: 0 2px 14px rgba(0,0,0,.35);
+    text-shadow: none;
 }
 
 body.advisor-full-view.guest-demo-mode .guest-demo-mini {
