@@ -357,17 +357,33 @@
         updateGuestDemoUi();
     }
 
-    function showGuestDemoLimit() {
+    function scheduleGuestDemoReturnHome(afterSpeechPromise = null) {
+        if (!state.guestDemo.enabled || state.guestDemo.returningHome) return;
+        state.guestDemo.returningHome = true;
+        const finish = afterSpeechPromise && typeof afterSpeechPromise.finally === 'function'
+            ? afterSpeechPromise.catch(() => 0)
+            : Promise.resolve(0);
+        finish.finally(() => {
+            setTimeout(() => {
+                location.replace('/');
+            }, 2600);
+        });
+    }
+
+    function showGuestDemoLimit({ autoReturn = false, afterSpeech = null } = {}) {
         setAvatarState('idle', 'Demo limit reached');
         showUsageOverlay({
             title: 'Guest Demo Complete',
-            body: 'You have used all five guest demo questions. Create an account to keep asking Dr. Tari.',
+            body: autoReturn
+                ? 'You have used all five guest demo questions. Returning you to the home page shortly.'
+                : 'You have used all five guest demo questions. Create an account to keep asking Dr. Tari.',
             hints: [
                 'Your free demo questions are complete in this browser.',
                 'Creating an account unlocks the full Academic Advisor experience.',
-                'You can return to the home page or register now.'
+                autoReturn ? 'You can start again from the home page.' : 'You can return to the home page or register now.'
             ]
         });
+        if (autoReturn) scheduleGuestDemoReturnHome(afterSpeech);
     }
 
     function rememberSessionToken(token) {
@@ -1555,7 +1571,9 @@
         let speechText = '';
         let audioUrl = null;
         let audioStarted = false;
+        let speechDone = Promise.resolve(0);
         let final = null;
+        let guestDemoUsageSynced = false;
 
         try {
             const res = await fetch('/api/advisor/ask/stream', {
@@ -1652,16 +1670,17 @@
                             // Start playback immediately — runs in parallel with continued typing.
                             if (!audioStarted) {
                                 audioStarted = true;
-                                playWithLipSync(audioUrl, speechText || '', bubble.el);
+                                speechDone = playWithLipSync(audioUrl, speechText || '', bubble.el);
                             }
                         } else if (data.use_browser_fallback && speechText && !audioStarted) {
                             audioStarted = true;
-                            speakWithBrowser(speechText, bubble.el);
+                            speechDone = speakWithBrowser(speechText, bubble.el);
                         }
                     } else if (event === 'done') {
                         final = data;
                     } else if (event === 'guest_demo_usage') {
                         incrementGuestDemoUsage(data?.used);
+                        guestDemoUsageSynced = true;
                     } else if (event === 'error') {
                         throw new Error(data.error || 'stream error');
                     }
@@ -1689,9 +1708,11 @@
                 renderFollowups(state.guestDemo.enabled ? [] : final.reply?.follow_up_questions);
                 if (!state.guestDemo.enabled && final.reply?.needs_escalation) addEscalationHint();
                 if (state.guestDemo.enabled) {
-                    incrementGuestDemoUsage(final.guestDemo?.used);
+                    if (!guestDemoUsageSynced) {
+                        incrementGuestDemoUsage(final.guestDemo?.used);
+                    }
                     if (state.guestDemo.used >= state.guestDemo.limit) {
-                        showGuestDemoLimit();
+                        showGuestDemoLimit({ autoReturn: true, afterSpeech: speechDone });
                     }
                 }
 
