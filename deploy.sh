@@ -22,6 +22,7 @@ ssh $VPS_HOST "command -v pm2 >/dev/null 2>&1"
 # Stop systemd service if it exists to avoid port conflicts
 echo "🛑 Stopping systemd service (if present)..."
 ssh $VPS_HOST "if systemctl list-units --full -all | grep -Fq 'bmuaiagent.service'; then sudo systemctl stop bmuaiagent || true; fi"
+ssh $VPS_HOST "for legacy in bmu-ai-academic-advisor bmuaiagent; do if [ \"\$legacy\" != \"$APP_NAME\" ] && pm2 describe \"\$legacy\" >/dev/null 2>&1; then pm2 delete \"\$legacy\" || true; fi; done"
 
 # Restart via pm2
 echo "🔄 Restarting app with pm2..."
