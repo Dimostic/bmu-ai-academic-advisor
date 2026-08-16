@@ -769,6 +769,8 @@
             const job = r.job;
             const recs = (job.recommendations || []).map(x => `<li>${escapeHtml(x)}</li>`).join('');
             const outputs = job.outputs || [];
+            const facts = job.facts || [];
+            const tablesFound = job.tables || [];
             workspace.innerHTML = `
                 <div class="document-lab-workspace">
                     <div class="document-lab-summary">
@@ -783,6 +785,7 @@
                         </div>
                         ${recs ? `<div class="document-lab-recs"><strong>Recommendations</strong><ul>${recs}</ul></div>` : ''}
                     </div>
+                    ${renderStructuredReviewPanel(facts, tablesFound)}
                     <h3 style="margin:18px 0 10px;color:var(--bg-deep);">Draft outputs</h3>
                     <div id="labOutputs">
                         ${outputs.length ? outputs.map(renderLabOutput).join('') : '<p class="empty">No outputs yet. Use Analyze or Regenerate outputs.</p>'}
@@ -790,6 +793,7 @@
                 </div>
             `;
             document.getElementById('labOutputs')?.addEventListener('click', handleLabOutputClick);
+            document.getElementById('labStructuredReview')?.addEventListener('click', handleStructuredReviewClick);
         } catch (err) {
             workspace.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
         }
@@ -889,6 +893,211 @@
                 ${output.promotedDocumentId ? `<p class="lede" style="margin:8px 0 0;">Promoted document ID: ${escapeHtml(output.promotedDocumentId)}</p>` : ''}
             </section>
         `;
+    }
+
+    function renderStructuredReviewPanel(facts, tablesFound) {
+        if (!facts.length && !tablesFound.length) {
+            return `
+                <section class="document-lab-structured-review" id="labStructuredReview">
+                    <div class="document-lab-review-head">
+                        <div>
+                            <h3>Structured review</h3>
+                            <p>No extracted facts or tables yet. Run Academic hierarchy parse to create reviewable records.</p>
+                        </div>
+                    </div>
+                </section>
+            `;
+        }
+        const draftFacts = facts.filter(x => x.status === 'draft').length;
+        const draftTables = tablesFound.filter(x => x.status === 'draft').length;
+        return `
+            <section class="document-lab-structured-review" id="labStructuredReview">
+                <div class="document-lab-review-head">
+                    <div>
+                        <h3>Structured review</h3>
+                        <p>${escapeHtml(facts.length)} facts · ${escapeHtml(tablesFound.length)} tables · ${escapeHtml(draftFacts + draftTables)} awaiting approval</p>
+                    </div>
+                    <div class="document-lab-output-actions">
+                        <button class="btn btn-primary" data-structured-act="approve-all"><i class="fa-solid fa-database"></i> Approve all drafts</button>
+                    </div>
+                </div>
+                <details open>
+                    <summary>Facts (${escapeHtml(facts.length)})</summary>
+                    <div class="structured-review-list">
+                        ${facts.length ? facts.map(renderFactReviewCard).join('') : '<p class="empty">No facts extracted.</p>'}
+                    </div>
+                </details>
+                <details ${facts.length ? '' : 'open'}>
+                    <summary>Tables (${escapeHtml(tablesFound.length)})</summary>
+                    <div class="structured-review-list">
+                        ${tablesFound.length ? tablesFound.map(renderTableReviewCard).join('') : '<p class="empty">No tables extracted.</p>'}
+                    </div>
+                </details>
+            </section>
+        `;
+    }
+
+    function renderFactReviewCard(fact) {
+        const locked = fact.status === 'approved' ? 'disabled' : '';
+        return `
+            <article class="structured-review-card" data-fact-id="${fact.id}">
+                <div class="structured-review-card-head">
+                    <span class="badge ${fact.status === 'approved' ? 'badge-success' : fact.status === 'rejected' ? 'badge-danger' : 'badge-info'}">${escapeHtml(fact.status || 'draft')}</span>
+                    <input class="structured-fact-type" value="${escapeHtml(fact.factType || '')}" ${locked} aria-label="Fact type" />
+                    <input class="structured-fact-subject" value="${escapeHtml(fact.subject || '')}" ${locked} aria-label="Subject" />
+                </div>
+                <textarea class="structured-fact-text" ${locked} spellcheck="false" aria-label="Fact text">${escapeHtml(fact.humanText || '')}</textarea>
+                <div class="structured-review-grid">
+                    <input class="structured-fact-predicate" value="${escapeHtml(fact.predicate || '')}" ${locked} aria-label="Predicate" />
+                    <input class="structured-fact-authority" value="${escapeHtml(fact.authorityType || '')}" ${locked} aria-label="Authority type" />
+                    <input class="structured-fact-scope" value="${escapeHtml(fact.scope || '')}" ${locked} aria-label="Scope" />
+                </div>
+                <input class="structured-fact-source" value="${escapeHtml(fact.sourcePath || '')}" ${locked} aria-label="Source path" />
+                <textarea class="structured-fact-json" ${locked} spellcheck="false" aria-label="Fact JSON">${escapeHtml(JSON.stringify(fact.value || {}, null, 2))}</textarea>
+                <div class="document-lab-output-actions">
+                    <button class="btn btn-ghost" data-fact-act="save" ${locked}><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                    <button class="btn btn-ghost" data-fact-act="${fact.status === 'rejected' ? 'restore' : 'reject'}" ${fact.status === 'approved' ? 'disabled' : ''}><i class="fa-solid fa-ban"></i> ${fact.status === 'rejected' ? 'Restore' : 'Reject'}</button>
+                    <button class="btn btn-primary" data-fact-act="approve" ${locked}><i class="fa-solid fa-check"></i> Approve fact</button>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderTableReviewCard(tableRecord) {
+        const locked = tableRecord.status === 'approved' ? 'disabled' : '';
+        return `
+            <article class="structured-review-card" data-table-id="${tableRecord.id}">
+                <div class="structured-review-card-head">
+                    <span class="badge ${tableRecord.status === 'approved' ? 'badge-success' : tableRecord.status === 'rejected' ? 'badge-danger' : 'badge-info'}">${escapeHtml(tableRecord.status || 'draft')}</span>
+                    <input class="structured-table-title" value="${escapeHtml(tableRecord.title || '')}" ${locked} aria-label="Table title" />
+                    <input class="structured-table-type" value="${escapeHtml(tableRecord.tableType || '')}" ${locked} aria-label="Table type" />
+                </div>
+                <div class="structured-review-grid">
+                    <input class="structured-table-programme" value="${escapeHtml(tableRecord.programme || '')}" ${locked} aria-label="Programme" />
+                    <input class="structured-table-section" value="${escapeHtml(tableRecord.section || '')}" ${locked} aria-label="Section" />
+                    <input class="structured-table-source" value="${escapeHtml(tableRecord.sourcePath || '')}" ${locked} aria-label="Source path" />
+                </div>
+                <textarea class="structured-table-markdown" ${locked} spellcheck="false" aria-label="Table Markdown">${escapeHtml(tableRecord.markdown || '')}</textarea>
+                <textarea class="structured-table-json" ${locked} spellcheck="false" aria-label="Table rows JSON">${escapeHtml(JSON.stringify(tableRecord.rows || [], null, 2))}</textarea>
+                <div class="document-lab-output-actions">
+                    <button class="btn btn-ghost" data-table-act="save" ${locked}><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                    <button class="btn btn-ghost" data-table-act="${tableRecord.status === 'rejected' ? 'restore' : 'reject'}" ${tableRecord.status === 'approved' ? 'disabled' : ''}><i class="fa-solid fa-ban"></i> ${tableRecord.status === 'rejected' ? 'Restore' : 'Reject'}</button>
+                    <button class="btn btn-primary" data-table-act="approve" ${locked}><i class="fa-solid fa-check"></i> Approve table</button>
+                </div>
+            </article>
+        `;
+    }
+
+    async function handleStructuredReviewClick(e) {
+        const approveAll = e.target.closest('button[data-structured-act="approve-all"]');
+        if (approveAll) {
+            if (!currentDocumentLabJobId) return;
+            if (!confirm('Approve all draft facts and tables from this lab job for production lookup?')) return;
+            try {
+                const r = await api('/api/document-lab/jobs/' + currentDocumentLabJobId + '/approve-facts', { method: 'POST' });
+                toast(`Approved ${r.approved || 0} fact(s), ${r.approvedTables || 0} table(s)`);
+                return loadLabJob(currentDocumentLabJobId);
+            } catch (err) {
+                toast(err.message || 'Could not approve structured records', 'error');
+                return;
+            }
+        }
+
+        const factBtn = e.target.closest('button[data-fact-act]');
+        if (factBtn) return handleFactReviewAction(factBtn);
+        const tableBtn = e.target.closest('button[data-table-act]');
+        if (tableBtn) return handleTableReviewAction(tableBtn);
+    }
+
+    async function handleFactReviewAction(btn) {
+        const card = btn.closest('[data-fact-id]');
+        const id = card?.dataset.factId;
+        if (!id) return;
+        try {
+            if (btn.dataset.factAct === 'save') {
+                await api('/api/document-lab/facts/' + id, {
+                    method: 'PUT',
+                    body: collectFactReviewPayload(card)
+                });
+                toast('Fact saved');
+            } else if (btn.dataset.factAct === 'approve') {
+                await api('/api/document-lab/facts/' + id, {
+                    method: 'PUT',
+                    body: collectFactReviewPayload(card)
+                });
+                await api('/api/document-lab/facts/' + id + '/approve', { method: 'POST' });
+                toast('Fact approved');
+            } else if (btn.dataset.factAct === 'reject' || btn.dataset.factAct === 'restore') {
+                await api('/api/document-lab/facts/' + id + '/status', {
+                    method: 'POST',
+                    body: { status: btn.dataset.factAct === 'restore' ? 'draft' : 'rejected' }
+                });
+                toast(btn.dataset.factAct === 'restore' ? 'Fact restored' : 'Fact rejected');
+            }
+            if (currentDocumentLabJobId) loadLabJob(currentDocumentLabJobId);
+        } catch (err) {
+            toast(err.message || 'Fact action failed', 'error');
+        }
+    }
+
+    async function handleTableReviewAction(btn) {
+        const card = btn.closest('[data-table-id]');
+        const id = card?.dataset.tableId;
+        if (!id) return;
+        try {
+            if (btn.dataset.tableAct === 'save') {
+                await api('/api/document-lab/tables/' + id, {
+                    method: 'PUT',
+                    body: collectTableReviewPayload(card)
+                });
+                toast('Table saved');
+            } else if (btn.dataset.tableAct === 'approve') {
+                await api('/api/document-lab/tables/' + id, {
+                    method: 'PUT',
+                    body: collectTableReviewPayload(card)
+                });
+                await api('/api/document-lab/tables/' + id + '/approve', { method: 'POST' });
+                toast('Table approved');
+            } else if (btn.dataset.tableAct === 'reject' || btn.dataset.tableAct === 'restore') {
+                await api('/api/document-lab/tables/' + id + '/status', {
+                    method: 'POST',
+                    body: { status: btn.dataset.tableAct === 'restore' ? 'draft' : 'rejected' }
+                });
+                toast(btn.dataset.tableAct === 'restore' ? 'Table restored' : 'Table rejected');
+            }
+            if (currentDocumentLabJobId) loadLabJob(currentDocumentLabJobId);
+        } catch (err) {
+            toast(err.message || 'Table action failed', 'error');
+        }
+    }
+
+    function collectFactReviewPayload(card) {
+        const valueText = card.querySelector('.structured-fact-json')?.value || '{}';
+        JSON.parse(valueText);
+        return {
+            factType: card.querySelector('.structured-fact-type')?.value || '',
+            subject: card.querySelector('.structured-fact-subject')?.value || '',
+            predicate: card.querySelector('.structured-fact-predicate')?.value || '',
+            humanText: card.querySelector('.structured-fact-text')?.value || '',
+            authorityType: card.querySelector('.structured-fact-authority')?.value || '',
+            scope: card.querySelector('.structured-fact-scope')?.value || '',
+            sourcePath: card.querySelector('.structured-fact-source')?.value || '',
+            valueJson: valueText
+        };
+    }
+
+    function collectTableReviewPayload(card) {
+        const rowsText = card.querySelector('.structured-table-json')?.value || '[]';
+        JSON.parse(rowsText);
+        return {
+            title: card.querySelector('.structured-table-title')?.value || '',
+            tableType: card.querySelector('.structured-table-type')?.value || '',
+            programme: card.querySelector('.structured-table-programme')?.value || '',
+            section: card.querySelector('.structured-table-section')?.value || '',
+            sourcePath: card.querySelector('.structured-table-source')?.value || '',
+            markdown: card.querySelector('.structured-table-markdown')?.value || '',
+            rowsJson: rowsText
+        };
     }
 
     async function handleLabOutputClick(e) {

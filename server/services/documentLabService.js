@@ -12,6 +12,37 @@ const PROMOTED_DIR = path.join(LAB_DIR, 'promoted');
 const DEFAULT_TARGET_CHARS = 12000;
 const DOCUMENT_CATEGORIES = new Set(['policy', 'regulation', 'academic', 'administrative', 'legal', 'general']);
 const ACADEMIC_CHUNK_TARGET = 2200;
+const PROGRAMME_ALIASES = [
+    ['MBBS', /\b(mbbs|medicine and surgery|medicine)\b/i],
+    ['BDS', /\b(bds|dentistry|dental surgery)\b/i],
+    ['Nursing', /\b(nursing|bnsc)\b/i],
+    ['Medical Laboratory Science', /\b(medical laboratory science|bmls)\b/i],
+    ['Pharmacy', /\b(pharmacy|pharmd|doctor of pharmacy|b\.?pharm)\b/i],
+    ['Physiotherapy', /\b(physiotherapy|medical rehabilitation)\b/i],
+    ['Radiography', /\b(radiography|radiation science)\b/i],
+    ['Optometry', /\b(optometry)\b/i],
+    ['Human Anatomy', /\b(human anatomy|anatomy)\b/i],
+    ['Human Physiology', /\b(human physiology|physiology)\b/i],
+    ['Biochemistry', /\b(biochemistry)\b/i],
+    ['Public Health', /\b(public health)\b/i],
+    ['Microbiology', /\b(microbiology)\b/i],
+    ['Computer Science', /\b(computer science)\b/i],
+    ['Mathematics', /\b(mathematics)\b/i],
+    ['Statistics', /\b(statistics)\b/i],
+    ['Physics', /\b(physics)\b/i],
+    ['Chemistry', /\b(chemistry)\b/i],
+    ['Biology', /\b(biology|biological sciences)\b/i],
+    ['Environmental Management and Toxicology', /\b(environmental management|toxicology)\b/i],
+    ['Economics', /\b(economics)\b/i],
+    ['Political Science', /\b(political science)\b/i],
+    ['Sociology', /\b(sociology)\b/i],
+    ['Psychology', /\b(psychology)\b/i],
+    ['Mass Communication', /\b(mass communication)\b/i],
+    ['Accounting', /\b(accounting)\b/i],
+    ['Business Administration', /\b(business administration)\b/i],
+    ['Public Administration', /\b(public administration)\b/i],
+    ['Law', /\b(law|ll\.?b)\b/i]
+];
 let schemaEnsured = false;
 
 function safeJson(value, fallback = null) {
@@ -441,24 +472,57 @@ function parseMarkdownTable(table) {
 function normalizeProgrammeName(value) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
     const q = text.toLowerCase();
-    const matches = [
-        ['MBBS', /\b(mbbs|medicine and surgery|medicine)\b/i],
-        ['BDS', /\b(bds|dentistry)\b/i],
-        ['Nursing', /\b(nursing|bnsc)\b/i],
-        ['Medical Laboratory Science', /\b(medical laboratory science|bmls)\b/i],
-        ['Pharmacy', /\b(pharmacy|pharmd|b\.?pharm)\b/i],
-        ['Physiotherapy', /\b(physiotherapy)\b/i],
-        ['Radiography', /\b(radiography)\b/i],
-        ['Optometry', /\b(optometry)\b/i],
-        ['Human Anatomy', /\b(human anatomy|anatomy)\b/i],
-        ['Human Physiology', /\b(human physiology|physiology)\b/i],
-        ['Biochemistry', /\b(biochemistry)\b/i],
-        ['Public Health', /\b(public health)\b/i]
-    ];
-    const found = matches.find(([, re]) => re.test(text));
+    const found = PROGRAMME_ALIASES.find(([, re]) => re.test(text));
     if (found) return found[0];
     if (/\bprogramme\b|\bprogram\b|\bdegree\b/.test(q)) return text.replace(/^#+\s*/, '').slice(0, 120);
     return '';
+}
+
+function classifyAcademicDocument(title, markdown) {
+    const name = String(title || '').toLowerCase();
+    const sample = String(markdown || '').slice(0, 6000).toLowerCase();
+    const haystack = `${name}\n${sample}`;
+    if (/mdcn|medical and dental council/.test(haystack)) {
+        return { family: 'professional_regulation', authorityType: 'professional_regulator', discipline: 'Medicine and Dentistry', recipe: 'mdcn_guideline' };
+    }
+    if (/ccmas|core curriculum.*minimum academic standards|nuc/.test(haystack)) {
+        if (/medicine.*dentistry|dentistry.*medicine|mbbs|bds/.test(haystack)) {
+            return { family: 'ccmas', authorityType: 'regulator', discipline: 'Medicine and Dentistry', recipe: 'medicine_dentistry_ccmas' };
+        }
+        if (/pharmacy|pharmaceutical sciences|pharmd/.test(haystack)) {
+            return { family: 'ccmas', authorityType: 'regulator', discipline: 'Pharmacy and Pharmaceutical Sciences', recipe: 'pharmacy_ccmas' };
+        }
+        if (/basic medical sciences|human anatomy|human physiology/.test(haystack)) {
+            return { family: 'ccmas', authorityType: 'regulator', discipline: 'Basic Medical Sciences', recipe: 'basic_medical_sciences_ccmas' };
+        }
+        if (/allied health|nursing|medical laboratory|physiotherapy|radiography/.test(haystack)) {
+            return { family: 'ccmas', authorityType: 'regulator', discipline: 'Allied Health Sciences', recipe: 'allied_health_ccmas' };
+        }
+        if (/social sciences|economics|political science|sociology/.test(haystack)) {
+            return { family: 'ccmas', authorityType: 'regulator', discipline: 'Social Sciences', recipe: 'social_sciences_ccmas' };
+        }
+        if (/sciences|computer science|microbiology|biochemistry|physics|chemistry/.test(haystack)) {
+            return { family: 'ccmas', authorityType: 'regulator', discipline: 'Sciences', recipe: 'sciences_ccmas' };
+        }
+        return { family: 'ccmas', authorityType: 'regulator', discipline: '', recipe: 'generic_ccmas' };
+    }
+    if (/calendar|session|semester/.test(name)) return { family: 'academic_calendar', authorityType: 'institution', discipline: '', recipe: 'calendar' };
+    if (/fee|tuition|charges/.test(name)) return { family: 'fees', authorityType: 'institution', discipline: '', recipe: 'fees' };
+    if (/handbook|prospectus|profile|quick facts|career/.test(name)) return { family: 'institutional', authorityType: 'institution', discipline: '', recipe: 'institutional' };
+    return { family: 'general_academic', authorityType: 'institution', discipline: '', recipe: 'generic' };
+}
+
+function isBoilerplateHeading(line) {
+    return /\b(contents?|table of contents|foreword|preface|acknowledg|committee|contributors?|reviewers?|copyright|isbn|publication|nuc management|list of participants|definitions and acronyms)\b/i.test(line || '');
+}
+
+function isBoilerplateLine(line) {
+    const text = String(line || '').trim();
+    if (!text) return false;
+    if (/^\d+$/.test(text)) return true;
+    if (/^(page|pg)\s+\d+/i.test(text)) return true;
+    if (/^(©|copyright|isbn|all rights reserved)/i.test(text)) return true;
+    return false;
 }
 
 function detectAcademicSection(title) {
@@ -515,10 +579,19 @@ function academicFactFromLine(line, context) {
         predicate: type,
         value,
         humanText: text,
-        authorityType: /ccmas|nuc/i.test(context.documentTitle) ? 'regulator' : 'institution',
-        scope: /ccmas|nuc/i.test(context.documentTitle) ? 'NUC national minimum' : 'BMU institutional source',
+        authorityType: context.authorityType || (/ccmas|nuc/i.test(context.documentTitle) ? 'regulator' : 'institution'),
+        scope: context.scope || (/ccmas|nuc/i.test(context.documentTitle) ? 'NUC national minimum' : 'BMU institutional source'),
         sourcePath: context.path
     };
+}
+
+function isProgrammeHeading(headingText, programme) {
+    if (!programme) return false;
+    const h = String(headingText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const p = String(programme || '').toLowerCase();
+    return /\b(programme|program|department of|b\.?sc|bachelor|ll\.?b|mbbs|bds|bnsc|bmls|pharmd|b\.?pharm)\b/i.test(headingText)
+        || h === p
+        || h.startsWith(`${p} `);
 }
 
 function academicTableRecordFromMarkdown(tableMarkdown, context, index) {
@@ -549,6 +622,7 @@ function academicTableRecordFromMarkdown(tableMarkdown, context, index) {
 function buildAcademicParse(markdown, title) {
     const text = String(markdown || '').trim();
     const documentTitle = cleanTitle(title);
+    const documentClass = classifyAcademicDocument(documentTitle, text);
     const lines = text.split(/\r?\n/);
     const nodes = [];
     const facts = [];
@@ -558,8 +632,10 @@ function buildAcademicParse(markdown, title) {
         programme: '',
         section: '',
         subsection: '',
-        path: documentTitle
+        path: documentTitle,
+        suppress: false
     };
+    if (documentClass.discipline) current.discipline = documentClass.discipline;
     let buffer = [];
     let order = 1;
 
@@ -587,6 +663,7 @@ function buildAcademicParse(markdown, title) {
                     section: current.section || null,
                     subsection: current.subsection || null,
                     sectionType,
+                    documentClass,
                     recommendedTokens: sectionType === 'course_content' ? 'one course or logical course group' : 'logical section only'
                 },
                 indexable: true,
@@ -597,7 +674,9 @@ function buildAcademicParse(markdown, title) {
                 .map(line => academicFactFromLine(line, {
                     ...current,
                     documentTitle,
-                    path: pathText
+                    path: pathText,
+                    authorityType: documentClass.authorityType,
+                    scope: documentClass.family === 'ccmas' ? 'NUC national minimum' : (documentClass.family === 'professional_regulation' ? 'Professional regulatory requirement' : 'BMU institutional source')
                 }))
                 .filter(Boolean)
                 .forEach(fact => facts.push(fact));
@@ -607,6 +686,8 @@ function buildAcademicParse(markdown, title) {
             const record = academicTableRecordFromMarkdown(table, {
                 ...current,
                 documentTitle,
+                authorityType: documentClass.authorityType,
+                scope: documentClass.family === 'ccmas' ? 'NUC national minimum' : (documentClass.family === 'professional_regulation' ? 'Professional regulatory requirement' : 'BMU institutional source'),
                 path: [documentTitle, current.discipline, current.programme, current.section, current.subsection]
                     .filter(Boolean)
                     .join(' -> ')
@@ -637,7 +718,7 @@ function buildAcademicParse(markdown, title) {
         parentPath: null,
         parentSummary: '',
         content: `Document source: ${documentTitle}`,
-        metadata: { documentTitle },
+        metadata: { documentTitle, documentClass },
         indexable: false,
         sortOrder: 0
     });
@@ -649,8 +730,15 @@ function buildAcademicParse(markdown, title) {
             flushBuffer();
             const level = heading[1].length || 2;
             const headingText = cleanTitle(heading[2]);
+            if (isBoilerplateHeading(headingText)) {
+                current.suppress = true;
+                current.section = headingText;
+                current.subsection = '';
+                continue;
+            }
+            current.suppress = false;
             const programme = normalizeProgrammeName(headingText);
-            if (programme && /programme|program|mbbs|bds|nursing|laboratory|pharmacy|physiotherapy|radiography|optometry|anatomy|physiology|biochemistry|public health/i.test(headingText)) {
+            if (isProgrammeHeading(headingText, programme)) {
                 current.programme = programme;
                 current.section = '';
                 current.subsection = '';
@@ -683,13 +771,15 @@ function buildAcademicParse(markdown, title) {
                     programme: current.programme || null,
                     section: current.section || null,
                     subsection: current.subsection || null,
-                    sectionType: detectAcademicSection(headingText)
+                    sectionType: detectAcademicSection(headingText),
+                    documentClass
                 },
                 indexable: false,
                 sortOrder: order++
             });
             continue;
         }
+        if (current.suppress || isBoilerplateLine(line)) continue;
         if (stripMarkdownTableSeparator(line)) {
             buffer.push(rawLine);
             continue;
@@ -707,7 +797,8 @@ function buildAcademicParse(markdown, title) {
             childChunks: nodes.filter(n => n.nodeType === 'child_chunk').length,
             programmes: new Set(nodes.map(n => n.metadata?.programme).filter(Boolean)).size,
             facts: facts.length,
-            tables: tableRecords.length
+            tables: tableRecords.length,
+            documentClass
         }
     };
 }
@@ -908,9 +999,13 @@ class DocumentLabService {
         const job = jobs[0];
         if (!job) return null;
         const outputs = await query('SELECT * FROM document_lab_outputs WHERE job_id = ? ORDER BY sort_order ASC, id ASC', [jobId]);
+        const facts = await query('SELECT * FROM document_lab_facts WHERE job_id = ? ORDER BY status ASC, fact_type ASC, id ASC LIMIT 500', [jobId]);
+        const tables = await query('SELECT * FROM document_lab_tables WHERE job_id = ? ORDER BY status ASC, table_type ASC, id ASC LIMIT 200', [jobId]);
         return {
             ...this._shapeJob(job),
-            outputs: outputs.map(output => this._shapeOutput(output))
+            outputs: outputs.map(output => this._shapeOutput(output)),
+            facts: facts.map(fact => this._shapeFact(fact)),
+            tables: tables.map(table => this._shapeTable(table))
         };
     }
 
@@ -1400,49 +1495,180 @@ class DocumentLabService {
         const tables = await query("SELECT * FROM document_lab_tables WHERE job_id = ? AND status = 'draft'", [jobId]);
         let approved = 0;
         for (const fact of facts) {
-            await query(`
-                INSERT INTO structured_facts
-                    (lab_fact_id, source_document_id, fact_type, subject, predicate_name, value_json, human_text, authority_type, scope_label, source_path, status, authority_rank)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
-            `, [
-                fact.id,
-                job.source_document_id || null,
-                fact.fact_type,
-                fact.subject,
-                fact.predicate_name,
-                fact.value_json,
-                fact.human_text,
-                fact.authority_type,
-                fact.scope_label,
-                fact.source_path,
-                fact.authority_type === 'regulator' ? 75 : 85
-            ]);
-            await query("UPDATE document_lab_facts SET status = 'approved', updated_at = NOW() WHERE id = ?", [fact.id]);
+            await this._approveFactRow(fact, job);
             approved++;
         }
         let approvedTables = 0;
         for (const tableRecord of tables) {
-            await query(`
-                INSERT INTO structured_tables
-                    (lab_table_id, source_document_id, title, table_type, programme, section_label, source_path, markdown, rows_json, metadata_json, authority_rank, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
-            `, [
-                tableRecord.id,
-                job.source_document_id || null,
-                tableRecord.title,
-                tableRecord.table_type,
-                tableRecord.programme,
-                tableRecord.section_label,
-                tableRecord.source_path,
-                tableRecord.markdown,
-                tableRecord.rows_json,
-                tableRecord.metadata_json,
-                /ccmas|nuc/i.test(job.title || '') ? 75 : 85
-            ]);
-            await query("UPDATE document_lab_tables SET status = 'approved', updated_at = NOW() WHERE id = ?", [tableRecord.id]);
+            await this._approveTableRow(tableRecord, job);
             approvedTables++;
         }
         return { approved, approvedTables };
+    }
+
+    async updateFact(factId, updates = {}) {
+        await this.ensureSchema();
+        const rows = await query('SELECT * FROM document_lab_facts WHERE id = ?', [factId]);
+        const fact = rows[0];
+        if (!fact) throw new Error('Lab fact not found');
+        if (fact.status === 'approved') throw new Error('Approved facts cannot be edited. Regenerate the academic parse to revise.');
+
+        let valueJson = fact.value_json;
+        if (typeof updates.valueJson === 'string') {
+            JSON.parse(updates.valueJson || '{}');
+            valueJson = updates.valueJson;
+        } else if (updates.value && typeof updates.value === 'object') {
+            valueJson = JSON.stringify(updates.value);
+        }
+
+        await query(`
+            UPDATE document_lab_facts
+            SET fact_type = ?, subject = ?, predicate_name = ?, value_json = ?, human_text = ?,
+                authority_type = ?, scope_label = ?, source_path = ?, status = ?, updated_at = NOW()
+            WHERE id = ?
+        `, [
+            cleanTitle(updates.factType || fact.fact_type).slice(0, 80),
+            updates.subject ?? fact.subject,
+            updates.predicate ?? fact.predicate_name,
+            valueJson,
+            String(updates.humanText ?? fact.human_text).trim(),
+            updates.authorityType ?? fact.authority_type,
+            updates.scope ?? fact.scope_label,
+            updates.sourcePath ?? fact.source_path,
+            updates.status && ['draft', 'rejected'].includes(updates.status) ? updates.status : fact.status,
+            factId
+        ]);
+        const updated = await query('SELECT * FROM document_lab_facts WHERE id = ?', [factId]);
+        return this._shapeFact(updated[0]);
+    }
+
+    async updateTable(tableId, updates = {}) {
+        await this.ensureSchema();
+        const rows = await query('SELECT * FROM document_lab_tables WHERE id = ?', [tableId]);
+        const table = rows[0];
+        if (!table) throw new Error('Lab table not found');
+        if (table.status === 'approved') throw new Error('Approved tables cannot be edited. Regenerate the academic parse to revise.');
+
+        let rowsJson = table.rows_json;
+        if (typeof updates.rowsJson === 'string') {
+            JSON.parse(updates.rowsJson || '[]');
+            rowsJson = updates.rowsJson;
+        } else if (Array.isArray(updates.rows)) {
+            rowsJson = JSON.stringify(updates.rows);
+        }
+
+        await query(`
+            UPDATE document_lab_tables
+            SET title = ?, table_type = ?, programme = ?, section_label = ?, source_path = ?,
+                markdown = ?, rows_json = ?, status = ?, updated_at = NOW()
+            WHERE id = ?
+        `, [
+            cleanTitle(updates.title || table.title).slice(0, 255),
+            updates.tableType ?? table.table_type,
+            updates.programme ?? table.programme,
+            updates.section ?? table.section_label,
+            updates.sourcePath ?? table.source_path,
+            String(updates.markdown ?? table.markdown).trim(),
+            rowsJson,
+            updates.status && ['draft', 'rejected'].includes(updates.status) ? updates.status : table.status,
+            tableId
+        ]);
+        const updated = await query('SELECT * FROM document_lab_tables WHERE id = ?', [tableId]);
+        return this._shapeTable(updated[0]);
+    }
+
+    async approveFact(factId) {
+        await this.ensureSchema();
+        const rows = await query(`
+            SELECT f.*, j.source_document_id, j.title AS job_title
+            FROM document_lab_facts f
+            JOIN document_lab_jobs j ON j.id = f.job_id
+            WHERE f.id = ?
+        `, [factId]);
+        const fact = rows[0];
+        if (!fact) throw new Error('Lab fact not found');
+        if (fact.status === 'approved') return { approved: 0, fact: this._shapeFact(fact) };
+        if (fact.status === 'rejected') throw new Error('Rejected facts must be restored to draft before approval.');
+        await this._approveFactRow(fact, { source_document_id: fact.source_document_id, title: fact.job_title });
+        const updated = await query('SELECT * FROM document_lab_facts WHERE id = ?', [factId]);
+        return { approved: 1, fact: this._shapeFact(updated[0]) };
+    }
+
+    async approveTable(tableId) {
+        await this.ensureSchema();
+        const rows = await query(`
+            SELECT t.*, j.source_document_id, j.title AS job_title
+            FROM document_lab_tables t
+            JOIN document_lab_jobs j ON j.id = t.job_id
+            WHERE t.id = ?
+        `, [tableId]);
+        const table = rows[0];
+        if (!table) throw new Error('Lab table not found');
+        if (table.status === 'approved') return { approvedTables: 0, table: this._shapeTable(table) };
+        if (table.status === 'rejected') throw new Error('Rejected tables must be restored to draft before approval.');
+        await this._approveTableRow(table, { source_document_id: table.source_document_id, title: table.job_title });
+        const updated = await query('SELECT * FROM document_lab_tables WHERE id = ?', [tableId]);
+        return { approvedTables: 1, table: this._shapeTable(updated[0]) };
+    }
+
+    async setFactStatus(factId, status) {
+        await this.ensureSchema();
+        if (!['draft', 'rejected'].includes(status)) throw new Error('Unsupported fact status');
+        await query("UPDATE document_lab_facts SET status = ?, updated_at = NOW() WHERE id = ? AND status <> 'approved'", [status, factId]);
+        const rows = await query('SELECT * FROM document_lab_facts WHERE id = ?', [factId]);
+        if (!rows[0]) throw new Error('Lab fact not found');
+        return this._shapeFact(rows[0]);
+    }
+
+    async setTableStatus(tableId, status) {
+        await this.ensureSchema();
+        if (!['draft', 'rejected'].includes(status)) throw new Error('Unsupported table status');
+        await query("UPDATE document_lab_tables SET status = ?, updated_at = NOW() WHERE id = ? AND status <> 'approved'", [status, tableId]);
+        const rows = await query('SELECT * FROM document_lab_tables WHERE id = ?', [tableId]);
+        if (!rows[0]) throw new Error('Lab table not found');
+        return this._shapeTable(rows[0]);
+    }
+
+    async _approveFactRow(fact, job) {
+        await query(`
+            INSERT INTO structured_facts
+                (lab_fact_id, source_document_id, fact_type, subject, predicate_name, value_json, human_text, authority_type, scope_label, source_path, status, authority_rank)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+        `, [
+            fact.id,
+            job.source_document_id || null,
+            fact.fact_type,
+            fact.subject,
+            fact.predicate_name,
+            fact.value_json,
+            fact.human_text,
+            fact.authority_type,
+            fact.scope_label,
+            fact.source_path,
+            fact.authority_type === 'regulator' ? 75 : 85
+        ]);
+        await query("UPDATE document_lab_facts SET status = 'approved', updated_at = NOW() WHERE id = ?", [fact.id]);
+    }
+
+    async _approveTableRow(tableRecord, job) {
+        await query(`
+            INSERT INTO structured_tables
+                (lab_table_id, source_document_id, title, table_type, programme, section_label, source_path, markdown, rows_json, metadata_json, authority_rank, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        `, [
+            tableRecord.id,
+            job.source_document_id || null,
+            tableRecord.title,
+            tableRecord.table_type,
+            tableRecord.programme,
+            tableRecord.section_label,
+            tableRecord.source_path,
+            tableRecord.markdown,
+            tableRecord.rows_json,
+            tableRecord.metadata_json,
+            /ccmas|nuc/i.test(job.title || '') ? 75 : 85
+        ]);
+        await query("UPDATE document_lab_tables SET status = 'approved', updated_at = NOW() WHERE id = ?", [tableRecord.id]);
     }
 
     async updateOutput(outputId, updates = {}) {
@@ -1564,6 +1790,46 @@ class DocumentLabService {
             readiness: safeJson(row.readiness_json, null),
             sortOrder: row.sort_order,
             promotedDocumentId: row.promoted_document_id,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        };
+    }
+
+    _shapeFact(row) {
+        return {
+            id: row.id,
+            jobId: row.job_id,
+            nodeId: row.node_id,
+            factType: row.fact_type,
+            subject: row.subject,
+            predicate: row.predicate_name,
+            value: safeJson(row.value_json, {}),
+            valueJson: row.value_json,
+            humanText: row.human_text,
+            authorityType: row.authority_type,
+            scope: row.scope_label,
+            sourcePath: row.source_path,
+            status: row.status,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        };
+    }
+
+    _shapeTable(row) {
+        return {
+            id: row.id,
+            jobId: row.job_id,
+            nodeId: row.node_id,
+            title: row.title,
+            tableType: row.table_type,
+            programme: row.programme,
+            section: row.section_label,
+            sourcePath: row.source_path,
+            markdown: row.markdown,
+            rows: safeJson(row.rows_json, []),
+            rowsJson: row.rows_json,
+            metadata: safeJson(row.metadata_json, {}),
+            status: row.status,
             createdAt: row.created_at,
             updatedAt: row.updated_at
         };

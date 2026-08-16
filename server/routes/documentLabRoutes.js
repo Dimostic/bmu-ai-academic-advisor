@@ -229,6 +229,82 @@ router.post('/jobs/:id/approve-facts', authenticateToken, requireAdmin, async (r
     }
 });
 
+router.put('/facts/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const fact = await documentLabService.updateFact(req.params.id, req.body || {});
+        res.json({ success: true, message: 'Fact updated', fact });
+    } catch (error) {
+        console.error('Document Lab fact update error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to update fact' });
+    }
+});
+
+router.post('/facts/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const result = await documentLabService.approveFact(req.params.id);
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_LAB_FACT_APPROVED',
+            entityType: 'document_lab_fact',
+            entityId: parseInt(req.params.id, 10),
+            details: result,
+            ipAddress: req.ip
+        });
+        res.json({ success: true, message: 'Fact approved for production lookup', ...result });
+    } catch (error) {
+        console.error('Document Lab fact approve error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to approve fact' });
+    }
+});
+
+router.post('/facts/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const fact = await documentLabService.setFactStatus(req.params.id, req.body?.status || 'draft');
+        res.json({ success: true, message: 'Fact status updated', fact });
+    } catch (error) {
+        console.error('Document Lab fact status error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to update fact status' });
+    }
+});
+
+router.put('/tables/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const table = await documentLabService.updateTable(req.params.id, req.body || {});
+        res.json({ success: true, message: 'Table updated', table });
+    } catch (error) {
+        console.error('Document Lab table update error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to update table' });
+    }
+});
+
+router.post('/tables/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const result = await documentLabService.approveTable(req.params.id);
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_LAB_TABLE_APPROVED',
+            entityType: 'document_lab_table',
+            entityId: parseInt(req.params.id, 10),
+            details: result,
+            ipAddress: req.ip
+        });
+        res.json({ success: true, message: 'Table approved for production lookup', ...result });
+    } catch (error) {
+        console.error('Document Lab table approve error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to approve table' });
+    }
+});
+
+router.post('/tables/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const table = await documentLabService.setTableStatus(req.params.id, req.body?.status || 'draft');
+        res.json({ success: true, message: 'Table status updated', table });
+    } catch (error) {
+        console.error('Document Lab table status error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to update table status' });
+    }
+});
+
 router.put('/outputs/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const output = await documentLabService.updateOutput(req.params.id, req.body || {});

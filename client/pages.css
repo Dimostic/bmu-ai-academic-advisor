@@ -274,6 +274,90 @@
     font: 0.9rem/1.5 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
 }
 
+.document-lab-structured-review {
+    margin-top: 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    padding: 14px;
+}
+
+.document-lab-review-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 12px;
+}
+
+.document-lab-review-head h3 {
+    margin: 0 0 4px;
+    color: var(--text);
+    font-size: 1rem;
+}
+
+.document-lab-review-head p {
+    margin: 0;
+    color: var(--muted);
+    font-size: .88rem;
+}
+
+.document-lab-structured-review details {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    margin-top: 10px;
+}
+
+.document-lab-structured-review summary {
+    cursor: pointer;
+    color: var(--text);
+    font-weight: 700;
+}
+
+.structured-review-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.structured-review-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    padding: 12px;
+}
+
+.structured-review-card-head,
+.structured-review-grid {
+    display: grid;
+    grid-template-columns: auto minmax(140px, .4fr) minmax(220px, 1fr);
+    gap: 8px;
+    align-items: center;
+}
+
+.structured-review-card input,
+.structured-review-card textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    color: var(--text);
+    padding: 8px 10px;
+    font: inherit;
+}
+
+.structured-review-card textarea {
+    min-height: 78px;
+    margin-top: 8px;
+    resize: vertical;
+    font: .84rem/1.45 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
+.structured-table-markdown,
+.structured-table-json {
+    min-height: 140px !important;
+}
+
 @media (max-width: 860px) {
     .doc-review-panel,
     .doc-review-notes,
@@ -290,6 +374,13 @@
 
     .document-lab-output-actions {
         justify-content: flex-start;
+    }
+
+    .document-lab-review-head,
+    .structured-review-card-head,
+    .structured-review-grid {
+        display: grid;
+        grid-template-columns: 1fr;
     }
 }
 
