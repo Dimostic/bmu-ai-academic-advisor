@@ -740,13 +740,13 @@
                         toast('Creating academic hierarchy parse…');
                         const r = await api('/api/document-lab/jobs/' + id + '/academic-parse', { method: 'POST' });
                         const stats = r.job?.academicParse || {};
-                        toast(`Created ${stats.childChunks || 0} chunk(s), ${stats.facts || 0} fact(s)`);
+                        toast(`Created ${stats.childChunks || 0} chunk(s), ${stats.tables || 0} table(s), ${stats.facts || 0} fact(s)`);
                         return renderDocumentLab(id);
                     }
                     if (btn.dataset.labAct === 'facts') {
                         if (!confirm('Approve draft structured facts from this lab job for production lookup?')) return;
                         const r = await api('/api/document-lab/jobs/' + id + '/approve-facts', { method: 'POST' });
-                        toast(`Approved ${r.approved || 0} structured fact(s)`);
+                        toast(`Approved ${r.approved || 0} fact(s), ${r.approvedTables || 0} table(s)`);
                         return renderDocumentLab(id);
                     }
                 } catch (err) {

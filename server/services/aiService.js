@@ -205,16 +205,16 @@ Response Format:
                     documentIds: documentIds
                 });
                 
-                if (result.type === 'document_retrieval' && result.chunks && result.chunks.length > 0) {
+                if (result.type === 'document_retrieval' && ((result.chunks && result.chunks.length > 0) || String(result.context || '').trim())) {
                     // Filter by documentIds if specified
-                    let filteredChunks = result.chunks;
+                    let filteredChunks = result.chunks || [];
                     if (hasDocFilter) {
-                        filteredChunks = result.chunks.filter(chunk => 
+                        filteredChunks = filteredChunks.filter(chunk => 
                             documentIds.includes(chunk.documentId)
                         );
                     }
                     
-                    if (filteredChunks.length > 0) {
+                    if (filteredChunks.length > 0 || String(result.context || '').trim()) {
                         const relevantDocs = [];
                         const seenDocIds = new Set();
                         

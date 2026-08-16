@@ -521,13 +521,38 @@ function academicFactFromLine(line, context) {
     };
 }
 
+function academicTableRecordFromMarkdown(tableMarkdown, context, index) {
+    const rows = parseMarkdownTable(tableMarkdown);
+    if (!rows.length) return null;
+    const headers = Object.keys(rows[0] || {});
+    const programme = context.programme || normalizeProgrammeName(`${context.section || ''} ${context.subsection || ''}`) || null;
+    const tableType = inferFactType(`${headers.join(' ')} ${rows.slice(0, 3).map(row => Object.values(row).join(' ')).join(' ')}`);
+    return {
+        title: `${context.subsection || context.section || programme || context.documentTitle} - Table ${index + 1}`,
+        tableType,
+        programme,
+        section: context.section || null,
+        sourcePath: context.path,
+        markdown: tableMarkdown.trim(),
+        rows,
+        metadata: {
+            headers,
+            rowCount: rows.length,
+            discipline: context.discipline || null,
+            programme,
+            section: context.section || null,
+            subsection: context.subsection || null
+        }
+    };
+}
+
 function buildAcademicParse(markdown, title) {
     const text = String(markdown || '').trim();
     const documentTitle = cleanTitle(title);
     const lines = text.split(/\r?\n/);
     const nodes = [];
     const facts = [];
-    const tables = extractMarkdownTables(text, 200);
+    const tableRecords = [];
     let current = {
         discipline: '',
         programme: '',
@@ -553,6 +578,7 @@ function buildAcademicParse(markdown, title) {
                 nodeType: 'child_chunk',
                 title: `${current.subsection || current.section || current.programme || documentTitle}${units.length > 1 ? ` - Part ${index + 1}` : ''}`,
                 path: pathText,
+                parentPath: pathParts.slice(0, -1).join(' -> ') || documentTitle,
                 parentSummary: pathParts.slice(0, -1).join(' -> '),
                 content: unit,
                 metadata: {
@@ -576,12 +602,39 @@ function buildAcademicParse(markdown, title) {
                 .filter(Boolean)
                 .forEach(fact => facts.push(fact));
         });
+
+        extractMarkdownTables(content, 50).forEach((table, tableIndex) => {
+            const record = academicTableRecordFromMarkdown(table, {
+                ...current,
+                documentTitle,
+                path: [documentTitle, current.discipline, current.programme, current.section, current.subsection]
+                    .filter(Boolean)
+                    .join(' -> ')
+            }, tableRecords.length + tableIndex);
+            if (!record) return;
+            tableRecords.push(record);
+            record.rows.forEach(row => {
+                const rowText = Object.entries(row).map(([key, value]) => `${key}: ${value}`).join('; ');
+                const fact = academicFactFromLine(rowText, {
+                    ...current,
+                    documentTitle,
+                    path: record.sourcePath
+                });
+                if (fact) {
+                    fact.value.table_row = row;
+                    fact.value.table_title = record.title;
+                    fact.humanText = rowText;
+                    facts.push(fact);
+                }
+            });
+        });
     };
 
     nodes.push({
         nodeType: 'document',
         title: documentTitle,
         path: documentTitle,
+        parentPath: null,
         parentSummary: '',
         content: `Document source: ${documentTitle}`,
         metadata: { documentTitle },
@@ -613,10 +666,16 @@ function buildAcademicParse(markdown, title) {
             current.path = [documentTitle, current.discipline, current.programme, current.section, current.subsection]
                 .filter(Boolean)
                 .join(' -> ');
+            const parentPath = programme
+                ? [documentTitle, current.discipline].filter(Boolean).join(' -> ')
+                : (level <= 2
+                    ? [documentTitle, current.discipline, current.programme].filter(Boolean).join(' -> ')
+                    : [documentTitle, current.discipline, current.programme, current.section].filter(Boolean).join(' -> '));
             nodes.push({
                 nodeType: programme ? 'programme_parent' : (level <= 2 ? 'section_parent' : 'subsection_parent'),
                 title: headingText,
                 path: current.path,
+                parentPath: parentPath && parentPath !== current.path ? parentPath : documentTitle,
                 parentSummary: [documentTitle, current.discipline, current.programme].filter(Boolean).join(' -> '),
                 content: headingText,
                 metadata: {
@@ -639,32 +698,16 @@ function buildAcademicParse(markdown, title) {
     }
     flushBuffer();
 
-    for (const table of tables) {
-        const rows = parseMarkdownTable(table);
-        rows.forEach((row, index) => {
-            const rowText = Object.entries(row).map(([key, value]) => `${key}: ${value}`).join('; ');
-            const fact = academicFactFromLine(rowText, {
-                ...current,
-                documentTitle,
-                path: `${documentTitle} -> table ${index + 1}`
-            });
-            if (fact) {
-                fact.value.table_row = row;
-                fact.humanText = rowText;
-                facts.push(fact);
-            }
-        });
-    }
-
     return {
         nodes,
         facts,
+        tables: tableRecords,
         stats: {
             nodes: nodes.length,
             childChunks: nodes.filter(n => n.nodeType === 'child_chunk').length,
             programmes: new Set(nodes.map(n => n.metadata?.programme).filter(Boolean)).size,
             facts: facts.length,
-            tables: tables.length
+            tables: tableRecords.length
         }
     };
 }
@@ -770,6 +813,29 @@ class DocumentLabService {
         `);
 
         await query(`
+            CREATE TABLE IF NOT EXISTS document_lab_tables (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                job_id INT NOT NULL,
+                node_id INT NULL,
+                title VARCHAR(255) NOT NULL,
+                table_type VARCHAR(80) NULL,
+                programme VARCHAR(255) NULL,
+                section_label VARCHAR(255) NULL,
+                source_path TEXT NULL,
+                markdown LONGTEXT NOT NULL,
+                rows_json LONGTEXT NOT NULL,
+                metadata_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'draft',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_lab_tables_job (job_id),
+                INDEX idx_lab_tables_status (status),
+                INDEX idx_lab_tables_type (table_type),
+                CONSTRAINT fk_lab_tables_job FOREIGN KEY (job_id) REFERENCES document_lab_jobs(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
             CREATE TABLE IF NOT EXISTS structured_facts (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 lab_fact_id INT NULL,
@@ -791,6 +857,31 @@ class DocumentLabService {
                 INDEX idx_structured_facts_status (status),
                 INDEX idx_structured_facts_subject (subject),
                 FULLTEXT INDEX ft_structured_facts (subject, human_text, source_path)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS structured_tables (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                lab_table_id INT NULL,
+                source_document_id INT NULL,
+                title VARCHAR(255) NOT NULL,
+                table_type VARCHAR(80) NULL,
+                programme VARCHAR(255) NULL,
+                section_label VARCHAR(255) NULL,
+                source_path TEXT NULL,
+                markdown LONGTEXT NOT NULL,
+                rows_json LONGTEXT NOT NULL,
+                metadata_json LONGTEXT NULL,
+                authority_rank INT NOT NULL DEFAULT 70,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                currentness_label VARCHAR(80) NOT NULL DEFAULT 'current',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_structured_tables_status (status),
+                INDEX idx_structured_tables_type (table_type),
+                INDEX idx_structured_tables_programme (programme),
+                FULLTEXT INDEX ft_structured_tables (title, programme, section_label, source_path)
             ) ENGINE=InnoDB
         `);
 
@@ -1202,16 +1293,19 @@ class DocumentLabService {
         const parsed = buildAcademicParse(sourceText, job.title);
         await query('DELETE FROM document_lab_nodes WHERE job_id = ?', [jobId]);
         await query('DELETE FROM document_lab_facts WHERE job_id = ?', [jobId]);
+        await query('DELETE FROM document_lab_tables WHERE job_id = ?', [jobId]);
         await query("DELETE FROM document_lab_outputs WHERE job_id = ? AND output_type = 'academic_chunk' AND status IN ('draft', 'needs_review', 'approved')", [jobId]);
 
         const nodeIds = new Map();
         for (const node of parsed.nodes) {
+            const parentId = node.parentPath ? nodeIds.get(node.parentPath) || null : null;
             const result = await query(`
                 INSERT INTO document_lab_nodes
                     (job_id, parent_id, node_type, title, hierarchy_path, parent_summary, content, metadata_json, indexable, sort_order)
-                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 jobId,
+                parentId,
                 node.nodeType,
                 node.title,
                 node.path,
@@ -1221,6 +1315,7 @@ class DocumentLabService {
                 node.indexable ? 1 : 0,
                 node.sortOrder
             ]);
+            if (!nodeIds.has(node.path)) nodeIds.set(node.path, result.insertId);
             nodeIds.set(node.path + '|' + node.sortOrder, result.insertId);
 
             if (node.nodeType === 'child_chunk' && node.indexable) {
@@ -1246,6 +1341,26 @@ class DocumentLabService {
             }
         }
 
+        for (const tableRecord of parsed.tables.slice(0, 500)) {
+            const nodeId = tableRecord.sourcePath ? nodeIds.get(tableRecord.sourcePath) || null : null;
+            await query(`
+                INSERT INTO document_lab_tables
+                    (job_id, node_id, title, table_type, programme, section_label, source_path, markdown, rows_json, metadata_json, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+            `, [
+                jobId,
+                nodeId,
+                tableRecord.title.slice(0, 255),
+                tableRecord.tableType || null,
+                tableRecord.programme || null,
+                tableRecord.section || null,
+                tableRecord.sourcePath || null,
+                tableRecord.markdown,
+                JSON.stringify(tableRecord.rows || []),
+                JSON.stringify(tableRecord.metadata || {})
+            ]);
+        }
+
         for (const fact of parsed.facts.slice(0, 2000)) {
             await query(`
                 INSERT INTO document_lab_facts
@@ -1265,7 +1380,7 @@ class DocumentLabService {
         }
 
         const recommendations = safeJson(job.recommendations_json, []);
-        recommendations.unshift(`Academic parse created ${parsed.stats.childChunks} hierarchy-safe chunk(s) and ${parsed.stats.facts} draft structured fact(s).`);
+        recommendations.unshift(`Academic parse created ${parsed.stats.childChunks} hierarchy-safe chunk(s), ${parsed.stats.tables} structured table(s), and ${parsed.stats.facts} draft structured fact(s).`);
         await query(
             "UPDATE document_lab_jobs SET status = 'ready_for_approval', recommendations_json = ?, updated_at = NOW() WHERE id = ?",
             [JSON.stringify(Array.from(new Set(recommendations)).slice(0, 12)), jobId]
@@ -1282,6 +1397,7 @@ class DocumentLabService {
         const job = jobRows[0];
         if (!job) throw new Error('Lab job not found');
         const facts = await query("SELECT * FROM document_lab_facts WHERE job_id = ? AND status = 'draft'", [jobId]);
+        const tables = await query("SELECT * FROM document_lab_tables WHERE job_id = ? AND status = 'draft'", [jobId]);
         let approved = 0;
         for (const fact of facts) {
             await query(`
@@ -1304,7 +1420,29 @@ class DocumentLabService {
             await query("UPDATE document_lab_facts SET status = 'approved', updated_at = NOW() WHERE id = ?", [fact.id]);
             approved++;
         }
-        return { approved };
+        let approvedTables = 0;
+        for (const tableRecord of tables) {
+            await query(`
+                INSERT INTO structured_tables
+                    (lab_table_id, source_document_id, title, table_type, programme, section_label, source_path, markdown, rows_json, metadata_json, authority_rank, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+            `, [
+                tableRecord.id,
+                job.source_document_id || null,
+                tableRecord.title,
+                tableRecord.table_type,
+                tableRecord.programme,
+                tableRecord.section_label,
+                tableRecord.source_path,
+                tableRecord.markdown,
+                tableRecord.rows_json,
+                tableRecord.metadata_json,
+                /ccmas|nuc/i.test(job.title || '') ? 75 : 85
+            ]);
+            await query("UPDATE document_lab_tables SET status = 'approved', updated_at = NOW() WHERE id = ?", [tableRecord.id]);
+            approvedTables++;
+        }
+        return { approved, approvedTables };
     }
 
     async updateOutput(outputId, updates = {}) {

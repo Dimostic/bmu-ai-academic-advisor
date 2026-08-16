@@ -102,7 +102,8 @@ class RetrievalService {
             enableCrossSourceOccurrenceRanking: process.env.ADVISOR_OCCURRENCE_RANKING !== 'false',
             crossSourceOccurrenceMinSources: parseInt(process.env.ADVISOR_OCCURRENCE_MIN_SOURCES || '3', 10),
             crossSourceOccurrenceMaxBoost: parseFloat(process.env.ADVISOR_OCCURRENCE_MAX_BOOST || '0.18'),
-            enableStructuredFactLookup: process.env.ADVISOR_STRUCTURED_FACT_LOOKUP !== 'false'
+            enableStructuredFactLookup: process.env.ADVISOR_STRUCTURED_FACT_LOOKUP !== 'false',
+            enableHighRiskFactPolicy: process.env.ADVISOR_HIGH_RISK_FACT_POLICY !== 'false'
         };
         
         // Multi-level caches
@@ -158,6 +159,12 @@ class RetrievalService {
             const structuredFacts = this.config.enableStructuredFactLookup
                 ? await this._lookupStructuredFacts(processedQuery)
                 : [];
+            const structuredTables = this.config.enableStructuredFactLookup
+                ? await this._lookupStructuredTables(processedQuery)
+                : [];
+            const highRiskPolicy = this.config.enableHighRiskFactPolicy
+                ? this._buildHighRiskFactPolicy(processedQuery, structuredFacts, structuredTables)
+                : null;
             
             // 3. FAQ check REMOVED - FAQ is now a separate feature
             // Chat uses pure RAG for accurate, document-based responses
@@ -194,11 +201,13 @@ class RetrievalService {
             const topResults = boosted.slice(0, limit);
             const compressedContext = await this._compressContext(topResults, processedQuery.normalized);
             const structuredContext = this._formatStructuredFactsContext(structuredFacts);
+            const tableContext = this._formatStructuredTablesContext(structuredTables);
+            const policyContext = highRiskPolicy?.context || '';
             
             // 7. Build final result
             const result = {
                 type: 'document_retrieval',
-                context: [structuredContext, compressedContext.text].filter(Boolean).join('\n\n---\n\n'),
+                context: [policyContext, structuredContext, tableContext, compressedContext.text].filter(Boolean).join('\n\n---\n\n'),
                 chunks: topResults.map(r => ({
                     content: r.content,
                     documentId: r.documentId,
@@ -219,7 +228,9 @@ class RetrievalService {
                     reRanked: this.config.enableReRanking,
                     phase: 'phase3',
                     sourcePolicy: processedQuery.sourcePolicy || 'default',
-                    structuredFacts: structuredFacts.length
+                    structuredFacts: structuredFacts.length,
+                    structuredTables: structuredTables.length,
+                    highRiskPolicy
                 } : undefined
             };
             
@@ -255,13 +266,14 @@ class RetrievalService {
                 .slice(0, 8);
             if (!terms.length) return [];
 
-            const likeConditions = terms.map(() => '(LOWER(subject) LIKE ? OR LOWER(human_text) LIKE ? OR LOWER(source_path) LIKE ?)').join(' OR ');
+            const factMatchExpr = "(LOWER(COALESCE(subject, '')) LIKE ? OR LOWER(COALESCE(human_text, '')) LIKE ? OR LOWER(COALESCE(source_path, '')) LIKE ?)";
+            const likeConditions = terms.map(() => factMatchExpr).join(' OR ');
             const params = [];
             for (const term of terms) {
                 const like = `%${term}%`;
                 params.push(like, like, like);
             }
-            const scoreExpr = terms.map(() => '(LOWER(subject) LIKE ? OR LOWER(human_text) LIKE ? OR LOWER(source_path) LIKE ?)').join(' + ');
+            const scoreExpr = terms.map(() => factMatchExpr).join(' + ');
             const scoreParams = [];
             for (const term of terms) {
                 const like = `%${term}%`;
@@ -300,6 +312,61 @@ class RetrievalService {
         }
     }
 
+    async _lookupStructuredTables(processedQuery, limit = 5) {
+        try {
+            const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+            const terms = q
+                .replace(/[^a-z0-9\s-]/g, ' ')
+                .split(/\s+/)
+                .filter(term => term.length > 2 && !['what', 'who', 'how', 'many', 'much', 'about', 'tell', 'does', 'are', 'the', 'for'].includes(term))
+                .slice(0, 8);
+            if (!terms.length) return [];
+
+            const tableMatchExpr = "(LOWER(COALESCE(title, '')) LIKE ? OR LOWER(COALESCE(programme, '')) LIKE ? OR LOWER(COALESCE(section_label, '')) LIKE ? OR LOWER(COALESCE(source_path, '')) LIKE ? OR LOWER(COALESCE(markdown, '')) LIKE ?)";
+            const likeConditions = terms.map(() => tableMatchExpr).join(' OR ');
+            const params = [];
+            for (const term of terms) {
+                const like = `%${term}%`;
+                params.push(like, like, like, like, like);
+            }
+            const scoreExpr = terms.map(() => tableMatchExpr).join(' + ');
+            const scoreParams = [];
+            for (const term of terms) {
+                const like = `%${term}%`;
+                scoreParams.push(like, like, like, like, like);
+            }
+
+            const rows = await query(`
+                SELECT id, title, table_type, programme, section_label, source_path, markdown,
+                       rows_json, metadata_json, authority_rank, (${scoreExpr}) AS match_count
+                FROM structured_tables
+                WHERE status = 'active'
+                  AND (${likeConditions})
+                ORDER BY match_count DESC, authority_rank DESC, updated_at DESC
+                LIMIT ?
+            `, [...scoreParams, ...params, limit]);
+
+            return (rows || []).filter(row => Number(row.match_count || 0) > 0).map(row => ({
+                id: row.id,
+                title: row.title,
+                tableType: row.table_type,
+                programme: row.programme,
+                section: row.section_label,
+                sourcePath: row.source_path,
+                markdown: row.markdown,
+                rows: (() => { try { return JSON.parse(row.rows_json || '[]'); } catch (_) { return []; } })(),
+                metadata: (() => { try { return JSON.parse(row.metadata_json || '{}'); } catch (_) { return {}; } })(),
+                authorityRank: row.authority_rank,
+                score: Number(row.match_count || 0)
+            }));
+        } catch (error) {
+            if (!/structured_tables/i.test(error.message || '')) {
+                console.warn('[RetrievalService] Structured table lookup skipped:', error.message);
+            }
+            return [];
+        }
+    }
+
     _formatStructuredFactsContext(facts) {
         if (!Array.isArray(facts) || !facts.length) return '';
         const lines = [
@@ -310,6 +377,52 @@ class RetrievalService {
             lines.push(`- ${fact.factType}${fact.subject ? ` | ${fact.subject}` : ''}: ${fact.text}${fact.scope ? ` [${fact.scope}]` : ''}${fact.sourcePath ? ` Source path: ${fact.sourcePath}` : ''}`);
         }
         return lines.join('\n');
+    }
+
+    _formatStructuredTablesContext(tables) {
+        if (!Array.isArray(tables) || !tables.length) return '';
+        const lines = [
+            '[Structured Tables - approved table records]',
+            'Use these records for table-heavy factual questions. Prefer the machine-readable rows for numbers, durations, fees, course units, and requirements.'
+        ];
+        for (const table of tables) {
+            lines.push(`\nTable: ${table.title}${table.programme ? ` | Programme: ${table.programme}` : ''}${table.section ? ` | Section: ${table.section}` : ''}${table.sourcePath ? ` | Source path: ${table.sourcePath}` : ''}`);
+            lines.push('Human-readable table:');
+            lines.push(String(table.markdown || '').split(/\r?\n/).slice(0, 12).join('\n'));
+            const rows = Array.isArray(table.rows) ? table.rows.slice(0, 8) : [];
+            if (rows.length) {
+                lines.push(`Machine rows JSON: ${JSON.stringify(rows)}`);
+            }
+        }
+        return lines.join('\n');
+    }
+
+    _buildHighRiskFactPolicy(processedQuery, structuredFacts = [], structuredTables = []) {
+        const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+        const patterns = [
+            ['admission eligibility', /\b(admission|entry requirement|eligibility|utme|direct entry|o'?level|waec|neco)\b/],
+            ['fees', /\b(fee|fees|tuition|payment|charges|cost|levy)\b/],
+            ['deadlines/calendar', /\b(deadline|closing date|calendar|resumption|exam date|registration date)\b/],
+            ['progression/probation/withdrawal', /\b(progression|probation|withdrawal|withdraw|repeat|carry over|cgpa|gpa)\b/],
+            ['graduation/examination rules', /\b(graduation|graduate|exam|examination|professional examination|pass mark|grade)\b/],
+            ['course registration/transfer/accreditation', /\b(course registration|register course|transfer|accreditation|mdcn|nuc)\b/]
+        ];
+        const matched = patterns.filter(([, re]) => re.test(q)).map(([label]) => label);
+        if (!matched.length) return null;
+
+        const hasExactRecord = (structuredFacts.length + structuredTables.length) > 0;
+        return {
+            isHighRisk: true,
+            topics: matched,
+            hasExactRecord,
+            context: [
+                '[High-Risk Academic Fact Policy]',
+                `Detected topic(s): ${matched.join(', ')}.`,
+                hasExactRecord
+                    ? 'Approved structured facts/tables are available. Use them for the exact answer and mention the authority/scope where relevant.'
+                    : 'No approved structured fact/table was found for this query. Do not give a definitive answer from model memory or weak context. If excerpts only show national minimums or partial policy, say that clearly and ask the user to confirm with current BMU authority.'
+            ].join('\n')
+        };
     }
 
     /**
