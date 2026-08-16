@@ -103,6 +103,7 @@ class RetrievalService {
             crossSourceOccurrenceMinSources: parseInt(process.env.ADVISOR_OCCURRENCE_MIN_SOURCES || '3', 10),
             crossSourceOccurrenceMaxBoost: parseFloat(process.env.ADVISOR_OCCURRENCE_MAX_BOOST || '0.18'),
             enableStructuredFactLookup: process.env.ADVISOR_STRUCTURED_FACT_LOOKUP !== 'false',
+            enableNormalizedAcademicLookup: process.env.ADVISOR_NORMALIZED_ACADEMIC_LOOKUP !== 'false',
             enableHighRiskFactPolicy: process.env.ADVISOR_HIGH_RISK_FACT_POLICY !== 'false'
         };
         
@@ -162,8 +163,11 @@ class RetrievalService {
             const structuredTables = this.config.enableStructuredFactLookup
                 ? await this._lookupStructuredTables(processedQuery)
                 : [];
+            const normalizedAcademicRecords = this.config.enableNormalizedAcademicLookup
+                ? await this._lookupNormalizedAcademicRecords(processedQuery)
+                : [];
             const highRiskPolicy = this.config.enableHighRiskFactPolicy
-                ? this._buildHighRiskFactPolicy(processedQuery, structuredFacts, structuredTables)
+                ? this._buildHighRiskFactPolicy(processedQuery, structuredFacts, structuredTables, normalizedAcademicRecords)
                 : null;
             
             // 3. FAQ check REMOVED - FAQ is now a separate feature
@@ -200,6 +204,7 @@ class RetrievalService {
             // 6. Select top results and compress context
             const topResults = boosted.slice(0, limit);
             const compressedContext = await this._compressContext(topResults, processedQuery.normalized);
+            const normalizedAcademicContext = this._formatNormalizedAcademicContext(normalizedAcademicRecords);
             const structuredContext = this._formatStructuredFactsContext(structuredFacts);
             const tableContext = this._formatStructuredTablesContext(structuredTables);
             const policyContext = highRiskPolicy?.context || '';
@@ -207,7 +212,7 @@ class RetrievalService {
             // 7. Build final result
             const result = {
                 type: 'document_retrieval',
-                context: [policyContext, structuredContext, tableContext, compressedContext.text].filter(Boolean).join('\n\n---\n\n'),
+                context: [policyContext, normalizedAcademicContext, structuredContext, tableContext, compressedContext.text].filter(Boolean).join('\n\n---\n\n'),
                 chunks: topResults.map(r => ({
                     content: r.content,
                     documentId: r.documentId,
@@ -228,6 +233,7 @@ class RetrievalService {
                     reRanked: this.config.enableReRanking,
                     phase: 'phase3',
                     sourcePolicy: processedQuery.sourcePolicy || 'default',
+                    normalizedAcademicRecords: normalizedAcademicRecords.length,
                     structuredFacts: structuredFacts.length,
                     structuredTables: structuredTables.length,
                     highRiskPolicy
@@ -367,6 +373,136 @@ class RetrievalService {
         }
     }
 
+    async _lookupNormalizedAcademicRecords(processedQuery, limit = 12) {
+        const terms = this._queryLookupTerms(processedQuery, 8);
+        if (!terms.length) return [];
+
+        const searches = [
+            {
+                type: 'programme',
+                table: 'academic_programmes',
+                fields: ['programme', 'faculty', 'department', 'degree', 'entry_mode', 'scope_label', 'source_path', 'raw_text'],
+                select: 'id, programme, faculty, department, degree, duration_years, entry_mode, authority_type, scope_label, source_path, raw_text'
+            },
+            {
+                type: 'course',
+                table: 'academic_courses',
+                fields: ['programme', 'level_label', 'semester_label', 'course_code', 'course_title', 'scope_label', 'source_path', 'raw_text'],
+                select: 'id, programme, level_label, semester_label, course_code, course_title, credit_units, authority_type, scope_label, source_path, raw_text'
+            },
+            {
+                type: 'fee',
+                table: 'academic_fees',
+                fields: ['programme', 'fee_category', 'amount_label', 'session_label', 'student_category', 'scope_label', 'source_path', 'raw_text'],
+                select: 'id, programme, fee_category, amount_label, amount_value, session_label, student_category, authority_type, scope_label, source_path, raw_text'
+            },
+            {
+                type: 'calendar',
+                table: 'academic_calendar_events',
+                fields: ['event_title', 'event_date_label', 'session_label', 'scope_label', 'source_path', 'raw_text'],
+                select: 'id, event_title, event_date_label, session_label, authority_type, scope_label, source_path, raw_text'
+            },
+            {
+                type: 'officer',
+                table: 'academic_officers',
+                fields: ['office', 'officer_name', 'scope_label', 'source_path', 'raw_text'],
+                select: 'id, office, officer_name, authority_type, scope_label, source_path, raw_text'
+            },
+            {
+                type: 'rule',
+                table: 'academic_rules',
+                fields: ['rule_type', 'subject', 'programme', 'scope_label', 'source_path', 'raw_text'],
+                select: 'id, rule_type, subject, programme, authority_type, scope_label, source_path, raw_text'
+            }
+        ];
+
+        const records = [];
+        for (const search of searches) {
+            try {
+                const matchExpr = this._likeMatchExpression(search.fields);
+                const likeConditions = terms.map(() => matchExpr).join(' OR ');
+                const scoreExpr = terms.map(() => matchExpr).join(' + ');
+                const params = [];
+                const scoreParams = [];
+                for (const term of terms) {
+                    const like = `%${term}%`;
+                    for (let i = 0; i < search.fields.length; i++) scoreParams.push(like);
+                    for (let i = 0; i < search.fields.length; i++) params.push(like);
+                }
+                const rows = await query(`
+                    SELECT ${search.select}, (${scoreExpr}) AS match_count
+                    FROM ${search.table}
+                    WHERE status = 'active'
+                      AND (${likeConditions})
+                    ORDER BY match_count DESC, updated_at DESC
+                    LIMIT ?
+                `, [...scoreParams, ...params, Math.max(2, Math.ceil(limit / 2))]);
+
+                for (const row of rows || []) {
+                    if (Number(row.match_count || 0) <= 0) continue;
+                    records.push({
+                        type: search.type,
+                        id: row.id,
+                        score: Number(row.match_count || 0),
+                        authorityType: row.authority_type,
+                        scope: row.scope_label,
+                        sourcePath: row.source_path,
+                        rawText: row.raw_text,
+                        data: row
+                    });
+                }
+            } catch (error) {
+                if (!/academic_/i.test(error.message || '')) {
+                    console.warn(`[RetrievalService] Normalized ${search.type} lookup skipped:`, error.message);
+                }
+            }
+        }
+
+        return records
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit);
+    }
+
+    _queryLookupTerms(processedQuery, limit = 8) {
+        const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+        return q
+            .replace(/[^a-z0-9\s-]/g, ' ')
+            .split(/\s+/)
+            .filter(term => term.length > 2 && !['what', 'who', 'how', 'many', 'much', 'about', 'tell', 'does', 'are', 'the', 'for', 'can', 'will', 'with'].includes(term))
+            .slice(0, limit);
+    }
+
+    _likeMatchExpression(fields) {
+        return `(${fields.map(field => `LOWER(COALESCE(${field}, '')) LIKE ?`).join(' OR ')})`;
+    }
+
+    _formatNormalizedAcademicContext(records) {
+        if (!Array.isArray(records) || !records.length) return '';
+        const lines = [
+            '[Normalized Academic Records - highest priority for exact facts]',
+            'Use these records before broad document excerpts for programme duration, courses, fees, calendar dates, officers, and academic rules.'
+        ];
+
+        for (const record of records) {
+            const data = record.data || {};
+            if (record.type === 'programme') {
+                lines.push(`- Programme: ${data.programme}${data.duration_years ? ` | Duration: ${data.duration_years} years` : ''}${data.entry_mode ? ` | Entry: ${data.entry_mode}` : ''}${record.scope ? ` [${record.scope}]` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+            } else if (record.type === 'course') {
+                lines.push(`- Course: ${data.course_code || 'Uncoded'}${data.course_title ? ` | ${data.course_title}` : ''}${data.credit_units ? ` | Units: ${data.credit_units}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+            } else if (record.type === 'fee') {
+                lines.push(`- Fee: ${data.fee_category || 'Fee record'}${data.programme ? ` | Programme: ${data.programme}` : ''}${data.amount_label ? ` | Amount: ${data.amount_label}` : ''}${data.session_label ? ` | Session: ${data.session_label}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+            } else if (record.type === 'calendar') {
+                lines.push(`- Calendar: ${data.event_title}${data.event_date_label ? ` | Date: ${data.event_date_label}` : ''}${data.session_label ? ` | Session: ${data.session_label}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+            } else if (record.type === 'officer') {
+                lines.push(`- Officer: ${data.office}${data.officer_name ? ` | Name: ${data.officer_name}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+            } else {
+                lines.push(`- Rule: ${data.rule_type}${data.subject ? ` | ${data.subject}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}: ${record.rawText || ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+            }
+        }
+
+        return lines.join('\n');
+    }
+
     _formatStructuredFactsContext(facts) {
         if (!Array.isArray(facts) || !facts.length) return '';
         const lines = [
@@ -397,7 +533,7 @@ class RetrievalService {
         return lines.join('\n');
     }
 
-    _buildHighRiskFactPolicy(processedQuery, structuredFacts = [], structuredTables = []) {
+    _buildHighRiskFactPolicy(processedQuery, structuredFacts = [], structuredTables = [], normalizedAcademicRecords = []) {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
         const patterns = [
             ['admission eligibility', /\b(admission|entry requirement|eligibility|utme|direct entry|o'?level|waec|neco)\b/],
@@ -410,7 +546,7 @@ class RetrievalService {
         const matched = patterns.filter(([, re]) => re.test(q)).map(([label]) => label);
         if (!matched.length) return null;
 
-        const hasExactRecord = (structuredFacts.length + structuredTables.length) > 0;
+        const hasExactRecord = (structuredFacts.length + structuredTables.length + normalizedAcademicRecords.length) > 0;
         return {
             isHighRisk: true,
             topics: matched,
@@ -419,8 +555,8 @@ class RetrievalService {
                 '[High-Risk Academic Fact Policy]',
                 `Detected topic(s): ${matched.join(', ')}.`,
                 hasExactRecord
-                    ? 'Approved structured facts/tables are available. Use them for the exact answer and mention the authority/scope where relevant.'
-                    : 'No approved structured fact/table was found for this query. Do not give a definitive answer from model memory or weak context. If excerpts only show national minimums or partial policy, say that clearly and ask the user to confirm with current BMU authority.'
+                    ? 'Approved normalized records and/or structured facts/tables are available. Use them for the exact answer and mention the authority/scope where relevant.'
+                    : 'No approved normalized or structured fact/table was found for this query. Do not give a definitive answer from model memory or weak context. If excerpts only show national minimums or partial policy, say that clearly and ask the user to confirm with current BMU authority.'
             ].join('\n')
         };
     }

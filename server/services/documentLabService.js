@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const { query } = require('../../config/db');
@@ -44,6 +45,90 @@ const PROGRAMME_ALIASES = [
     ['Law', /\b(law|ll\.?b)\b/i]
 ];
 let schemaEnsured = false;
+
+function stableHash(value) {
+    return crypto.createHash('sha1').update(String(value || '')).digest('hex');
+}
+
+function compactText(value, maxLength = 1200) {
+    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function objectText(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return compactText(value);
+    if (Array.isArray(value)) return compactText(value.join(' | '));
+    return compactText(Object.entries(value)
+        .filter(([, item]) => item !== null && item !== undefined && String(item).trim() !== '')
+        .map(([key, item]) => `${key}: ${item}`)
+        .join(' | '));
+}
+
+function findField(record, patterns) {
+    if (!record || typeof record !== 'object') return null;
+    for (const [key, value] of Object.entries(record)) {
+        if (value === null || value === undefined || String(value).trim() === '') continue;
+        const normalizedKey = String(key).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        if (patterns.some(pattern => pattern.test(normalizedKey))) return String(value).trim();
+    }
+    return null;
+}
+
+function detectProgramme(text) {
+    const haystack = String(text || '');
+    const match = PROGRAMME_ALIASES.find(([, re]) => re.test(haystack));
+    return match ? match[0] : null;
+}
+
+function extractCourseCode(text) {
+    const match = String(text || '').match(/\b([A-Z]{2,5})\s*[- ]?\s*(\d{3})\b/i);
+    return match ? `${match[1].toUpperCase()} ${match[2]}` : null;
+}
+
+function extractCourseUnits(text) {
+    const match = String(text || '').match(/\b([1-9])\s*(?:credit\s*)?units?\b/i);
+    return match ? Number(match[1]) : null;
+}
+
+function extractDurationYears(text) {
+    const value = String(text || '').toLowerCase();
+    const direct = value.match(/\b([1-9])\s*(?:year|years|yr|yrs)\b/);
+    if (direct) return Number(direct[1]);
+    const words = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7 };
+    const word = value.match(/\b(one|two|three|four|five|six|seven)\s*(?:year|years)\b/);
+    return word ? words[word[1]] : null;
+}
+
+function extractMoney(text) {
+    const match = String(text || '').match(/(?:\u20a6|NGN|N)\s*([0-9][0-9,]*(?:\.\d{1,2})?)/i);
+    if (!match) return { amountLabel: null, amountValue: null };
+    return {
+        amountLabel: match[0].trim(),
+        amountValue: Number(match[1].replace(/,/g, '')) || null
+    };
+}
+
+function extractDateLabel(text) {
+    const value = String(text || '');
+    const dateMatch = value.match(/\b(?:\d{1,2}(?:st|nd|rd|th)?\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{4}\b/i)
+        || value.match(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/)
+        || value.match(/\b20\d{2}[/-]\d{2}[/-]\d{2}\b/);
+    return dateMatch ? dateMatch[0] : null;
+}
+
+function inferRuleType(text, fallback = 'general') {
+    const value = String(text || '').toLowerCase();
+    if (/\b(admission|entry requirement|eligibility|utme|direct entry|o'?level|waec|neco)\b/.test(value)) return 'admission';
+    if (/\b(fee|fees|tuition|payment|charges|levy)\b/.test(value)) return 'fees';
+    if (/\b(deadline|calendar|resumption|registration date|exam date)\b/.test(value)) return 'calendar';
+    if (/\b(progression|probation|withdrawal|repeat|carry over|cgpa|gpa)\b/.test(value)) return 'progression';
+    if (/\b(graduation|graduate)\b/.test(value)) return 'graduation';
+    if (/\b(exam|examination|pass mark|grade)\b/.test(value)) return 'examination';
+    if (/\b(transfer|accreditation|mdcn|nuc)\b/.test(value)) return 'regulation';
+    if (/\b(course|unit|semester|level)\b/.test(value)) return 'course';
+    if (/\b(vc|vice chancellor|registrar|bursar|librarian|officer)\b/.test(value)) return 'officer';
+    return fallback || 'general';
+}
 
 function safeJson(value, fallback = null) {
     if (!value) return fallback;
@@ -976,6 +1061,165 @@ class DocumentLabService {
             ) ENGINE=InnoDB
         `);
 
+        await query(`
+            CREATE TABLE IF NOT EXISTS academic_programmes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_fact_id INT NULL,
+                source_table_id INT NULL,
+                source_document_id INT NULL,
+                programme VARCHAR(255) NOT NULL,
+                faculty VARCHAR(255) NULL,
+                department VARCHAR(255) NULL,
+                degree VARCHAR(120) NULL,
+                duration_years DECIMAL(4,1) NULL,
+                entry_mode VARCHAR(120) NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                source_path TEXT NULL,
+                raw_text TEXT NULL,
+                row_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_academic_programmes_hash (record_hash),
+                INDEX idx_academic_programmes_status (status),
+                INDEX idx_academic_programmes_programme (programme),
+                INDEX idx_academic_programmes_source_fact (source_fact_id),
+                INDEX idx_academic_programmes_source_table (source_table_id)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS academic_courses (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_fact_id INT NULL,
+                source_table_id INT NULL,
+                source_document_id INT NULL,
+                programme VARCHAR(255) NULL,
+                level_label VARCHAR(80) NULL,
+                semester_label VARCHAR(80) NULL,
+                course_code VARCHAR(40) NULL,
+                course_title VARCHAR(255) NULL,
+                credit_units DECIMAL(4,1) NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                source_path TEXT NULL,
+                raw_text TEXT NULL,
+                row_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_academic_courses_hash (record_hash),
+                INDEX idx_academic_courses_status (status),
+                INDEX idx_academic_courses_code (course_code),
+                INDEX idx_academic_courses_programme (programme)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS academic_fees (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_fact_id INT NULL,
+                source_table_id INT NULL,
+                source_document_id INT NULL,
+                programme VARCHAR(255) NULL,
+                fee_category VARCHAR(255) NULL,
+                amount_label VARCHAR(80) NULL,
+                amount_value DECIMAL(14,2) NULL,
+                session_label VARCHAR(80) NULL,
+                student_category VARCHAR(160) NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                source_path TEXT NULL,
+                raw_text TEXT NULL,
+                row_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_academic_fees_hash (record_hash),
+                INDEX idx_academic_fees_status (status),
+                INDEX idx_academic_fees_programme (programme),
+                INDEX idx_academic_fees_category (fee_category)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS academic_calendar_events (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_fact_id INT NULL,
+                source_table_id INT NULL,
+                source_document_id INT NULL,
+                event_title VARCHAR(255) NOT NULL,
+                event_date_label VARCHAR(160) NULL,
+                session_label VARCHAR(80) NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                source_path TEXT NULL,
+                raw_text TEXT NULL,
+                row_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_academic_calendar_hash (record_hash),
+                INDEX idx_academic_calendar_status (status),
+                INDEX idx_academic_calendar_title (event_title)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS academic_officers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_fact_id INT NULL,
+                source_table_id INT NULL,
+                source_document_id INT NULL,
+                office VARCHAR(160) NOT NULL,
+                officer_name VARCHAR(255) NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                source_path TEXT NULL,
+                raw_text TEXT NULL,
+                row_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_academic_officers_hash (record_hash),
+                INDEX idx_academic_officers_status (status),
+                INDEX idx_academic_officers_office (office),
+                INDEX idx_academic_officers_name (officer_name)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS academic_rules (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_fact_id INT NULL,
+                source_table_id INT NULL,
+                source_document_id INT NULL,
+                rule_type VARCHAR(80) NOT NULL,
+                subject VARCHAR(255) NULL,
+                programme VARCHAR(255) NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                source_path TEXT NULL,
+                raw_text TEXT NOT NULL,
+                row_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_academic_rules_hash (record_hash),
+                INDEX idx_academic_rules_status (status),
+                INDEX idx_academic_rules_type (rule_type),
+                INDEX idx_academic_rules_programme (programme),
+                INDEX idx_academic_rules_subject (subject)
+            ) ENGINE=InnoDB
+        `);
+
         schemaEnsured = true;
         return true;
     }
@@ -1629,8 +1873,43 @@ class DocumentLabService {
         return this._shapeTable(rows[0]);
     }
 
+    async backfillNormalizedAcademicRecords(options = {}) {
+        await this.ensureSchema();
+        const limit = Math.min(Math.max(parseInt(options.limit, 10) || 500, 1), 5000);
+        const facts = await query(`
+            SELECT *, id AS structured_fact_id
+            FROM structured_facts
+            WHERE status = 'active'
+            ORDER BY updated_at DESC
+            LIMIT ?
+        `, [limit]);
+        const tables = await query(`
+            SELECT *, id AS structured_table_id
+            FROM structured_tables
+            WHERE status = 'active'
+            ORDER BY updated_at DESC
+            LIMIT ?
+        `, [limit]);
+
+        let normalizedFacts = 0;
+        let normalizedTables = 0;
+        for (const fact of facts || []) {
+            normalizedFacts += await this._syncNormalizedFromFact(fact);
+        }
+        for (const tableRecord of tables || []) {
+            normalizedTables += await this._syncNormalizedFromTable(tableRecord);
+        }
+
+        return {
+            factsScanned: facts.length,
+            tablesScanned: tables.length,
+            normalizedFacts,
+            normalizedTables
+        };
+    }
+
     async _approveFactRow(fact, job) {
-        await query(`
+        const result = await query(`
             INSERT INTO structured_facts
                 (lab_fact_id, source_document_id, fact_type, subject, predicate_name, value_json, human_text, authority_type, scope_label, source_path, status, authority_rank)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
@@ -1647,11 +1926,16 @@ class DocumentLabService {
             fact.source_path,
             fact.authority_type === 'regulator' ? 75 : 85
         ]);
+        await this._syncNormalizedFromFact({
+            ...fact,
+            structured_fact_id: result.insertId,
+            source_document_id: job.source_document_id || null
+        });
         await query("UPDATE document_lab_facts SET status = 'approved', updated_at = NOW() WHERE id = ?", [fact.id]);
     }
 
     async _approveTableRow(tableRecord, job) {
-        await query(`
+        const result = await query(`
             INSERT INTO structured_tables
                 (lab_table_id, source_document_id, title, table_type, programme, section_label, source_path, markdown, rows_json, metadata_json, authority_rank, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
@@ -1668,7 +1952,281 @@ class DocumentLabService {
             tableRecord.metadata_json,
             /ccmas|nuc/i.test(job.title || '') ? 75 : 85
         ]);
+        await this._syncNormalizedFromTable({
+            ...tableRecord,
+            structured_table_id: result.insertId,
+            source_document_id: job.source_document_id || null,
+            authority_type: /ccmas|nuc/i.test(job.title || '') ? 'regulator' : 'institution'
+        });
         await query("UPDATE document_lab_tables SET status = 'approved', updated_at = NOW() WHERE id = ?", [tableRecord.id]);
+    }
+
+    async _syncNormalizedFromFact(fact) {
+        const text = compactText(fact.human_text || objectText(safeJson(fact.value_json, {})), 1800);
+        if (!text) return 0;
+
+        const factType = String(fact.fact_type || '').toLowerCase();
+        const subject = compactText(fact.subject || '', 255) || null;
+        const programme = detectProgramme(`${subject || ''} ${text}`);
+        const authorityType = fact.authority_type || null;
+        const scopeLabel = fact.scope_label || null;
+        const sourcePath = fact.source_path || null;
+        const sourceDocumentId = fact.source_document_id || null;
+        const sourceFactId = fact.structured_fact_id || null;
+        let inserted = 0;
+
+        const durationYears = extractDurationYears(text);
+        if (durationYears && (programme || /duration|programme/.test(factType + ' ' + text.toLowerCase()))) {
+            await this._upsertNormalized('academic_programmes', {
+                source_fact_id: sourceFactId,
+                source_document_id: sourceDocumentId,
+                programme: programme || subject || 'Unspecified programme',
+                duration_years: durationYears,
+                entry_mode: findField(safeJson(fact.value_json, {}), [/entry/, /mode/]),
+                authority_type: authorityType,
+                scope_label: scopeLabel,
+                source_path: sourcePath,
+                raw_text: text
+            });
+            inserted++;
+        }
+
+        const courseCode = extractCourseCode(text);
+        if (courseCode || factType.includes('course')) {
+            await this._upsertNormalized('academic_courses', {
+                source_fact_id: sourceFactId,
+                source_document_id: sourceDocumentId,
+                programme,
+                course_code: courseCode,
+                course_title: subject && subject !== courseCode ? subject : null,
+                credit_units: extractCourseUnits(text),
+                authority_type: authorityType,
+                scope_label: scopeLabel,
+                source_path: sourcePath,
+                raw_text: text
+            });
+            inserted++;
+        }
+
+        const money = extractMoney(text);
+        if (money.amountLabel || factType.includes('fee')) {
+            await this._upsertNormalized('academic_fees', {
+                source_fact_id: sourceFactId,
+                source_document_id: sourceDocumentId,
+                programme,
+                fee_category: subject || inferRuleType(text, 'fees'),
+                amount_label: money.amountLabel,
+                amount_value: money.amountValue,
+                session_label: (text.match(/\b20\d{2}\s*\/\s*20\d{2}\b/) || [null])[0],
+                authority_type: authorityType,
+                scope_label: scopeLabel,
+                source_path: sourcePath,
+                raw_text: text
+            });
+            inserted++;
+        }
+
+        const dateLabel = extractDateLabel(text);
+        if (dateLabel || factType.includes('calendar') || factType.includes('deadline')) {
+            await this._upsertNormalized('academic_calendar_events', {
+                source_fact_id: sourceFactId,
+                source_document_id: sourceDocumentId,
+                event_title: subject || compactText(text, 140),
+                event_date_label: dateLabel,
+                session_label: (text.match(/\b20\d{2}\s*\/\s*20\d{2}\b/) || [null])[0],
+                authority_type: authorityType,
+                scope_label: scopeLabel,
+                source_path: sourcePath,
+                raw_text: text
+            });
+            inserted++;
+        }
+
+        if (/\b(vc|vice chancellor|registrar|bursar|librarian|principal officer|officer)\b/i.test(`${subject || ''} ${text}`) || factType.includes('officer')) {
+            await this._upsertNormalized('academic_officers', {
+                source_fact_id: sourceFactId,
+                source_document_id: sourceDocumentId,
+                office: subject || compactText((text.match(/\b(?:vice chancellor|registrar|bursar|librarian|principal officer)\b/i) || ['Officer'])[0], 160),
+                officer_name: findField(safeJson(fact.value_json, {}), [/name/, /officer/]) || (text.match(/\b(?:Prof\.?|Dr\.?|Mr\.?|Mrs\.?|Ms\.?)\s+[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,4}/) || [null])[0],
+                authority_type: authorityType,
+                scope_label: scopeLabel,
+                source_path: sourcePath,
+                raw_text: text
+            });
+            inserted++;
+        }
+
+        const ruleType = inferRuleType(`${factType} ${text}`, null);
+        if (ruleType && ruleType !== 'officer') {
+            await this._upsertNormalized('academic_rules', {
+                source_fact_id: sourceFactId,
+                source_document_id: sourceDocumentId,
+                rule_type: ruleType,
+                subject,
+                programme,
+                authority_type: authorityType,
+                scope_label: scopeLabel,
+                source_path: sourcePath,
+                raw_text: text
+            });
+            inserted++;
+        }
+
+        return inserted;
+    }
+
+    async _syncNormalizedFromTable(tableRecord) {
+        const rows = safeJson(tableRecord.rows_json, []);
+        const sourceTableId = tableRecord.structured_table_id || null;
+        const sourceDocumentId = tableRecord.source_document_id || null;
+        const authorityType = tableRecord.authority_type || null;
+        const scopeLabel = tableRecord.section_label || null;
+        const sourcePath = tableRecord.source_path || null;
+        const baseProgramme = tableRecord.programme || detectProgramme(`${tableRecord.title || ''} ${tableRecord.section_label || ''}`);
+        let inserted = 0;
+
+        for (const row of Array.isArray(rows) ? rows.slice(0, 300) : []) {
+            const text = objectText(row);
+            if (!text) continue;
+            const programme = findField(row, [/programme/, /program/]) || baseProgramme || detectProgramme(text);
+            const courseCode = findField(row, [/course code/, /^code$/]) || extractCourseCode(text);
+            const title = findField(row, [/course title/, /^title$/, /course/]);
+            const unitLabel = findField(row, [/unit/, /credit/]);
+            const money = extractMoney(text);
+            const dateLabel = findField(row, [/date/, /deadline/]) || extractDateLabel(text);
+            const durationYears = extractDurationYears(text);
+            const rowJson = JSON.stringify(row);
+
+            if (courseCode || /\bcourse\b/i.test(`${tableRecord.table_type || ''} ${tableRecord.title || ''}`)) {
+                await this._upsertNormalized('academic_courses', {
+                    source_table_id: sourceTableId,
+                    source_document_id: sourceDocumentId,
+                    programme,
+                    level_label: findField(row, [/level/]),
+                    semester_label: findField(row, [/semester/]),
+                    course_code: courseCode,
+                    course_title: title && title !== courseCode ? title : null,
+                    credit_units: unitLabel ? Number(String(unitLabel).match(/\d+(?:\.\d+)?/)?.[0]) || extractCourseUnits(text) : extractCourseUnits(text),
+                    authority_type: authorityType,
+                    scope_label: scopeLabel,
+                    source_path: sourcePath,
+                    raw_text: text,
+                    row_json: rowJson
+                });
+                inserted++;
+            }
+
+            if (money.amountLabel || /\bfee|tuition|charge|levy\b/i.test(`${tableRecord.table_type || ''} ${tableRecord.title || ''} ${text}`)) {
+                await this._upsertNormalized('academic_fees', {
+                    source_table_id: sourceTableId,
+                    source_document_id: sourceDocumentId,
+                    programme,
+                    fee_category: findField(row, [/fee/, /category/, /item/, /description/]) || tableRecord.title,
+                    amount_label: money.amountLabel || findField(row, [/amount/, /cost/, /charge/]),
+                    amount_value: money.amountValue,
+                    session_label: findField(row, [/session/]) || (text.match(/\b20\d{2}\s*\/\s*20\d{2}\b/) || [null])[0],
+                    student_category: findField(row, [/student/, /category/, /level/]),
+                    authority_type: authorityType,
+                    scope_label: scopeLabel,
+                    source_path: sourcePath,
+                    raw_text: text,
+                    row_json: rowJson
+                });
+                inserted++;
+            }
+
+            if (durationYears && programme) {
+                await this._upsertNormalized('academic_programmes', {
+                    source_table_id: sourceTableId,
+                    source_document_id: sourceDocumentId,
+                    programme,
+                    duration_years: durationYears,
+                    entry_mode: findField(row, [/entry/, /mode/]),
+                    authority_type: authorityType,
+                    scope_label: scopeLabel,
+                    source_path: sourcePath,
+                    raw_text: text,
+                    row_json: rowJson
+                });
+                inserted++;
+            }
+
+            if (dateLabel || /\bcalendar|deadline|resumption|registration\b/i.test(`${tableRecord.table_type || ''} ${tableRecord.title || ''} ${text}`)) {
+                await this._upsertNormalized('academic_calendar_events', {
+                    source_table_id: sourceTableId,
+                    source_document_id: sourceDocumentId,
+                    event_title: findField(row, [/event/, /activity/, /description/]) || tableRecord.title,
+                    event_date_label: dateLabel,
+                    session_label: findField(row, [/session/]),
+                    authority_type: authorityType,
+                    scope_label: scopeLabel,
+                    source_path: sourcePath,
+                    raw_text: text,
+                    row_json: rowJson
+                });
+                inserted++;
+            }
+
+            if (/\b(vc|vice chancellor|registrar|bursar|librarian|principal officer|officer)\b/i.test(`${tableRecord.title || ''} ${text}`)) {
+                await this._upsertNormalized('academic_officers', {
+                    source_table_id: sourceTableId,
+                    source_document_id: sourceDocumentId,
+                    office: findField(row, [/office/, /position/, /designation/, /role/]) || tableRecord.title,
+                    officer_name: findField(row, [/name/, /officer/]),
+                    authority_type: authorityType,
+                    scope_label: scopeLabel,
+                    source_path: sourcePath,
+                    raw_text: text,
+                    row_json: rowJson
+                });
+                inserted++;
+            }
+
+            const ruleType = inferRuleType(`${tableRecord.table_type || ''} ${tableRecord.title || ''} ${text}`, null);
+            if (ruleType && !['course', 'fees', 'calendar', 'officer'].includes(ruleType)) {
+                await this._upsertNormalized('academic_rules', {
+                    source_table_id: sourceTableId,
+                    source_document_id: sourceDocumentId,
+                    rule_type: ruleType,
+                    subject: tableRecord.title,
+                    programme,
+                    authority_type: authorityType,
+                    scope_label: scopeLabel,
+                    source_path: sourcePath,
+                    raw_text: text,
+                    row_json: rowJson
+                });
+                inserted++;
+            }
+        }
+
+        return inserted;
+    }
+
+    async _upsertNormalized(tableName, fields) {
+        const allowed = new Set([
+            'academic_programmes',
+            'academic_courses',
+            'academic_fees',
+            'academic_calendar_events',
+            'academic_officers',
+            'academic_rules'
+        ]);
+        if (!allowed.has(tableName)) throw new Error('Unsupported normalized academic table');
+        const cleaned = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+        cleaned.record_hash = stableHash(`${tableName}|${cleaned.source_fact_id || ''}|${cleaned.source_table_id || ''}|${cleaned.raw_text || ''}|${cleaned.row_json || ''}`);
+        const columns = Object.keys(cleaned);
+        const placeholders = columns.map(() => '?').join(', ');
+        const updates = columns
+            .filter(column => column !== 'record_hash')
+            .map(column => `${column} = VALUES(${column})`)
+            .concat("status = 'active'", 'updated_at = NOW()')
+            .join(', ');
+        await query(`
+            INSERT INTO ${tableName} (${columns.join(', ')})
+            VALUES (${placeholders})
+            ON DUPLICATE KEY UPDATE ${updates}
+        `, columns.map(column => cleaned[column]));
     }
 
     async updateOutput(outputId, updates = {}) {

@@ -125,6 +125,29 @@ router.post('/import-flagged', authenticateToken, requireAdmin, async (req, res)
     }
 });
 
+router.post('/normalized-academic/backfill', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const result = await documentLabService.backfillNormalizedAcademicRecords({
+            limit: req.body?.limit
+        });
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_LAB_NORMALIZED_ACADEMIC_BACKFILL',
+            entityType: 'document_lab_job',
+            details: result,
+            ipAddress: req.ip
+        });
+        res.json({
+            success: true,
+            message: `Normalized ${result.normalizedFacts + result.normalizedTables} academic record candidate(s)`,
+            ...result
+        });
+    } catch (error) {
+        console.error('Document Lab normalized academic backfill error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to backfill normalized academic records' });
+    }
+});
+
 router.post('/jobs/:id/analyze', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const job = await documentLabService.analyzeJob(req.params.id, { prepareOutputs: true });
