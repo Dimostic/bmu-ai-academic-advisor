@@ -358,6 +358,34 @@
     min-height: 140px !important;
 }
 
+.eval-card {
+    margin-top: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    padding: 14px;
+}
+
+.eval-card h3 {
+    margin: 8px 0 0;
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1.35;
+}
+
+.eval-preview {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 360px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    padding: 12px;
+    font: .84rem/1.45 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
 @media (max-width: 860px) {
     .doc-review-panel,
     .doc-review-notes,

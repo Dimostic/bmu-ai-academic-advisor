@@ -64,6 +64,123 @@ function _csvEscape(v) {
     return s;
 }
 
+let evalSchemaReady = false;
+async function _ensureEvaluationSchema() {
+    if (evalSchemaReady) return true;
+    await query(`
+        CREATE TABLE IF NOT EXISTS advisor_eval_tests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            question TEXT NOT NULL,
+            topic VARCHAR(120) NULL,
+            risk_level VARCHAR(40) NOT NULL DEFAULT 'high',
+            expected_terms_json LONGTEXT NULL,
+            forbidden_terms_json LONGTEXT NULL,
+            source_hint VARCHAR(255) NULL,
+            min_confidence DECIMAL(6,4) NOT NULL DEFAULT 0.1200,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            last_status VARCHAR(40) NULL,
+            last_score DECIMAL(6,4) NULL,
+            last_result_json LONGTEXT NULL,
+            last_run_at TIMESTAMP NULL,
+            created_by INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_eval_active (is_active),
+            INDEX idx_eval_topic (topic),
+            INDEX idx_eval_status (last_status)
+        ) ENGINE=InnoDB
+    `);
+    evalSchemaReady = true;
+    return true;
+}
+
+function _jsonArray(value) {
+    if (Array.isArray(value)) return value.map(v => String(v || '').trim()).filter(Boolean);
+    if (typeof value === 'string') {
+        const text = value.trim();
+        if (!text) return [];
+        try {
+            const parsed = JSON.parse(text);
+            if (Array.isArray(parsed)) return parsed.map(v => String(v || '').trim()).filter(Boolean);
+        } catch (_) {
+            return text.split(/\r?\n|,/).map(v => v.trim()).filter(Boolean);
+        }
+    }
+    return [];
+}
+
+function _shapeEvalTest(row) {
+    return {
+        id: row.id,
+        question: row.question,
+        topic: row.topic,
+        riskLevel: row.risk_level,
+        expectedTerms: _jsonArray(row.expected_terms_json),
+        forbiddenTerms: _jsonArray(row.forbidden_terms_json),
+        sourceHint: row.source_hint,
+        minConfidence: Number(row.min_confidence || 0),
+        isActive: Boolean(row.is_active),
+        lastStatus: row.last_status,
+        lastScore: row.last_score === null || row.last_score === undefined ? null : Number(row.last_score),
+        lastResult: (() => { try { return row.last_result_json ? JSON.parse(row.last_result_json) : null; } catch (_) { return null; } })(),
+        lastRunAt: row.last_run_at,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+}
+
+async function _runEvaluationTest(row) {
+    const retrievalService = require('../services/retrievalService');
+    const expectedTerms = _jsonArray(row.expected_terms_json);
+    const forbiddenTerms = _jsonArray(row.forbidden_terms_json);
+    const result = await retrievalService.retrieve(row.question, {
+        limit: 8,
+        includeMetadata: true,
+        skipCache: true
+    });
+    const haystack = `${result.context || ''}\n${(result.chunks || []).map(c => c.content || '').join('\n')}`.toLowerCase();
+    const foundExpected = expectedTerms.filter(term => haystack.includes(term.toLowerCase()));
+    const missingExpected = expectedTerms.filter(term => !haystack.includes(term.toLowerCase()));
+    const foundForbidden = forbiddenTerms.filter(term => haystack.includes(term.toLowerCase()));
+    const confidence = Number(result.confidence || 0);
+    const minConfidence = Number(row.min_confidence || 0.12);
+    const hasEvidence = Boolean((result.chunks || []).length || String(result.context || '').trim());
+    const hasHighRiskPolicy = Boolean(result.metadata?.highRiskPolicy?.isHighRisk);
+    const expectedPass = missingExpected.length === 0;
+    const forbiddenPass = foundForbidden.length === 0;
+    const confidencePass = confidence >= minConfidence;
+    const passed = hasEvidence && expectedPass && forbiddenPass && confidencePass;
+    const scoreParts = [
+        expectedTerms.length ? foundExpected.length / expectedTerms.length : 1,
+        forbiddenTerms.length ? (forbiddenTerms.length - foundForbidden.length) / forbiddenTerms.length : 1,
+        confidencePass ? 1 : Math.max(0, confidence / Math.max(minConfidence, 0.001)),
+        hasEvidence ? 1 : 0
+    ];
+    const score = scoreParts.reduce((sum, v) => sum + v, 0) / scoreParts.length;
+    return {
+        status: passed ? 'passed' : 'failed',
+        score: Number(score.toFixed(4)),
+        confidence,
+        minConfidence,
+        hasEvidence,
+        hasHighRiskPolicy,
+        expectedTerms,
+        foundExpected,
+        missingExpected,
+        forbiddenTerms,
+        foundForbidden,
+        structuredFacts: result.metadata?.structuredFacts || 0,
+        structuredTables: result.metadata?.structuredTables || 0,
+        sourcePolicy: result.metadata?.sourcePolicy || null,
+        sources: (result.sources || []).slice(0, 6).map(s => ({
+            documentId: s.documentId,
+            title: s.title,
+            category: s.category
+        })),
+        preview: String(result.context || '').slice(0, 1600)
+    };
+}
+
 // Get dashboard statistics
 router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -2449,6 +2566,156 @@ router.post('/cached-qa', authenticateToken, requireAdmin, async (req, res) => {
     } catch (err) {
         console.error('Create cached_qa error:', err);
         res.status(500).json({ success: false, error: 'Could not create Q&A' });
+    }
+});
+
+router.get('/evaluation/tests', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await _ensureEvaluationSchema();
+        const includeInactive = String(req.query.includeInactive || '') === '1';
+        const rows = await query(`
+            SELECT * FROM advisor_eval_tests
+            ${includeInactive ? '' : 'WHERE is_active = TRUE'}
+            ORDER BY is_active DESC, last_status = 'failed' DESC, updated_at DESC, id DESC
+            LIMIT ?
+        `, [Math.max(1, Math.min(500, parseInt(req.query.limit, 10) || 200))]);
+        const tests = rows.map(_shapeEvalTest);
+        const summary = {
+            total: tests.length,
+            active: tests.filter(t => t.isActive).length,
+            passed: tests.filter(t => t.lastStatus === 'passed').length,
+            failed: tests.filter(t => t.lastStatus === 'failed').length,
+            neverRun: tests.filter(t => !t.lastStatus).length
+        };
+        res.json({ success: true, tests, summary });
+    } catch (error) {
+        console.error('Evaluation tests list error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not list evaluation tests' });
+    }
+});
+
+router.post('/evaluation/tests', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await _ensureEvaluationSchema();
+        const question = String(req.body?.question || '').trim();
+        if (question.length < 6) return res.status(400).json({ success: false, error: 'Question is required' });
+        const expectedTerms = _jsonArray(req.body?.expectedTerms || req.body?.expected_terms);
+        const forbiddenTerms = _jsonArray(req.body?.forbiddenTerms || req.body?.forbidden_terms);
+        const result = await query(`
+            INSERT INTO advisor_eval_tests
+                (question, topic, risk_level, expected_terms_json, forbidden_terms_json, source_hint, min_confidence, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            question,
+            String(req.body?.topic || '').trim() || null,
+            String(req.body?.riskLevel || 'high').trim() || 'high',
+            JSON.stringify(expectedTerms),
+            JSON.stringify(forbiddenTerms),
+            String(req.body?.sourceHint || '').trim() || null,
+            Math.max(0, Math.min(1, Number(req.body?.minConfidence ?? 0.12))),
+            req.user.id
+        ]);
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'ADVISOR_EVAL_TEST_CREATED',
+            entityType: 'advisor_eval_test',
+            entityId: result.insertId,
+            details: { topic: req.body?.topic || null },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        const rows = await query('SELECT * FROM advisor_eval_tests WHERE id = ?', [result.insertId]);
+        res.status(201).json({ success: true, test: _shapeEvalTest(rows[0]) });
+    } catch (error) {
+        console.error('Evaluation test create error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not create evaluation test' });
+    }
+});
+
+router.put('/evaluation/tests/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await _ensureEvaluationSchema();
+        const rows = await query('SELECT * FROM advisor_eval_tests WHERE id = ?', [req.params.id]);
+        if (!rows[0]) return res.status(404).json({ success: false, error: 'Evaluation test not found' });
+        await query(`
+            UPDATE advisor_eval_tests
+            SET question = ?, topic = ?, risk_level = ?, expected_terms_json = ?, forbidden_terms_json = ?,
+                source_hint = ?, min_confidence = ?, is_active = ?, updated_at = NOW()
+            WHERE id = ?
+        `, [
+            String(req.body?.question ?? rows[0].question).trim(),
+            String(req.body?.topic ?? rows[0].topic ?? '').trim() || null,
+            String(req.body?.riskLevel ?? rows[0].risk_level ?? 'high').trim() || 'high',
+            JSON.stringify(_jsonArray(req.body?.expectedTerms ?? rows[0].expected_terms_json)),
+            JSON.stringify(_jsonArray(req.body?.forbiddenTerms ?? rows[0].forbidden_terms_json)),
+            String(req.body?.sourceHint ?? rows[0].source_hint ?? '').trim() || null,
+            Math.max(0, Math.min(1, Number(req.body?.minConfidence ?? rows[0].min_confidence ?? 0.12))),
+            req.body?.isActive === undefined ? Boolean(rows[0].is_active) : req.body.isActive === true,
+            req.params.id
+        ]);
+        const updated = await query('SELECT * FROM advisor_eval_tests WHERE id = ?', [req.params.id]);
+        res.json({ success: true, test: _shapeEvalTest(updated[0]) });
+    } catch (error) {
+        console.error('Evaluation test update error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not update evaluation test' });
+    }
+});
+
+router.delete('/evaluation/tests/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await _ensureEvaluationSchema();
+        await query('UPDATE advisor_eval_tests SET is_active = FALSE, updated_at = NOW() WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Evaluation test archive error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not archive evaluation test' });
+    }
+});
+
+router.post('/evaluation/tests/:id/run', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await _ensureEvaluationSchema();
+        const rows = await query('SELECT * FROM advisor_eval_tests WHERE id = ?', [req.params.id]);
+        if (!rows[0]) return res.status(404).json({ success: false, error: 'Evaluation test not found' });
+        const result = await _runEvaluationTest(rows[0]);
+        await query(`
+            UPDATE advisor_eval_tests
+            SET last_status = ?, last_score = ?, last_result_json = ?, last_run_at = NOW(), updated_at = NOW()
+            WHERE id = ?
+        `, [result.status, result.score, JSON.stringify(result), req.params.id]);
+        res.json({ success: true, result });
+    } catch (error) {
+        console.error('Evaluation test run error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not run evaluation test' });
+    }
+});
+
+router.post('/evaluation/run-all', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await _ensureEvaluationSchema();
+        const rows = await query('SELECT * FROM advisor_eval_tests WHERE is_active = TRUE ORDER BY id ASC LIMIT ?', [
+            Math.max(1, Math.min(100, parseInt(req.body?.limit, 10) || 50))
+        ]);
+        const results = [];
+        for (const row of rows) {
+            const result = await _runEvaluationTest(row);
+            await query(`
+                UPDATE advisor_eval_tests
+                SET last_status = ?, last_score = ?, last_result_json = ?, last_run_at = NOW(), updated_at = NOW()
+                WHERE id = ?
+            `, [result.status, result.score, JSON.stringify(result), row.id]);
+            results.push({ id: row.id, question: row.question, ...result });
+        }
+        res.json({
+            success: true,
+            total: results.length,
+            passed: results.filter(r => r.status === 'passed').length,
+            failed: results.filter(r => r.status === 'failed').length,
+            results
+        });
+    } catch (error) {
+        console.error('Evaluation run-all error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not run evaluation tests' });
     }
 });
 

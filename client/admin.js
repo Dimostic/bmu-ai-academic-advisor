@@ -102,6 +102,7 @@
         users:     renderUsers,
         audit:     renderAudit,
         escalations: renderEscalations,
+        evaluation: renderEvaluationTests,
         metrics:   renderMetrics,
         curate:    renderCurate
     };
@@ -1999,6 +2000,151 @@
             }
         });
         loadEsc();
+    }
+
+    // -------------------------------------------------------- EVALUATION
+    async function renderEvaluationTests() {
+        main.innerHTML = `
+            <h2>Evaluation tests</h2>
+            <p class="lede">Test high-risk academic questions against retrieval evidence before trusting production answers.</p>
+            <form id="evalCreateForm" class="compose-card" style="margin-bottom:16px;">
+                <div class="form-row">
+                    <label>Question<input name="question" required placeholder="How many years is MBBS for UTME entry?" /></label>
+                    <label>Topic<input name="topic" placeholder="admission, fees, graduation…" /></label>
+                </div>
+                <div class="form-row">
+                    <label>Expected terms<textarea name="expectedTerms" placeholder="MBBS&#10;6 years&#10;UTME"></textarea></label>
+                    <label>Forbidden terms<textarea name="forbiddenTerms" placeholder="Put terms that must not appear"></textarea></label>
+                </div>
+                <div class="form-row">
+                    <label>Source hint<input name="sourceHint" placeholder="Medicine and Dentistry CCMAS" /></label>
+                    <label>Minimum confidence<input name="minConfidence" type="number" min="0" max="1" step="0.01" value="0.12" /></label>
+                </div>
+                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-plus"></i> Add test</button>
+            </form>
+            <div class="admin-actions">
+                <button class="btn btn-primary" id="evalRunAllBtn"><i class="fa-solid fa-play"></i> Run active tests</button>
+                <button class="btn btn-ghost" id="evalRefreshBtn"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+            </div>
+            <div id="evalSummary" class="stat-row"></div>
+            <div id="evalList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+        `;
+
+        document.getElementById('evalCreateForm')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            try {
+                await api('/api/admin/evaluation/tests', {
+                    method: 'POST',
+                    body: {
+                        question: fd.get('question'),
+                        topic: fd.get('topic'),
+                        expectedTerms: splitTerms(fd.get('expectedTerms')),
+                        forbiddenTerms: splitTerms(fd.get('forbiddenTerms')),
+                        sourceHint: fd.get('sourceHint'),
+                        minConfidence: Number(fd.get('minConfidence') || 0.12)
+                    }
+                });
+                toast('Evaluation test added');
+                e.currentTarget.reset();
+                loadEvaluationTests();
+            } catch (err) {
+                toast(err.message || 'Could not add test', 'error');
+            }
+        });
+        document.getElementById('evalRefreshBtn')?.addEventListener('click', loadEvaluationTests);
+        document.getElementById('evalRunAllBtn')?.addEventListener('click', async () => {
+            const btn = document.getElementById('evalRunAllBtn');
+            btn.disabled = true;
+            try {
+                toast('Running evaluation tests…');
+                const r = await api('/api/admin/evaluation/run-all', { method: 'POST', body: { limit: 50 } });
+                toast(`Evaluation complete: ${r.passed || 0} passed, ${r.failed || 0} failed`);
+                loadEvaluationTests();
+            } catch (err) {
+                toast(err.message || 'Could not run tests', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        async function loadEvaluationTests() {
+            try {
+                const r = await api('/api/admin/evaluation/tests?limit=300');
+                const s = r.summary || {};
+                document.getElementById('evalSummary').innerHTML = [
+                    stat('Active', s.active || 0),
+                    stat('Passed', s.passed || 0),
+                    stat('Failed', s.failed || 0),
+                    stat('Never run', s.neverRun || 0)
+                ].join('');
+                const tests = r.tests || [];
+                if (!tests.length) {
+                    document.getElementById('evalList').innerHTML = '<p class="empty">No evaluation tests yet.</p>';
+                    return;
+                }
+                document.getElementById('evalList').innerHTML = tests.map(renderEvalTestCard).join('');
+                document.getElementById('evalList').onclick = handleEvalClick;
+            } catch (err) {
+                document.getElementById('evalList').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+            }
+        }
+        loadEvaluationTests();
+    }
+
+    function splitTerms(value) {
+        return String(value || '').split(/\r?\n|,/).map(x => x.trim()).filter(Boolean);
+    }
+
+    function renderEvalTestCard(test) {
+        const status = test.lastStatus || 'not_run';
+        const statusCls = status === 'passed' ? 'badge-success' : (status === 'failed' ? 'badge-danger' : 'badge-info');
+        const result = test.lastResult || {};
+        const missing = result.missingExpected || [];
+        const forbidden = result.foundForbidden || [];
+        return `
+            <section class="eval-card" data-eval-id="${test.id}">
+                <div class="document-lab-output-head">
+                    <div>
+                        <span class="badge ${statusCls}">${escapeHtml(status.replace(/_/g, ' '))}${test.lastScore !== null ? ` · ${Math.round(Number(test.lastScore) * 100)}%` : ''}</span>
+                        <span class="badge badge-info">${escapeHtml(test.topic || 'general')}</span>
+                        <h3>${escapeHtml(test.question)}</h3>
+                        <p class="lede" style="margin:6px 0 0;">Expected: ${escapeHtml((test.expectedTerms || []).join(', ') || 'none')} ${test.sourceHint ? `· Source hint: ${escapeHtml(test.sourceHint)}` : ''}</p>
+                    </div>
+                    <div class="document-lab-output-actions">
+                        <button class="btn btn-primary" data-eval-act="run"><i class="fa-solid fa-play"></i> Run</button>
+                        <button class="btn btn-ghost" data-eval-act="archive"><i class="fa-solid fa-box-archive"></i> Archive</button>
+                    </div>
+                </div>
+                ${test.lastRunAt ? `<small class="split-plan-meta">Last run: ${escapeHtml(formatDate(test.lastRunAt))} · Confidence: ${escapeHtml(result.confidence ?? '—')} · Facts: ${escapeHtml(result.structuredFacts ?? 0)} · Tables: ${escapeHtml(result.structuredTables ?? 0)}</small>` : ''}
+                ${missing.length || forbidden.length ? `<div class="auth-error" style="margin:8px 0;">${missing.length ? `Missing: ${escapeHtml(missing.join(', '))}` : ''}${missing.length && forbidden.length ? ' · ' : ''}${forbidden.length ? `Forbidden found: ${escapeHtml(forbidden.join(', '))}` : ''}</div>` : ''}
+                ${result.preview ? `<details><summary>Evidence preview</summary><pre class="eval-preview">${escapeHtml(result.preview)}</pre></details>` : ''}
+            </section>
+        `;
+    }
+
+    async function handleEvalClick(e) {
+        const btn = e.target.closest('button[data-eval-act]');
+        if (!btn) return;
+        const card = btn.closest('[data-eval-id]');
+        const id = card?.dataset.evalId;
+        if (!id) return;
+        try {
+            if (btn.dataset.evalAct === 'run') {
+                btn.disabled = true;
+                toast('Running evaluation test…');
+                const r = await api('/api/admin/evaluation/tests/' + id + '/run', { method: 'POST' });
+                toast(r.result?.status === 'passed' ? 'Evaluation passed' : 'Evaluation failed', r.result?.status === 'passed' ? undefined : 'error');
+                renderEvaluationTests();
+            } else if (btn.dataset.evalAct === 'archive') {
+                if (!confirm('Archive this evaluation test?')) return;
+                await api('/api/admin/evaluation/tests/' + id, { method: 'DELETE' });
+                toast('Evaluation test archived');
+                renderEvaluationTests();
+            }
+        } catch (err) {
+            toast(err.message || 'Evaluation action failed', 'error');
+        }
     }
 
     // -------------------------------------------------------- METRICS
