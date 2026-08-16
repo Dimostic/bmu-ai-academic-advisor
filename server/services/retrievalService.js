@@ -101,7 +101,8 @@ class RetrievalService {
             authorityRankingStrength: parseFloat(process.env.ADVISOR_AUTHORITY_RANKING_STRENGTH || '0.24'),
             enableCrossSourceOccurrenceRanking: process.env.ADVISOR_OCCURRENCE_RANKING !== 'false',
             crossSourceOccurrenceMinSources: parseInt(process.env.ADVISOR_OCCURRENCE_MIN_SOURCES || '3', 10),
-            crossSourceOccurrenceMaxBoost: parseFloat(process.env.ADVISOR_OCCURRENCE_MAX_BOOST || '0.18')
+            crossSourceOccurrenceMaxBoost: parseFloat(process.env.ADVISOR_OCCURRENCE_MAX_BOOST || '0.18'),
+            enableStructuredFactLookup: process.env.ADVISOR_STRUCTURED_FACT_LOOKUP !== 'false'
         };
         
         // Multi-level caches
@@ -154,6 +155,9 @@ class RetrievalService {
             
             // 2. Process query (expand, normalize)
             const processedQuery = await this._processQuery(userQuery, sessionContext);
+            const structuredFacts = this.config.enableStructuredFactLookup
+                ? await this._lookupStructuredFacts(processedQuery)
+                : [];
             
             // 3. FAQ check REMOVED - FAQ is now a separate feature
             // Chat uses pure RAG for accurate, document-based responses
@@ -189,11 +193,12 @@ class RetrievalService {
             // 6. Select top results and compress context
             const topResults = boosted.slice(0, limit);
             const compressedContext = await this._compressContext(topResults, processedQuery.normalized);
+            const structuredContext = this._formatStructuredFactsContext(structuredFacts);
             
             // 7. Build final result
             const result = {
                 type: 'document_retrieval',
-                context: compressedContext.text,
+                context: [structuredContext, compressedContext.text].filter(Boolean).join('\n\n---\n\n'),
                 chunks: topResults.map(r => ({
                     content: r.content,
                     documentId: r.documentId,
@@ -213,7 +218,8 @@ class RetrievalService {
                     totalCandidates: searchResults.length,
                     reRanked: this.config.enableReRanking,
                     phase: 'phase3',
-                    sourcePolicy: processedQuery.sourcePolicy || 'default'
+                    sourcePolicy: processedQuery.sourcePolicy || 'default',
+                    structuredFacts: structuredFacts.length
                 } : undefined
             };
             
@@ -237,6 +243,73 @@ class RetrievalService {
                 retrievalTimeMs: Date.now() - startTime
             };
         }
+    }
+
+    async _lookupStructuredFacts(processedQuery, limit = 8) {
+        try {
+            const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+            const terms = q
+                .replace(/[^a-z0-9\s-]/g, ' ')
+                .split(/\s+/)
+                .filter(term => term.length > 2 && !['what', 'who', 'how', 'many', 'much', 'about', 'tell', 'does', 'are', 'the', 'for'].includes(term))
+                .slice(0, 8);
+            if (!terms.length) return [];
+
+            const likeConditions = terms.map(() => '(LOWER(subject) LIKE ? OR LOWER(human_text) LIKE ? OR LOWER(source_path) LIKE ?)').join(' OR ');
+            const params = [];
+            for (const term of terms) {
+                const like = `%${term}%`;
+                params.push(like, like, like);
+            }
+            const scoreExpr = terms.map(() => '(LOWER(subject) LIKE ? OR LOWER(human_text) LIKE ? OR LOWER(source_path) LIKE ?)').join(' + ');
+            const scoreParams = [];
+            for (const term of terms) {
+                const like = `%${term}%`;
+                scoreParams.push(like, like, like);
+            }
+
+            const rows = await query(`
+                SELECT id, fact_type, subject, predicate_name, value_json, human_text,
+                       authority_type, scope_label, source_path, authority_rank,
+                       (${scoreExpr}) AS match_count
+                FROM structured_facts
+                WHERE status = 'active'
+                  AND (${likeConditions})
+                ORDER BY match_count DESC, authority_rank DESC, updated_at DESC
+                LIMIT ?
+            `, [...scoreParams, ...params, limit]);
+
+            return (rows || []).filter(row => Number(row.match_count || 0) > 0).map(row => ({
+                id: row.id,
+                factType: row.fact_type,
+                subject: row.subject,
+                predicate: row.predicate_name,
+                value: (() => { try { return JSON.parse(row.value_json || '{}'); } catch (_) { return {}; } })(),
+                text: row.human_text,
+                authorityType: row.authority_type,
+                scope: row.scope_label,
+                sourcePath: row.source_path,
+                authorityRank: row.authority_rank,
+                score: Number(row.match_count || 0)
+            }));
+        } catch (error) {
+            if (!/structured_facts/i.test(error.message || '')) {
+                console.warn('[RetrievalService] Structured fact lookup skipped:', error.message);
+            }
+            return [];
+        }
+    }
+
+    _formatStructuredFactsContext(facts) {
+        if (!Array.isArray(facts) || !facts.length) return '';
+        const lines = [
+            '[Structured Facts - approved exact records]',
+            'Use these records for exact factual questions. If they conflict with document RAG, state the source/authority difference.'
+        ];
+        for (const fact of facts) {
+            lines.push(`- ${fact.factType}${fact.subject ? ` | ${fact.subject}` : ''}: ${fact.text}${fact.scope ? ` [${fact.scope}]` : ''}${fact.sourcePath ? ` Source path: ${fact.sourcePath}` : ''}`);
+        }
+        return lines.join('\n');
     }
 
     /**

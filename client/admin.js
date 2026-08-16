@@ -707,7 +707,9 @@
                 `<button class="btn btn-ghost" data-lab-act="open" data-id="${job.id}" title="Open outputs"><i class="fa-solid fa-folder-open"></i></button>
                  <button class="btn btn-ghost" data-lab-act="analyze" data-id="${job.id}" title="Analyze and repair"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
                  <button class="btn btn-ghost" data-lab-act="plan" data-id="${job.id}" title="Review split/clean plan"><i class="fa-solid fa-scissors"></i></button>
-                 <button class="btn btn-ghost" data-lab-act="digest" data-id="${job.id}" title="Create structured digest"><i class="fa-solid fa-layer-group"></i></button>`
+                 <button class="btn btn-ghost" data-lab-act="digest" data-id="${job.id}" title="Create structured digest"><i class="fa-solid fa-layer-group"></i></button>
+                 <button class="btn btn-ghost" data-lab-act="academic" data-id="${job.id}" title="Academic hierarchy parse"><i class="fa-solid fa-sitemap"></i></button>
+                 <button class="btn btn-ghost" data-lab-act="facts" data-id="${job.id}" title="Approve structured facts"><i class="fa-solid fa-database"></i></button>`
             ]);
             document.getElementById('labQueue').innerHTML = table(
                 ['Document', 'Issue', 'Readiness', 'Outputs', 'Updated', 'Actions'],
@@ -732,6 +734,19 @@
                         toast('Creating structured digest…');
                         await api('/api/document-lab/jobs/' + id + '/structured-digest', { method: 'POST' });
                         toast('Structured digest created');
+                        return renderDocumentLab(id);
+                    }
+                    if (btn.dataset.labAct === 'academic') {
+                        toast('Creating academic hierarchy parse…');
+                        const r = await api('/api/document-lab/jobs/' + id + '/academic-parse', { method: 'POST' });
+                        const stats = r.job?.academicParse || {};
+                        toast(`Created ${stats.childChunks || 0} chunk(s), ${stats.facts || 0} fact(s)`);
+                        return renderDocumentLab(id);
+                    }
+                    if (btn.dataset.labAct === 'facts') {
+                        if (!confirm('Approve draft structured facts from this lab job for production lookup?')) return;
+                        const r = await api('/api/document-lab/jobs/' + id + '/approve-facts', { method: 'POST' });
+                        toast(`Approved ${r.approved || 0} structured fact(s)`);
                         return renderDocumentLab(id);
                     }
                 } catch (err) {

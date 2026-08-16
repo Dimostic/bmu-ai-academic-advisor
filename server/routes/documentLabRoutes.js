@@ -193,6 +193,42 @@ router.post('/jobs/:id/structured-digest', authenticateToken, requireAdmin, asyn
     }
 });
 
+router.post('/jobs/:id/academic-parse', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const job = await documentLabService.createAcademicParse(req.params.id);
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_LAB_ACADEMIC_PARSE_CREATED',
+            entityType: 'document_lab_job',
+            entityId: parseInt(req.params.id, 10),
+            details: job.academicParse || {},
+            ipAddress: req.ip
+        });
+        res.json({ success: true, message: 'Academic hierarchy parse created', job });
+    } catch (error) {
+        console.error('Document Lab academic parse error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to create academic parse' });
+    }
+});
+
+router.post('/jobs/:id/approve-facts', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const result = await documentLabService.approveAcademicFacts(req.params.id);
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'DOCUMENT_LAB_STRUCTURED_FACTS_APPROVED',
+            entityType: 'document_lab_job',
+            entityId: parseInt(req.params.id, 10),
+            details: result,
+            ipAddress: req.ip
+        });
+        res.json({ success: true, message: `Approved ${result.approved} structured fact(s)`, ...result });
+    } catch (error) {
+        console.error('Document Lab approve facts error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to approve structured facts' });
+    }
+});
+
 router.put('/outputs/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const output = await documentLabService.updateOutput(req.params.id, req.body || {});

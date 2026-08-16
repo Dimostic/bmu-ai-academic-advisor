@@ -11,6 +11,7 @@ const LAB_DIR = path.join(__dirname, '../../uploads/document-lab');
 const PROMOTED_DIR = path.join(LAB_DIR, 'promoted');
 const DEFAULT_TARGET_CHARS = 12000;
 const DOCUMENT_CATEGORIES = new Set(['policy', 'regulation', 'academic', 'administrative', 'legal', 'general']);
+const ACADEMIC_CHUNK_TARGET = 2200;
 let schemaEnsured = false;
 
 function safeJson(value, fallback = null) {
@@ -417,6 +418,257 @@ function buildStructuredDigest(markdown, title) {
     };
 }
 
+function stripMarkdownTableSeparator(line) {
+    return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(String(line || ''));
+}
+
+function parseMarkdownTable(table) {
+    const lines = String(table || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const dataLines = lines.filter(line => !stripMarkdownTableSeparator(line));
+    if (dataLines.length < 2) return [];
+    const split = line => line.replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+    const headers = split(dataLines[0]).map((h, i) => h || `column_${i + 1}`);
+    return dataLines.slice(1).map(line => {
+        const cells = split(line);
+        const row = {};
+        headers.forEach((header, index) => {
+            row[header] = cells[index] || '';
+        });
+        return row;
+    }).filter(row => Object.values(row).some(Boolean));
+}
+
+function normalizeProgrammeName(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    const q = text.toLowerCase();
+    const matches = [
+        ['MBBS', /\b(mbbs|medicine and surgery|medicine)\b/i],
+        ['BDS', /\b(bds|dentistry)\b/i],
+        ['Nursing', /\b(nursing|bnsc)\b/i],
+        ['Medical Laboratory Science', /\b(medical laboratory science|bmls)\b/i],
+        ['Pharmacy', /\b(pharmacy|pharmd|b\.?pharm)\b/i],
+        ['Physiotherapy', /\b(physiotherapy)\b/i],
+        ['Radiography', /\b(radiography)\b/i],
+        ['Optometry', /\b(optometry)\b/i],
+        ['Human Anatomy', /\b(human anatomy|anatomy)\b/i],
+        ['Human Physiology', /\b(human physiology|physiology)\b/i],
+        ['Biochemistry', /\b(biochemistry)\b/i],
+        ['Public Health', /\b(public health)\b/i]
+    ];
+    const found = matches.find(([, re]) => re.test(text));
+    if (found) return found[0];
+    if (/\bprogramme\b|\bprogram\b|\bdegree\b/.test(q)) return text.replace(/^#+\s*/, '').slice(0, 120);
+    return '';
+}
+
+function detectAcademicSection(title) {
+    const q = String(title || '').toLowerCase();
+    if (/admission|entry|eligib|graduation requirement/.test(q)) return 'admission_requirements';
+    if (/course structure|course content|course description|learning outcome/.test(q)) return 'course_content';
+    if (/duration/.test(q)) return 'programme_duration';
+    if (/minimum academic standard|staffing|laborator|facility|library/.test(q)) return 'minimum_academic_standards';
+    if (/philosophy|objective|overview|unique feature|employability|21st century/.test(q)) return 'programme_overview';
+    if (/examination|professional|progression|probation|withdraw|graduation/.test(q)) return 'academic_policy';
+    return 'general_section';
+}
+
+function inferFactType(text) {
+    const q = String(text || '').toLowerCase();
+    if (/duration|six[- ]year|five[- ]year|\b6 years?\b|\b5 years?\b/.test(q)) return 'programme_duration';
+    if (/admission|entry|utme|direct entry|o'?level|ssce|waec|neco|credit pass/.test(q)) return 'admission_rule';
+    if (/course code|credit units?|semester|level|[a-z]{2,5}\s*\d{3}/i.test(text)) return 'course_rule';
+    if (/graduation|probation|withdraw|cgpa|gpa|professional examination/.test(q)) return 'progression_or_graduation_rule';
+    if (/fee|tuition|payment|charge|levy|₦|naira|ngn/.test(q)) return 'fee_rule';
+    return 'academic_fact';
+}
+
+function extractDurationYears(text) {
+    const q = String(text || '');
+    const numeric = q.match(/\b([1-9])\s*years?\b/i);
+    if (numeric) return Number(numeric[1]);
+    if (/six[- ]year/i.test(q)) return 6;
+    if (/five[- ]year/i.test(q)) return 5;
+    return null;
+}
+
+function academicFactFromLine(line, context) {
+    const text = String(line || '').replace(/\s+/g, ' ').trim();
+    if (text.length < 12 || text.length > 600) return null;
+    const type = inferFactType(text);
+    if (type === 'academic_fact' && !/\b(shall|must|required|programme|course|duration|admission|graduation|credit|semester|level)\b/i.test(text)) {
+        return null;
+    }
+    const programme = context.programme || normalizeProgrammeName(text) || null;
+    const value = {
+        programme,
+        section: context.section || null,
+        subsection: context.subsection || null,
+        text
+    };
+    const durationYears = extractDurationYears(text);
+    if (durationYears) value.duration_years = durationYears;
+    const entryMode = text.match(/\b(UTME|Direct Entry|DE)\b/i)?.[1];
+    if (entryMode) value.entry_mode = /direct|de/i.test(entryMode) ? 'Direct Entry' : 'UTME';
+    return {
+        factType: type,
+        subject: programme || context.section || context.documentTitle,
+        predicate: type,
+        value,
+        humanText: text,
+        authorityType: /ccmas|nuc/i.test(context.documentTitle) ? 'regulator' : 'institution',
+        scope: /ccmas|nuc/i.test(context.documentTitle) ? 'NUC national minimum' : 'BMU institutional source',
+        sourcePath: context.path
+    };
+}
+
+function buildAcademicParse(markdown, title) {
+    const text = String(markdown || '').trim();
+    const documentTitle = cleanTitle(title);
+    const lines = text.split(/\r?\n/);
+    const nodes = [];
+    const facts = [];
+    const tables = extractMarkdownTables(text, 200);
+    let current = {
+        discipline: '',
+        programme: '',
+        section: '',
+        subsection: '',
+        path: documentTitle
+    };
+    let buffer = [];
+    let order = 1;
+
+    const flushBuffer = () => {
+        const content = buffer.join('\n').trim();
+        buffer = [];
+        if (!content) return;
+        const sectionType = detectAcademicSection(current.subsection || current.section);
+        const units = splitContentUnits(content, ACADEMIC_CHUNK_TARGET);
+        units.forEach((unit, index) => {
+            if (!unit.trim()) return;
+            const pathParts = [documentTitle, current.discipline, current.programme, current.section, current.subsection]
+                .filter(Boolean);
+            const pathText = pathParts.join(' -> ');
+            const node = {
+                nodeType: 'child_chunk',
+                title: `${current.subsection || current.section || current.programme || documentTitle}${units.length > 1 ? ` - Part ${index + 1}` : ''}`,
+                path: pathText,
+                parentSummary: pathParts.slice(0, -1).join(' -> '),
+                content: unit,
+                metadata: {
+                    discipline: current.discipline || null,
+                    programme: current.programme || null,
+                    section: current.section || null,
+                    subsection: current.subsection || null,
+                    sectionType,
+                    recommendedTokens: sectionType === 'course_content' ? 'one course or logical course group' : 'logical section only'
+                },
+                indexable: true,
+                sortOrder: order++
+            };
+            nodes.push(node);
+            unit.split(/\r?\n|(?<=[.!?])\s+/)
+                .map(line => academicFactFromLine(line, {
+                    ...current,
+                    documentTitle,
+                    path: pathText
+                }))
+                .filter(Boolean)
+                .forEach(fact => facts.push(fact));
+        });
+    };
+
+    nodes.push({
+        nodeType: 'document',
+        title: documentTitle,
+        path: documentTitle,
+        parentSummary: '',
+        content: `Document source: ${documentTitle}`,
+        metadata: { documentTitle },
+        indexable: false,
+        sortOrder: 0
+    });
+
+    for (const rawLine of lines) {
+        const line = rawLine.trim();
+        const heading = line.match(/^(#{1,4})\s+(.{3,160})$/) || (/^[A-Z][A-Z0-9 ,.'&()/:-]{8,}$/.test(line) ? ['', '##', line] : null);
+        if (heading) {
+            flushBuffer();
+            const level = heading[1].length || 2;
+            const headingText = cleanTitle(heading[2]);
+            const programme = normalizeProgrammeName(headingText);
+            if (programme && /programme|program|mbbs|bds|nursing|laboratory|pharmacy|physiotherapy|radiography|optometry|anatomy|physiology|biochemistry|public health/i.test(headingText)) {
+                current.programme = programme;
+                current.section = '';
+                current.subsection = '';
+            } else if (level <= 2) {
+                current.section = headingText;
+                current.subsection = '';
+            } else {
+                current.subsection = headingText;
+            }
+            if (/medicine|dentistry|allied health|basic medical sciences|social sciences|sciences/i.test(headingText) && !programme) {
+                current.discipline = headingText;
+            }
+            current.path = [documentTitle, current.discipline, current.programme, current.section, current.subsection]
+                .filter(Boolean)
+                .join(' -> ');
+            nodes.push({
+                nodeType: programme ? 'programme_parent' : (level <= 2 ? 'section_parent' : 'subsection_parent'),
+                title: headingText,
+                path: current.path,
+                parentSummary: [documentTitle, current.discipline, current.programme].filter(Boolean).join(' -> '),
+                content: headingText,
+                metadata: {
+                    discipline: current.discipline || null,
+                    programme: current.programme || null,
+                    section: current.section || null,
+                    subsection: current.subsection || null,
+                    sectionType: detectAcademicSection(headingText)
+                },
+                indexable: false,
+                sortOrder: order++
+            });
+            continue;
+        }
+        if (stripMarkdownTableSeparator(line)) {
+            buffer.push(rawLine);
+            continue;
+        }
+        buffer.push(rawLine);
+    }
+    flushBuffer();
+
+    for (const table of tables) {
+        const rows = parseMarkdownTable(table);
+        rows.forEach((row, index) => {
+            const rowText = Object.entries(row).map(([key, value]) => `${key}: ${value}`).join('; ');
+            const fact = academicFactFromLine(rowText, {
+                ...current,
+                documentTitle,
+                path: `${documentTitle} -> table ${index + 1}`
+            });
+            if (fact) {
+                fact.value.table_row = row;
+                fact.humanText = rowText;
+                facts.push(fact);
+            }
+        });
+    }
+
+    return {
+        nodes,
+        facts,
+        stats: {
+            nodes: nodes.length,
+            childChunks: nodes.filter(n => n.nodeType === 'child_chunk').length,
+            programmes: new Set(nodes.map(n => n.metadata?.programme).filter(Boolean)).size,
+            facts: facts.length,
+            tables: tables.length
+        }
+    };
+}
+
 class DocumentLabService {
     async ensureDirs() {
         await fs.mkdir(LAB_DIR, { recursive: true });
@@ -470,6 +722,75 @@ class DocumentLabService {
                 INDEX idx_lab_output_job (job_id),
                 INDEX idx_lab_output_status (status),
                 CONSTRAINT fk_lab_outputs_job FOREIGN KEY (job_id) REFERENCES document_lab_jobs(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS document_lab_nodes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                job_id INT NOT NULL,
+                parent_id INT NULL,
+                node_type VARCHAR(50) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                hierarchy_path TEXT,
+                parent_summary TEXT,
+                content LONGTEXT,
+                metadata_json LONGTEXT NULL,
+                indexable BOOLEAN DEFAULT TRUE,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_lab_nodes_job (job_id),
+                INDEX idx_lab_nodes_type (node_type),
+                INDEX idx_lab_nodes_indexable (indexable),
+                CONSTRAINT fk_lab_nodes_job FOREIGN KEY (job_id) REFERENCES document_lab_jobs(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS document_lab_facts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                job_id INT NOT NULL,
+                node_id INT NULL,
+                fact_type VARCHAR(80) NOT NULL,
+                subject VARCHAR(255) NULL,
+                predicate_name VARCHAR(120) NULL,
+                value_json LONGTEXT NULL,
+                human_text TEXT NOT NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                source_path TEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'draft',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_lab_facts_job (job_id),
+                INDEX idx_lab_facts_type (fact_type),
+                INDEX idx_lab_facts_status (status),
+                CONSTRAINT fk_lab_facts_job FOREIGN KEY (job_id) REFERENCES document_lab_jobs(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS structured_facts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                lab_fact_id INT NULL,
+                source_document_id INT NULL,
+                fact_type VARCHAR(80) NOT NULL,
+                subject VARCHAR(255) NULL,
+                predicate_name VARCHAR(120) NULL,
+                value_json LONGTEXT NULL,
+                human_text TEXT NOT NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                source_path TEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                currentness_label VARCHAR(80) NOT NULL DEFAULT 'current',
+                authority_rank INT NOT NULL DEFAULT 70,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_structured_facts_type (fact_type),
+                INDEX idx_structured_facts_status (status),
+                INDEX idx_structured_facts_subject (subject),
+                FULLTEXT INDEX ft_structured_facts (subject, human_text, source_path)
             ) ENGINE=InnoDB
         `);
 
@@ -868,6 +1189,122 @@ class DocumentLabService {
 
         await query("UPDATE document_lab_jobs SET status = 'ready_for_approval', updated_at = NOW() WHERE id = ?", [jobId]);
         return this.getJob(jobId);
+    }
+
+    async createAcademicParse(jobId) {
+        await this.ensureSchema();
+        const rows = await query('SELECT * FROM document_lab_jobs WHERE id = ?', [jobId]);
+        const job = rows[0];
+        if (!job) throw new Error('Lab job not found');
+        const sourceText = String(job.repaired_text || job.extracted_text || '').trim();
+        if (!sourceText) throw new Error('No cleaned text is available for academic parsing.');
+
+        const parsed = buildAcademicParse(sourceText, job.title);
+        await query('DELETE FROM document_lab_nodes WHERE job_id = ?', [jobId]);
+        await query('DELETE FROM document_lab_facts WHERE job_id = ?', [jobId]);
+        await query("DELETE FROM document_lab_outputs WHERE job_id = ? AND output_type = 'academic_chunk' AND status IN ('draft', 'needs_review', 'approved')", [jobId]);
+
+        const nodeIds = new Map();
+        for (const node of parsed.nodes) {
+            const result = await query(`
+                INSERT INTO document_lab_nodes
+                    (job_id, parent_id, node_type, title, hierarchy_path, parent_summary, content, metadata_json, indexable, sort_order)
+                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                jobId,
+                node.nodeType,
+                node.title,
+                node.path,
+                node.parentSummary,
+                node.content,
+                JSON.stringify(node.metadata || {}),
+                node.indexable ? 1 : 0,
+                node.sortOrder
+            ]);
+            nodeIds.set(node.path + '|' + node.sortOrder, result.insertId);
+
+            if (node.nodeType === 'child_chunk' && node.indexable) {
+                const content = `Parent context: ${node.parentSummary || node.path}\n\n${node.content}`;
+                const readiness = await documentQualityService.reviewText(content, {
+                    title: node.title,
+                    fileType: '.md',
+                    fileSize: Buffer.byteLength(content, 'utf8')
+                });
+                await query(`
+                    INSERT INTO document_lab_outputs
+                        (job_id, title, output_type, content_markdown, status, readiness_status, readiness_score, readiness_json, sort_order)
+                    VALUES (?, ?, 'academic_chunk', ?, 'draft', ?, ?, ?, ?)
+                `, [
+                    jobId,
+                    node.title.slice(0, 255),
+                    content,
+                    readiness.status,
+                    readiness.score,
+                    JSON.stringify(readiness),
+                    node.sortOrder
+                ]);
+            }
+        }
+
+        for (const fact of parsed.facts.slice(0, 2000)) {
+            await query(`
+                INSERT INTO document_lab_facts
+                    (job_id, node_id, fact_type, subject, predicate_name, value_json, human_text, authority_type, scope_label, source_path, status)
+                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+            `, [
+                jobId,
+                fact.factType,
+                fact.subject || null,
+                fact.predicate || null,
+                JSON.stringify(fact.value || {}),
+                fact.humanText,
+                fact.authorityType || null,
+                fact.scope || null,
+                fact.sourcePath || null
+            ]);
+        }
+
+        const recommendations = safeJson(job.recommendations_json, []);
+        recommendations.unshift(`Academic parse created ${parsed.stats.childChunks} hierarchy-safe chunk(s) and ${parsed.stats.facts} draft structured fact(s).`);
+        await query(
+            "UPDATE document_lab_jobs SET status = 'ready_for_approval', recommendations_json = ?, updated_at = NOW() WHERE id = ?",
+            [JSON.stringify(Array.from(new Set(recommendations)).slice(0, 12)), jobId]
+        );
+        return {
+            ...(await this.getJob(jobId)),
+            academicParse: parsed.stats
+        };
+    }
+
+    async approveAcademicFacts(jobId) {
+        await this.ensureSchema();
+        const jobRows = await query('SELECT * FROM document_lab_jobs WHERE id = ?', [jobId]);
+        const job = jobRows[0];
+        if (!job) throw new Error('Lab job not found');
+        const facts = await query("SELECT * FROM document_lab_facts WHERE job_id = ? AND status = 'draft'", [jobId]);
+        let approved = 0;
+        for (const fact of facts) {
+            await query(`
+                INSERT INTO structured_facts
+                    (lab_fact_id, source_document_id, fact_type, subject, predicate_name, value_json, human_text, authority_type, scope_label, source_path, status, authority_rank)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+            `, [
+                fact.id,
+                job.source_document_id || null,
+                fact.fact_type,
+                fact.subject,
+                fact.predicate_name,
+                fact.value_json,
+                fact.human_text,
+                fact.authority_type,
+                fact.scope_label,
+                fact.source_path,
+                fact.authority_type === 'regulator' ? 75 : 85
+            ]);
+            await query("UPDATE document_lab_facts SET status = 'approved', updated_at = NOW() WHERE id = ?", [fact.id]);
+            approved++;
+        }
+        return { approved };
     }
 
     async updateOutput(outputId, updates = {}) {
