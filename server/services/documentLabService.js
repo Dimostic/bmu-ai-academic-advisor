@@ -45,6 +45,14 @@ const PROGRAMME_ALIASES = [
     ['Law', /\b(law|ll\.?b)\b/i]
 ];
 let schemaEnsured = false;
+const NORMALIZED_TABLES = [
+    'academic_programmes',
+    'academic_courses',
+    'academic_fees',
+    'academic_calendar_events',
+    'academic_officers',
+    'academic_rules'
+];
 
 function stableHash(value) {
     return crypto.createHash('sha1').update(String(value || '')).digest('hex');
@@ -1873,38 +1881,66 @@ class DocumentLabService {
         return this._shapeTable(rows[0]);
     }
 
+    async getNormalizedAcademicStats() {
+        await this.ensureSchema();
+        const counts = {};
+        for (const tableName of NORMALIZED_TABLES) {
+            const rows = await query(`SELECT COUNT(*) AS count FROM ${tableName} WHERE status = 'active'`);
+            counts[tableName] = Number(rows?.[0]?.count || 0);
+        }
+        const factRows = await query("SELECT COUNT(*) AS count FROM structured_facts WHERE status = 'active'");
+        const tableRows = await query("SELECT COUNT(*) AS count FROM structured_tables WHERE status = 'active'");
+        return {
+            structuredFacts: Number(factRows?.[0]?.count || 0),
+            structuredTables: Number(tableRows?.[0]?.count || 0),
+            normalizedTotal: Object.values(counts).reduce((sum, count) => sum + count, 0),
+            counts
+        };
+    }
+
     async backfillNormalizedAcademicRecords(options = {}) {
         await this.ensureSchema();
-        const limit = Math.min(Math.max(parseInt(options.limit, 10) || 500, 1), 5000);
+        const limit = Math.min(Math.max(parseInt(options.limit, 10) || 50, 1), 250);
+        const afterFactId = Math.max(parseInt(options.afterFactId, 10) || 0, 0);
+        const afterTableId = Math.max(parseInt(options.afterTableId, 10) || 0, 0);
         const facts = await query(`
             SELECT *, id AS structured_fact_id
             FROM structured_facts
             WHERE status = 'active'
-            ORDER BY updated_at DESC
+              AND id > ?
+            ORDER BY id ASC
             LIMIT ?
-        `, [limit]);
+        `, [afterFactId, limit]);
         const tables = await query(`
             SELECT *, id AS structured_table_id
             FROM structured_tables
             WHERE status = 'active'
-            ORDER BY updated_at DESC
+              AND id > ?
+            ORDER BY id ASC
             LIMIT ?
-        `, [limit]);
+        `, [afterTableId, limit]);
 
         let normalizedFacts = 0;
         let normalizedTables = 0;
+        let lastFactId = afterFactId;
+        let lastTableId = afterTableId;
         for (const fact of facts || []) {
             normalizedFacts += await this._syncNormalizedFromFact(fact);
+            lastFactId = Math.max(lastFactId, Number(fact.id || fact.structured_fact_id || 0));
         }
         for (const tableRecord of tables || []) {
             normalizedTables += await this._syncNormalizedFromTable(tableRecord);
+            lastTableId = Math.max(lastTableId, Number(tableRecord.id || tableRecord.structured_table_id || 0));
         }
 
         return {
             factsScanned: facts.length,
             tablesScanned: tables.length,
             normalizedFacts,
-            normalizedTables
+            normalizedTables,
+            afterFactId: lastFactId,
+            afterTableId: lastTableId,
+            done: facts.length < limit && tables.length < limit
         };
     }
 
@@ -2205,12 +2241,7 @@ class DocumentLabService {
 
     async _upsertNormalized(tableName, fields) {
         const allowed = new Set([
-            'academic_programmes',
-            'academic_courses',
-            'academic_fees',
-            'academic_calendar_events',
-            'academic_officers',
-            'academic_rules'
+            ...NORMALIZED_TABLES
         ]);
         if (!allowed.has(tableName)) throw new Error('Unsupported normalized academic table');
         const cleaned = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));

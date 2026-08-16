@@ -657,6 +657,19 @@
                 <button class="btn btn-ghost" id="labImportFlaggedBtn" type="button"><i class="fa-solid fa-arrow-right-to-bracket"></i> Import flagged documents</button>
                 <button class="btn btn-ghost" id="labRefreshBtn" type="button"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
             </div>
+            <section class="document-lab-normalized" id="labNormalizedPanel">
+                <div>
+                    <h3>Normalized academic facts</h3>
+                    <p>Production lookup records for programmes, courses, fees, dates, officers, and academic rules.</p>
+                </div>
+                <div class="document-lab-normalized-actions">
+                    <button class="btn btn-ghost" id="labNormalizedStatsBtn" type="button"><i class="fa-solid fa-chart-simple"></i> Refresh stats</button>
+                    <button class="btn btn-primary" id="labNormalizedBackfillBtn" type="button"><i class="fa-solid fa-database"></i> Run next batch</button>
+                </div>
+                <div class="document-lab-normalized-stats" id="labNormalizedStats">
+                    <span class="badge badge-info">Loading stats</span>
+                </div>
+            </section>
             <div id="labQueue"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading lab queue…</div></div>
             <div id="labWorkspace"></div>
         `;
@@ -691,6 +704,9 @@
             }
         });
         document.getElementById('labRefreshBtn').addEventListener('click', () => renderDocumentLab(selectedJobId));
+        document.getElementById('labNormalizedStatsBtn').addEventListener('click', loadNormalizedAcademicStats);
+        document.getElementById('labNormalizedBackfillBtn').addEventListener('click', runNormalizedAcademicBackfillBatch);
+        loadNormalizedAcademicStats();
 
         try {
             const r = await api('/api/document-lab/jobs?limit=200');
@@ -757,6 +773,70 @@
             if (selectedJobId || jobs[0]?.id) loadLabJob(selectedJobId || jobs[0].id);
         } catch (err) {
             document.getElementById('labQueue').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    async function loadNormalizedAcademicStats() {
+        const target = document.getElementById('labNormalizedStats');
+        if (!target) return;
+        target.innerHTML = '<span class="badge badge-info"><i class="fa-solid fa-spinner fa-spin"></i> Loading</span>';
+        try {
+            const r = await api('/api/document-lab/normalized-academic/stats');
+            const stats = r.stats || {};
+            const counts = stats.counts || {};
+            target.innerHTML = `
+                <span class="badge badge-info">${escapeHtml(String(stats.normalizedTotal || 0))} normalized</span>
+                <span class="badge badge-info">${escapeHtml(String(stats.structuredFacts || 0))} source facts</span>
+                <span class="badge badge-info">${escapeHtml(String(stats.structuredTables || 0))} source tables</span>
+                <small>
+                    Programmes ${escapeHtml(String(counts.academic_programmes || 0))} ·
+                    Courses ${escapeHtml(String(counts.academic_courses || 0))} ·
+                    Fees ${escapeHtml(String(counts.academic_fees || 0))} ·
+                    Calendar ${escapeHtml(String(counts.academic_calendar_events || 0))} ·
+                    Officers ${escapeHtml(String(counts.academic_officers || 0))} ·
+                    Rules ${escapeHtml(String(counts.academic_rules || 0))}
+                </small>
+            `;
+        } catch (err) {
+            target.innerHTML = `<span class="badge badge-danger">${escapeHtml(err.message || 'Stats unavailable')}</span>`;
+        }
+    }
+
+    async function runNormalizedAcademicBackfillBatch() {
+        const btn = document.getElementById('labNormalizedBackfillBtn');
+        const target = document.getElementById('labNormalizedStats');
+        if (!btn) return;
+        btn.disabled = true;
+        const state = runNormalizedAcademicBackfillBatch.state || { afterFactId: 0, afterTableId: 0 };
+        try {
+            toast('Normalizing next academic fact batch…');
+            const r = await api('/api/document-lab/normalized-academic/backfill', {
+                method: 'POST',
+                body: {
+                    limit: 50,
+                    afterFactId: state.afterFactId,
+                    afterTableId: state.afterTableId
+                }
+            });
+            runNormalizedAcademicBackfillBatch.state = {
+                afterFactId: r.afterFactId || state.afterFactId,
+                afterTableId: r.afterTableId || state.afterTableId
+            };
+            const total = Number(r.normalizedFacts || 0) + Number(r.normalizedTables || 0);
+            toast(r.done ? `Backfill complete: ${total} candidate(s) normalized in final batch` : `Batch complete: ${total} candidate(s) normalized`);
+            if (target) {
+                target.innerHTML = `
+                    <span class="badge ${r.done ? 'badge-success' : 'badge-info'}">${r.done ? 'Backfill complete' : 'Batch complete'}</span>
+                    <span class="badge badge-info">${escapeHtml(String(r.factsScanned || 0))} facts scanned</span>
+                    <span class="badge badge-info">${escapeHtml(String(r.tablesScanned || 0))} tables scanned</span>
+                    <small>Cursor: fact ${escapeHtml(String(r.afterFactId || 0))}, table ${escapeHtml(String(r.afterTableId || 0))}</small>
+                `;
+            }
+            await loadNormalizedAcademicStats();
+        } catch (err) {
+            toast(err.message || 'Normalized backfill failed', 'error');
+        } finally {
+            btn.disabled = false;
         }
     }
 
