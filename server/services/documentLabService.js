@@ -161,7 +161,7 @@ function splitByHeadings(markdown, title, targetChars = DEFAULT_TARGET_CHARS) {
                 buffer = [];
                 bufferLen = 0;
             }
-            const paragraphs = section.content.split(/\n{2,}/);
+            const paragraphs = splitContentUnits(section.content, targetChars);
             let part = [];
             let partLen = 0;
             let partNo = 1;
@@ -182,8 +182,82 @@ function splitByHeadings(markdown, title, targetChars = DEFAULT_TARGET_CHARS) {
     }
 
     if (buffer.length) chunks.push({ title: bufferTitle, content: buffer.join('\n\n').trim() });
-    const merged = mergeThinSplitChunks(chunks, title);
+    const merged = mergeThinSplitChunks(expandOversizeChunks(chunks, targetChars), title);
     return merged.length ? merged : [{ title: cleanTitle(title), content: text }];
+}
+
+function splitContentUnits(content, targetChars = DEFAULT_TARGET_CHARS) {
+    const text = String(content || '').trim();
+    if (!text) return [];
+
+    const paragraphUnits = text.split(/\n{2,}/).map(x => x.trim()).filter(Boolean);
+    if (paragraphUnits.length > 1 && paragraphUnits.some(x => x.length < targetChars * 1.2)) {
+        return flattenOversizeUnits(paragraphUnits, targetChars);
+    }
+
+    const lineUnits = text.split(/\n+/).map(x => x.trim()).filter(Boolean);
+    if (lineUnits.length > 6) {
+        return flattenOversizeUnits(lineUnits, targetChars);
+    }
+
+    const sentenceUnits = text
+        .split(/(?<=[.!?])\s+(?=[A-Z0-9(])/)
+        .map(x => x.trim())
+        .filter(Boolean);
+    if (sentenceUnits.length > 6) {
+        return flattenOversizeUnits(sentenceUnits, targetChars);
+    }
+
+    return hardSplitText(text, targetChars);
+}
+
+function flattenOversizeUnits(units, targetChars) {
+    const out = [];
+    for (const unit of units) {
+        if (unit.length > targetChars * 1.25) out.push(...hardSplitText(unit, targetChars));
+        else out.push(unit);
+    }
+    return out;
+}
+
+function hardSplitText(text, targetChars = DEFAULT_TARGET_CHARS) {
+    const value = String(text || '').trim();
+    if (!value) return [];
+    const chunks = [];
+    let remaining = value;
+    while (remaining.length > targetChars) {
+        const minCut = Math.floor(targetChars * 0.65);
+        const maxCut = Math.min(remaining.length, Math.floor(targetChars * 1.05));
+        let cut = remaining.lastIndexOf('\n', maxCut);
+        if (cut < minCut) cut = remaining.lastIndexOf('. ', maxCut);
+        if (cut < minCut) cut = remaining.lastIndexOf('; ', maxCut);
+        if (cut < minCut) cut = remaining.lastIndexOf(' ', maxCut);
+        if (cut < minCut) cut = targetChars;
+        chunks.push(remaining.slice(0, cut).trim());
+        remaining = remaining.slice(cut).trim();
+    }
+    if (remaining) chunks.push(remaining);
+    return chunks;
+}
+
+function expandOversizeChunks(chunks, targetChars = DEFAULT_TARGET_CHARS) {
+    const expanded = [];
+    for (const chunk of chunks || []) {
+        const content = String(chunk?.content || '').trim();
+        if (!content) continue;
+        if (content.length <= targetChars * 1.35) {
+            expanded.push(chunk);
+            continue;
+        }
+        const pieces = splitContentUnits(content, targetChars);
+        pieces.forEach((piece, index) => {
+            expanded.push({
+                title: `${cleanTitle(chunk.title)} - Part ${index + 1}`,
+                content: piece
+            });
+        });
+    }
+    return expanded;
 }
 
 function isThinSplitChunk(chunk) {
@@ -674,9 +748,12 @@ class DocumentLabService {
         const review = safeJson(job.review_json, {});
         const targetChars = Math.min(Math.max(parseInt(options.targetChars, 10) || DEFAULT_TARGET_CHARS, 4000), 30000);
         const shouldSplit = (review?.metrics?.estimatedChunks || 0) > 500 || job.issue_type === 'needs_splitting';
-        const rawParts = shouldSplit
+        let rawParts = shouldSplit
             ? splitByHeadings(job.repaired_text, job.title, targetChars)
             : [{ title: job.title, content: job.repaired_text }];
+        if (shouldSplit && rawParts.length <= 1 && String(job.repaired_text || '').length > targetChars) {
+            rawParts = splitByHeadings(job.repaired_text, job.title, Math.max(4500, Math.floor(targetChars * 0.55)));
+        }
 
         const parts = [];
         let order = 1;
