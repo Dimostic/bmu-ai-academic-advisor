@@ -145,7 +145,21 @@ function _buildHandbookAcademicPolicyReply(question) {
 
     const isCreditUnitDefinition = /(define|definition|what\s+is|meaning\s+of).{0,40}credit\s+unit|credit\s+unit.{0,40}(define|definition|mean)/i.test(q);
     const isAcademicWorkload = /(student\s+academic\s+workload|academic\s+workload|credit\s+load|course\s+load|credit\s+units?|register\s+(?:less|more)|less\s+than\s+15|more\s+than\s+24|above\s+30|below\s+9)/i.test(q);
-    if (!isCreditUnitDefinition && !isAcademicWorkload) return null;
+    const isReassessment = /(reassessment|re-assessment|remark|re-mark|results?\s+review|appeal.{0,30}results?|after\s+results?\s+(?:are\s+)?published)/i.test(q);
+    if (!isCreditUnitDefinition && !isAcademicWorkload && !isReassessment) return null;
+
+    if (isReassessment) {
+        return {
+            speech_text: 'According to the BMU Students Handbook, a student may request reassessment not later than two weeks after provisional results are published by the faculty. The student pays a reassessment fee of two thousand naira, refundable only if the appeal succeeds, and the report goes to Senate through the Faculty Board.',
+            display_markdown: "According to the **BMU Students' Handbook 2026**, section **3.12 Request for Reassessment**:\n\n- A student may request reassessment of work in a course examination **not later than two weeks after publication of provisional results** by the faculty.\n- The student must pay a reassessment fee of **N2,000**, subject to review from time to time.\n- The reassessment begins only after evidence of payment is presented.\n- The fee is refundable **only if the appeal is successful**.\n- The reassessment report should be forwarded to **Senate through the Faculty Board** for consideration.",
+            topic_slug: 'student_handbook_reassessment',
+            citations: [{ title: "Students' Handbook 2026", source: 'Chapter 3: Academic Regulations, section 3.12' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.99
+        };
+    }
 
     const citations = [{ title: "Students' Handbook 2026", source: 'Chapter 3: Academic Regulations, sections 3.13 and 3.15' }];
 
