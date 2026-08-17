@@ -91,6 +91,7 @@
     const advisorFullView = advisorViewMode === 'normal' ? false : true;
     const GUEST_DEMO_CLOSING_TEXT = 'You have exhausted your five guest questions. Please register or sign in to continue asking Dr. Tari.';
     const THINKING_MIN_VISIBLE_MS = 850;
+    const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
     // ---------- State ----------
     const state = {
@@ -111,6 +112,9 @@
         currentAudio: null,
         ttsMuted: localStorage.getItem('bmu_tts_muted') === '1',
         ttsPaused: false,
+        browserVoiceReady: false,
+        browserVoiceWarmupPromise: null,
+        selectedBrowserVoiceSignature: '',
         currentLottie: null,
         activeResponseBubble: null,
         speakingFocusTimer: null,
@@ -610,6 +614,7 @@
     /** Save the chosen avatar both locally and on the server. */
     async function saveAdvisorGender(gender) {
         const g = gender === 'male' ? 'male' : 'female';
+        clearCachedBrowserVoice();
         localStorage.setItem('bmu_advisor_gender', g);
         try {
             const u = JSON.parse(localStorage.getItem('bmu_user') || 'null');
@@ -624,6 +629,7 @@
             });
         } catch (_) { /* non-fatal */ }
         syncAvatarGenderToggle();
+        warmBrowserVoice({ force: true }).catch(() => {});
     }
 
     // Initial paint
@@ -1455,67 +1461,139 @@
         }
     }
 
-    /** Pick a browser SpeechSynthesis voice that matches the user's
-     *  chosen advisor gender. We can't fully trust the .gender field
-     *  (it's missing on most platforms) so we score by voice name first
-     *  and fall back to language-only matching.
-     *
-     *  Returns null when no acceptable voice is loaded yet — caller
-     *  should let the engine pick its default.
-     */
+    function browserVoiceSignature(v) {
+        if (!v) return '';
+        return [v.name || '', v.lang || '', v.voiceURI || ''].join('||');
+    }
+
+    function readCachedBrowserVoice(gender) {
+        try {
+            const cached = JSON.parse(localStorage.getItem(BROWSER_TTS_VOICE_CACHE_KEY) || 'null');
+            return cached?.gender === gender && cached.signature ? cached : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function writeCachedBrowserVoice(gender, voice) {
+        if (!voice) return;
+        const cached = {
+            gender,
+            name: voice.name || '',
+            lang: voice.lang || '',
+            voiceURI: voice.voiceURI || '',
+            signature: browserVoiceSignature(voice),
+            savedAt: Date.now()
+        };
+        state.selectedBrowserVoiceSignature = cached.signature;
+        try { localStorage.setItem(BROWSER_TTS_VOICE_CACHE_KEY, JSON.stringify(cached)); } catch (_) { /* ignore */ }
+    }
+
+    function clearCachedBrowserVoice() {
+        state.selectedBrowserVoiceSignature = '';
+        state.browserVoiceReady = false;
+        state.browserVoiceWarmupPromise = null;
+        try { localStorage.removeItem(BROWSER_TTS_VOICE_CACHE_KEY); } catch (_) { /* ignore */ }
+    }
+
+    function scoreBrowserVoice(v, gender) {
+        const wantMale = gender === 'male';
+        const FEMALE_HINTS = /\b(samantha|karen|moira|tessa|fiona|vicki|allison|ava|susan|zira|hazel|catherine|libby|aria|jenny|sonia|natasha|joanna|salli|kendra|kimberly|amy|emma|nicole|raveena|ezinne|female)\b/i;
+        const MALE_HINTS   = /\b(daniel|alex|fred|tom|david|mark|ryan|james|guy|matthew|brian|joey|justin|aaron|abeo|onyema|oliver|arthur|george|liam|noah|ethan|connor|albert|male)\b/i;
+        let s = 0;
+        const name = (v.name || '').toLowerCase();
+        const lang = (v.lang || '').toLowerCase();
+        const g    = (v.gender || '').toLowerCase();
+
+        if ( wantMale && MALE_HINTS.test(name))   s += 200;
+        if ( wantMale && FEMALE_HINTS.test(name)) s -= 200;
+        if (!wantMale && FEMALE_HINTS.test(name)) s += 200;
+        if (!wantMale && MALE_HINTS.test(name))   s -= 200;
+
+        if ( wantMale && g === 'male')   s += 60;
+        if (!wantMale && g === 'female') s += 60;
+        if ( wantMale && g === 'female') s -= 60;
+        if (!wantMale && g === 'male')   s -= 60;
+
+        if (lang.startsWith('en-ng')) s += 8;
+        else if (lang.startsWith('en-gb')) s += 6;
+        else if (lang.startsWith('en-us')) s += 4;
+        else if (lang.startsWith('en'))    s += 2;
+
+        if (v.localService) s += 1;
+        return s;
+    }
+
     function pickBrowserVoice(gender) {
         if (!window.speechSynthesis) return null;
         const voices = speechSynthesis.getVoices() || [];
         if (!voices.length) return null;
 
-        const wantMale = gender === 'male';
-
-        // Names that strongly suggest a given gender across Windows /
-        // macOS / iOS / Android / Chrome remote voices. The lists are
-        // generous — anything that matches gets a strong bias so we
-        // don't accidentally pick a female voice for the male advisor.
-        const FEMALE_HINTS = /\b(samantha|karen|moira|tessa|fiona|vicki|allison|ava|susan|zira|hazel|catherine|libby|aria|jenny|sonia|natasha|joanna|salli|kendra|kimberly|amy|emma|nicole|raveena|ezinne|female)\b/i;
-        const MALE_HINTS   = /\b(daniel|alex|fred|tom|david|mark|ryan|james|guy|matthew|brian|joey|justin|aaron|abeo|onyema|oliver|arthur|george|liam|noah|ethan|connor|albert|male)\b/i;
+        const cached = readCachedBrowserVoice(gender);
+        if (cached?.signature) {
+            const exact = voices.find(v => browserVoiceSignature(v) === cached.signature);
+            if (exact) {
+                state.browserVoiceReady = true;
+                state.selectedBrowserVoiceSignature = cached.signature;
+                return exact;
+            }
+        }
 
         const enVoices = voices.filter(v => /^en[-_]/i.test(v.lang) || v.lang === 'en');
+        const ranked = enVoices.slice().sort((a, b) => scoreBrowserVoice(b, gender) - scoreBrowserVoice(a, gender));
+        const top = ranked[0] || null;
+        if (top && scoreBrowserVoice(top, gender) <= 0) return null;
 
-        const score = (v) => {
-            let s = 0;
-            const name = (v.name || '').toLowerCase();
-            const lang = (v.lang || '').toLowerCase();
-            const g    = (v.gender || '').toLowerCase();
-
-            // Strong, decisive bias from the name.
-            if ( wantMale && MALE_HINTS.test(name))   s += 200;
-            if ( wantMale && FEMALE_HINTS.test(name)) s -= 200;
-            if (!wantMale && FEMALE_HINTS.test(name)) s += 200;
-            if (!wantMale && MALE_HINTS.test(name))   s -= 200;
-
-            // Honour the explicit .gender field when the platform reports it.
-            if ( wantMale && g === 'male')   s += 60;
-            if (!wantMale && g === 'female') s += 60;
-            if ( wantMale && g === 'female') s -= 60;
-            if (!wantMale && g === 'male')   s -= 60;
-
-            // Locale preference: en-NG > en-GB > en-US > anything en
-            if (lang.startsWith('en-ng')) s += 8;
-            else if (lang.startsWith('en-gb')) s += 6;
-            else if (lang.startsWith('en-us')) s += 4;
-            else if (lang.startsWith('en'))    s += 2;
-
-            // Local voices tend to be lower-latency.
-            if (v.localService) s += 1;
-            return s;
-        };
-
-        const ranked = enVoices.slice().sort((a, b) => score(b) - score(a));
-        const top    = ranked[0] || null;
-        // If the top score is negative for a wanted gender, that means no
-        // voice of that gender exists on this device. Return null so the
-        // caller falls back to the engine default rather than picking a
-        // wrong-gender voice.
-        if (top && score(top) <= 0) return null;
+        if (top) {
+            state.browserVoiceReady = true;
+            writeCachedBrowserVoice(gender, top);
+        }
         return top;
+    }
+
+    function waitForBrowserVoices(timeoutMs = 2200) {
+        if (!window.speechSynthesis) return Promise.resolve([]);
+        const existing = speechSynthesis.getVoices() || [];
+        if (existing.length) return Promise.resolve(existing);
+
+        return new Promise(resolve => {
+            let done = false;
+            let pollTimer = null;
+            let timeoutTimer = null;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                if (pollTimer) clearInterval(pollTimer);
+                if (timeoutTimer) clearTimeout(timeoutTimer);
+                try { speechSynthesis.removeEventListener?.('voiceschanged', onVoicesChanged); } catch (_) {}
+                resolve(speechSynthesis.getVoices() || []);
+            };
+            const onVoicesChanged = () => {
+                const voices = speechSynthesis.getVoices() || [];
+                if (voices.length) finish();
+            };
+            try { speechSynthesis.addEventListener?.('voiceschanged', onVoicesChanged); } catch (_) {}
+            pollTimer = setInterval(onVoicesChanged, 120);
+            timeoutTimer = setTimeout(finish, timeoutMs);
+            onVoicesChanged();
+        });
+    }
+
+    async function warmBrowserVoice({ force = false } = {}) {
+        if (!window.speechSynthesis) return null;
+        const gender = (typeof getAdvisorGender === 'function') ? getAdvisorGender() : 'female';
+        if (!force && state.browserVoiceReady) return pickBrowserVoice(gender);
+        if (!force && state.browserVoiceWarmupPromise) return state.browserVoiceWarmupPromise;
+
+        state.browserVoiceWarmupPromise = waitForBrowserVoices(2600).then(() => {
+            const v = pickBrowserVoice(gender);
+            state.browserVoiceReady = Boolean(v);
+            return v;
+        }).catch(() => null).finally(() => {
+            state.browserVoiceWarmupPromise = null;
+        });
+
+        return state.browserVoiceWarmupPromise;
     }
 
     /** Fallback TTS using the browser's SpeechSynthesis API. Returns duration estimate.
@@ -1526,7 +1604,9 @@
      *  platforms — solving both the cost concern at student scale and
      *  the wrong-gender voice problem from the previous TTSMaker setup.
      */
-    function speakWithBrowser(text, bubbleEl = null) {
+    async function speakWithBrowser(text, bubbleEl = null) {
+        const gender = (typeof getAdvisorGender === 'function') ? getAdvisorGender() : 'female';
+        await warmBrowserVoice();
         return new Promise(resolve => {
             if (!window.speechSynthesis) return resolve(0);
             try {
@@ -1539,8 +1619,10 @@
 
                 const cleaned = humanizeForSpeech(text);
                 const u = new SpeechSynthesisUtterance(cleaned);
-                const gender = (typeof getAdvisorGender === 'function') ? getAdvisorGender() : 'female';
-                const v = pickBrowserVoice(gender);
+                const v = pickBrowserVoice(gender) || null;
+                if (!v) {
+                    console.warn('[advisor] browser TTS voice list not ready; using engine default after warm-up timeout');
+                }
                 if (v) u.voice = v;
                 u.lang = (v && v.lang) || 'en-NG';
                 u.rate = 1.02;
@@ -1619,7 +1701,37 @@
     if (window.speechSynthesis) {
         try { speechSynthesis.getVoices(); } catch (_) { /* ignore */ }
         speechSynthesis.addEventListener?.('voiceschanged', () => {
-            try { speechSynthesis.getVoices(); } catch (_) {}
+            try {
+                speechSynthesis.getVoices();
+                warmBrowserVoice({ force: true }).catch(() => {});
+            } catch (_) {}
+        });
+        warmBrowserVoice().catch(() => {});
+    }
+
+    function bindBrowserVoiceWarmupGestures() {
+        if (!window.speechSynthesis) return;
+        let primed = false;
+        const prime = () => {
+            if (primed) return;
+            primed = true;
+            warmBrowserVoice().catch(() => {});
+            try {
+                const gender = getAdvisorGender();
+                const v = pickBrowserVoice(gender);
+                if (!v) return;
+                const u = new SpeechSynthesisUtterance('.');
+                u.voice = v;
+                u.lang = v.lang || 'en-NG';
+                u.volume = 0;
+                u.rate = 1;
+                u.pitch = gender === 'male' ? 0.85 : 1.10;
+                u.onend = () => { try { window.speechSynthesis.cancel(); } catch (_) {} };
+                window.speechSynthesis.speak(u);
+            } catch (_) { /* some browsers block silent priming */ }
+        };
+        ['pointerdown', 'keydown', 'touchstart'].forEach(type => {
+            document.addEventListener(type, prime, { once: true, passive: true });
         });
     }
 
@@ -2591,6 +2703,8 @@
     (async () => {
         loadGuestDemoUsage();
         bindGuestDemoSuggestions();
+        bindBrowserVoiceWarmupGestures();
+        warmBrowserVoice().catch(() => {});
 
         // Establish provider availability before wiring the mic, so Firefox
         // users (no Web Speech API) and any deployment without a Whisper

@@ -1192,11 +1192,35 @@ async function askStream({
     if (fastIntentReply) {
         send('speech_ready', { speech_text: fastIntentReply.speech_text });
         if (fastIntentReply.display_markdown) send('token', { text: fastIntentReply.display_markdown });
-        send('audio', {
-            provider: 'browser',
-            use_browser_fallback: true,
-            speech_text: fastIntentReply.speech_text
-        });
+
+        let audio = { provider: 'none', useBrowserFallback: false };
+        if (voiceEnabled !== false && conversation.voice_enabled) {
+            try {
+                audio = await tts.synthesise(fastIntentReply.speech_text, { gender: advisorGender });
+                if (audio.audioUrl) {
+                    send('audio', {
+                        provider: audio.provider,
+                        audio_url: audio.audioUrl,
+                        from_cache: Boolean(audio.fromCache),
+                        speech_text: fastIntentReply.speech_text
+                    });
+                } else {
+                    send('audio', {
+                        provider: 'browser',
+                        use_browser_fallback: true,
+                        speech_text: fastIntentReply.speech_text
+                    });
+                }
+            } catch (err) {
+                console.warn('[advisorStreamService] fast-intent TTS failed:', err.message);
+                audio = { provider: 'browser', useBrowserFallback: true, error: err.message };
+                send('audio', {
+                    provider: 'browser',
+                    use_browser_fallback: true,
+                    speech_text: fastIntentReply.speech_text
+                });
+            }
+        }
 
         let messageId = null;
         try {
@@ -1207,6 +1231,7 @@ async function askStream({
                 text: fastIntentReply.display_markdown,
                 speechText: fastIntentReply.speech_text,
                 displayMarkdown: fastIntentReply.display_markdown,
+                audioUrl: audio.audioUrl || null,
                 citationsJson: JSON.stringify(fastIntentReply.citations || []),
                 suggestedActionsJson: JSON.stringify(fastIntentReply.suggested_actions || []),
                 followUpsJson: JSON.stringify(fastIntentReply.follow_up_questions || []),
@@ -1233,10 +1258,10 @@ async function askStream({
                 confidence: fastIntentReply.confidence
             },
             audio: {
-                provider: 'browser',
-                audio_url: null,
-                from_cache: false,
-                use_browser_fallback: true
+                provider: audio.provider || 'none',
+                audio_url: audio.audioUrl || null,
+                from_cache: Boolean(audio.fromCache),
+                use_browser_fallback: Boolean(audio.useBrowserFallback)
             },
             meta: {
                 latency_ms: Date.now() - startedAt,
