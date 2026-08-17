@@ -70,6 +70,7 @@ function _detectPrincipalOfficerRole(question) {
     if (/vice[-\s]?chancellor|(^|\W)vc(\W|$)/i.test(q)) return 'Vice-Chancellor';
     if (/registrar/i.test(q)) return 'Registrar';
     if (/bursar/i.test(q)) return 'Bursar';
+    if (/\b(?:boss|bossa|bosa|bussa|bursah)\b/i.test(q)) return 'Bursar';
     if (/university\s+librarian|\blibrarian\b/i.test(q)) return 'University Librarian';
     return null;
 }

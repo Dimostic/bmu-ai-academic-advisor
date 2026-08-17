@@ -1192,7 +1192,7 @@ ${officialUpdates}
                 key: 'bursar',
                 label: 'Bursar',
                 officeTerms: ['bursar'],
-                patterns: [/\bbursar\b/i]
+                patterns: [/\bbursar\b/i, /\b(?:boss|bossa|bosa|bussa|bursah)\b/i]
             },
             {
                 key: 'university_librarian',

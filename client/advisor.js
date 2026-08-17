@@ -2018,6 +2018,25 @@
             : '<i class="fa-solid fa-microphone"></i>';
     }
 
+    const VOICE_SUBMIT_RE = /\b(?:send it|submit|that's all|that is all|go ahead|please answer|answer now|done|deal)\s*[\.\?!]*$/i;
+
+    function normalizeVoiceTranscript(raw) {
+        let text = String(raw || '').replace(/\s+/g, ' ').trim();
+        if (!text) return text;
+
+        text = text.replace(VOICE_SUBMIT_RE, '').replace(/\s+/g, ' ').trim();
+
+        const officerIntent = /\b(who|name|current|tell me|which person|serves as|officer)\b/i.test(text);
+        if (officerIntent) {
+            text = text
+                .replace(/\bwho\s+is\s+(?:the\s+)?(?:boss|bossa|bosa|bussa|bursah)\b/ig, 'who is the bursar')
+                .replace(/\bname\s+of\s+(?:the\s+)?(?:boss|bossa|bosa|bussa|bursah)\b/ig, 'name of the bursar')
+                .replace(/\b(?:the\s+)?(?:boss|bossa|bosa|bussa|bursah)\b/ig, 'the bursar');
+        }
+
+        return text.replace(/\s+/g, ' ').trim();
+    }
+
     const WAKE_WORD_RE = /\b(?:dr\.?\s*tari|doctor\s*tari)\b/i;
     let wakeRecognition = null;
     let wakeRestartTimer = null;
@@ -2147,27 +2166,86 @@
             recognition = new Rec();
             recognition.lang = 'en-NG';
             recognition.interimResults = true;
-            recognition.continuous = false;
+            recognition.continuous = true;
             let buffer = '';
+            let silenceTimer = null;
+            let restarting = false;
+            let submitting = false;
+            const clearSilenceTimer = () => {
+                if (silenceTimer) clearTimeout(silenceTimer);
+                silenceTimer = null;
+            };
+            const submitTranscript = () => {
+                if (submitting) return;
+                const normalized = normalizeVoiceTranscript(questionInput.value || buffer);
+                if (!normalized) return;
+                submitting = true;
+                clearSilenceTimer();
+                questionInput.value = normalized;
+                state.recording = false;
+                syncMicButtonsUi(false);
+                setAvatarState('thinking', 'Thinking');
+                try {
+                    recognition.onend = null;
+                    recognition.stop();
+                } catch (_) { /* ignore */ }
+                recognition = null;
+                askNow();
+                scheduleWakeWordListener(1400);
+            };
+            const scheduleSilenceSubmit = () => {
+                clearSilenceTimer();
+                silenceTimer = setTimeout(submitTranscript, 5000);
+            };
             recognition.onresult = (ev) => {
                 let interim = '';
                 for (let i = ev.resultIndex; i < ev.results.length; i++) {
                     const t = ev.results[i][0].transcript;
-                    if (ev.results[i].isFinal) buffer += t; else interim += t;
+                    if (ev.results[i].isFinal) buffer += ` ${t}`; else interim += ` ${t}`;
                 }
-                questionInput.value = (buffer + ' ' + interim).trim();
+                const heard = (buffer + ' ' + interim).trim();
+                questionInput.value = normalizeVoiceTranscript(heard);
+                setAvatarState('listening', 'Listening');
+                if (VOICE_SUBMIT_RE.test(heard)) {
+                    submitTranscript();
+                } else if (questionInput.value.trim()) {
+                    scheduleSilenceSubmit();
+                }
             };
             recognition.onerror = (e) => {
                 console.warn('[advisor] speech error:', e.error);
+                clearSilenceTimer();
                 toast('Mic error — using server transcription.', 'error');
-                stopListening();
+                state.recording = false;
+                syncMicButtonsUi(false);
+                try {
+                    recognition.onend = null;
+                    recognition.stop();
+                } catch (_) { /* ignore */ }
+                recognition = null;
                 startServerRecording();
             };
             recognition.onend = () => {
+                clearSilenceTimer();
+                if (submitting) return;
+                if (state.recording && questionInput.value.trim()) {
+                    if (!restarting) {
+                        restarting = true;
+                        setTimeout(() => {
+                            restarting = false;
+                            try {
+                                recognition.start();
+                                scheduleSilenceSubmit();
+                            } catch (_) {
+                                submitTranscript();
+                            }
+                        }, 180);
+                    }
+                    return;
+                }
                 state.recording = false;
                 syncMicButtonsUi(false);
                 setAvatarState('idle', 'Ready');
-                if (questionInput.value.trim()) askNow();
                 scheduleWakeWordListener(900);
             };
             try { recognition.start(); state.recording = true; syncMicButtonsUi(true); }
@@ -2233,8 +2311,21 @@
         if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
             try { state.mediaRecorder.stop(); } catch (_) {}
         }
+        if (state.recording && questionInput.value.trim()) {
+            const normalized = normalizeVoiceTranscript(questionInput.value);
+            if (normalized) {
+                questionInput.value = normalized;
+                state.recording = false;
+                syncMicButtonsUi(false);
+                setAvatarState('thinking', 'Thinking');
+                askNow();
+                scheduleWakeWordListener(1400);
+                return;
+            }
+        }
         state.recording = false;
         syncMicButtonsUi(false);
+        setAvatarState('idle', 'Ready');
         scheduleWakeWordListener(900);
     }
 
