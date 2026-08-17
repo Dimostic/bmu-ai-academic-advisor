@@ -839,9 +839,49 @@ function _buildGroundedFallback(question, parsed, ragContext) {
     };
 }
 
+function _buildHandbookAcademicPolicyReply(question) {
+    const q = String(question || '').trim().toLowerCase();
+    if (!q) return null;
+
+    const isCreditUnitDefinition = /(define|definition|what\s+is|meaning\s+of).{0,40}credit\s+unit|credit\s+unit.{0,40}(define|definition|mean)/i.test(q);
+    const isAcademicWorkload = /(student\s+academic\s+workload|academic\s+workload|credit\s+load|course\s+load|credit\s+units?|register\s+(?:less|more)|less\s+than\s+15|more\s+than\s+24|above\s+30|below\s+9)/i.test(q);
+    if (!isCreditUnitDefinition && !isAcademicWorkload) return null;
+
+    const citations = [{ title: "Students' Handbook 2026", source: 'Chapter 3: Academic Regulations, sections 3.13 and 3.15' }];
+
+    if (isCreditUnitDefinition && !isAcademicWorkload) {
+        return {
+            speech_text: 'According to the BMU Students Handbook, one credit unit is one hour of lecture plus one to three hours of tutorial or discussion per week per semester, or two to three hours of practical work per week per semester.',
+            display_markdown: "According to the **BMU Students' Handbook 2026**, section **3.15 Definition of Credit Unit**, one course credit unit means either:\n\n- **1 hour of lecture** plus **1 to 3 hours of tutorial/discussion** per week per semester, or\n- **2 to 3 hours of practical work** such as workshop, laboratory, or field work per week per semester.",
+            topic_slug: 'student_handbook_credit_unit',
+            citations,
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.99,
+            _source: 'fast_intent'
+        };
+    }
+
+    return {
+        speech_text: 'According to the BMU Students Handbook, full-time students normally take 15 to 24 credit units per semester. Faculty Board may approve 9 to 30 units through the Head of Department. Below 9 or above 30 units requires Senate approval, and above 30 units must not add more than one course.',
+        display_markdown: "According to the **BMU Students' Handbook 2026**, section **3.13 Student Academic Workload**:\n\n- Full-time students normally take **15 to 24 credit units per semester**.\n- A student may apply through the **Head of Department** to the **Faculty Board** to take less or more than that normal range, provided the load is **not less than 9 units** and **not more than 30 units**.\n- If the total load is **below 9 units** or **above 30 units**, **Senate approval** is required.\n- Where the requested load is **above 30 units**, the added unit must not translate into more than **one course**.\n\nThis is a student-handbook rule, so it should take priority over general curriculum averages.",
+        topic_slug: 'student_handbook_academic_workload',
+        citations,
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99,
+        _source: 'fast_intent'
+    };
+}
+
 function _buildFastIntentReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q) return null;
+
+    const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
+    if (handbookPolicyReply) return handbookPolicyReply;
 
     if (/(tell\s+me\s+about\s+bmu|what\s+is\s+bmu|about\s+bayelsa\s+medical\s+university|about\s+bmu)/i.test(q)) {
         return {
