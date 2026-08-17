@@ -140,9 +140,9 @@ router.post('/message', authenticateToken, chatMessageValidation, async (req, re
         const startTime = Date.now();
         const { message, sessionToken, model, documentIds } = req.body;
         const inventoryQuery = aiService.isDocumentInventoryQuery(message);
-        const vcQuery = aiService.isViceChancellorQuery(message);
-        if (inventoryQuery || vcQuery) {
-            console.log(`[ChatRoutes] Special query: "${message}" inventory=${inventoryQuery} vc=${vcQuery}`);
+        const officerQuery = aiService.isPrincipalOfficerQuery(message);
+        if (inventoryQuery || officerQuery) {
+            console.log(`[ChatRoutes] Special query: "${message}" inventory=${inventoryQuery} officer=${officerQuery}`);
         }
 
         // Check monthly prompt limit
@@ -244,18 +244,18 @@ router.post('/message', authenticateToken, chatMessageValidation, async (req, re
             });
         }
 
-        if (vcQuery) {
-            const vcResponse = await aiService.getViceChancellorResponse();
+        if (officerQuery) {
+            const officerResponse = await aiService.getPrincipalOfficerResponse(message);
             const responseTimeMs = Date.now() - startTime;
             const aiMessageId = await ChatMessage.create({
                 sessionId: session.id,
                 userId: req.user.id,
                 messageType: 'text',
                 sender: 'assistant',
-                content: vcResponse.response,
+                content: officerResponse.response,
                 tokensUsed: 0,
                 responseTimeMs,
-                referencedDocuments: vcResponse.referencedDocuments
+                referencedDocuments: officerResponse.referencedDocuments
             });
 
             await User.incrementPromptCount(req.user.id);
@@ -290,10 +290,10 @@ router.post('/message', authenticateToken, chatMessageValidation, async (req, re
                 },
                 aiResponse: {
                     id: aiMessageId,
-                    content: vcResponse.response,
+                    content: officerResponse.response,
                     tokensUsed: 0,
                     responseTimeMs,
-                    referencedDocuments: vcResponse.referencedDocuments,
+                    referencedDocuments: officerResponse.referencedDocuments,
                     model: 'system',
                     timestamp: new Date()
                 },
@@ -385,9 +385,9 @@ router.post('/message/stream', authenticateToken, chatMessageValidation, async (
     try {
         const { message, sessionToken, model, documentIds } = req.body;
         const inventoryQuery = aiService.isDocumentInventoryQuery(message);
-        const vcQuery = aiService.isViceChancellorQuery(message);
-        if (inventoryQuery || vcQuery) {
-            console.log(`[ChatRoutes] Special query: "${message}" inventory=${inventoryQuery} vc=${vcQuery}`);
+        const officerQuery = aiService.isPrincipalOfficerQuery(message);
+        if (inventoryQuery || officerQuery) {
+            console.log(`[ChatRoutes] Special query: "${message}" inventory=${inventoryQuery} officer=${officerQuery}`);
         }
 
         // Check monthly prompt limit
@@ -483,18 +483,18 @@ router.post('/message/stream', authenticateToken, chatMessageValidation, async (
             return;
         }
 
-        if (vcQuery) {
-            const vcResponse = await aiService.getViceChancellorResponse();
+        if (officerQuery) {
+            const officerResponse = await aiService.getPrincipalOfficerResponse(message);
             const responseTime = Date.now() - startTime;
             const aiMessageId = await ChatMessage.create({
                 sessionId: session.id,
                 userId: req.user.id,
                 messageType: 'text',
                 sender: 'assistant',
-                content: vcResponse.response,
+                content: officerResponse.response,
                 tokensUsed: 0,
                 responseTimeMs: responseTime,
-                referencedDocuments: vcResponse.referencedDocuments
+                referencedDocuments: officerResponse.referencedDocuments
             });
 
             await User.incrementPromptCount(req.user.id);
@@ -510,13 +510,13 @@ router.post('/message/stream', authenticateToken, chatMessageValidation, async (
             }
 
             const updatedUsage = await User.checkPromptLimit(req.user.id);
-            res.write(`data: ${JSON.stringify({ type: 'chunk', content: vcResponse.response })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'chunk', content: officerResponse.response })}\n\n`);
             res.write(`data: ${JSON.stringify({ 
                 type: 'done', 
                 aiMessageId,
                 tokensUsed: 0,
                 responseTimeMs: responseTime,
-                referencedDocuments: vcResponse.referencedDocuments,
+                referencedDocuments: officerResponse.referencedDocuments,
                 model: 'system',
                 usage: updatedUsage,
                 fromCache: false

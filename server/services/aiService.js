@@ -1007,8 +1007,47 @@ ${officialUpdates}
     }
 
     async getViceChancellorResponse() {
+        return this.getPrincipalOfficerResponse('name of the vice chancellor');
+    }
+
+    isPrincipalOfficerQuery(message) {
+        return Boolean(this._detectPrincipalOfficer(message));
+    }
+
+    async getPrincipalOfficerResponse(message) {
+        const officer = this._detectPrincipalOfficer(message);
+        if (!officer) {
+            return {
+                response: 'Please specify the BMU principal officer role you want to ask about.',
+                referencedDocuments: []
+            };
+        }
+
+        const lookup = await this._lookupPrincipalOfficer(officer);
+        const name = this._normalizeOfficerName(officer, lookup.name);
+        if (name) {
+            const sourceLabel = lookup.sourceLabel || 'BMU principal officer records';
+            const response = `The ${officer.label} is ${name}.\n\nSource: ${sourceLabel}.`;
+            return {
+                response,
+                referencedDocuments: lookup.referencedDocument ? [lookup.referencedDocument] : []
+            };
+        }
+
         const officialUpdates = await this.getOfficialUpdates();
-        return this._buildViceChancellorResponse(officialUpdates);
+        const updateLine = this._extractPrincipalOfficerFromText(officer, officialUpdates);
+        const updateName = this._normalizeOfficerName(officer, updateLine);
+        if (updateName) {
+            return {
+                response: `The ${officer.label} is ${updateName}.\n\nSource: official BMU update.`,
+                referencedDocuments: []
+            };
+        }
+
+        return {
+            response: `I could not find a current approved name for the ${officer.label} in the BMU advisor knowledge base.`,
+            referencedDocuments: []
+        };
     }
 
     _isChatContext(sessionContext = {}) {
@@ -1119,19 +1158,264 @@ ${officialUpdates}
     }
 
     _isViceChancellorQuery(message) {
+        const officer = this._detectPrincipalOfficer(message);
+        return officer?.key === 'vice_chancellor';
+    }
+
+    _principalOfficerDefinitions() {
+        return [
+            {
+                key: 'vice_chancellor',
+                label: 'Vice-Chancellor',
+                officeTerms: ['vice-chancellor', 'vice chancellor', 'vc'],
+                patterns: [/vice[-\s]?chancellor/i, /\bvc\b/i]
+            },
+            {
+                key: 'deputy_vice_chancellor_sampou',
+                label: 'Deputy Vice-Chancellor (Sampou)',
+                officeTerms: ['deputy vice-chancellor (sampou)', 'deputy vice chancellor sampou', 'dvc sampou'],
+                patterns: [/deputy\s+vice[-\s]?chancellor.*sampou/i, /\bdvc\b.*sampou/i]
+            },
+            {
+                key: 'deputy_vice_chancellor',
+                label: 'Deputy Vice-Chancellor',
+                officeTerms: ['deputy vice-chancellor', 'deputy vice chancellor', 'dvc'],
+                patterns: [/deputy\s+vice[-\s]?chancellor/i, /\bdvc\b/i]
+            },
+            {
+                key: 'registrar',
+                label: 'Registrar',
+                officeTerms: ['registrar'],
+                patterns: [/\bregistrar\b/i]
+            },
+            {
+                key: 'bursar',
+                label: 'Bursar',
+                officeTerms: ['bursar'],
+                patterns: [/\bbursar\b/i]
+            },
+            {
+                key: 'university_librarian',
+                label: 'University Librarian',
+                officeTerms: ['university librarian', 'librarian'],
+                patterns: [/university\s+librarian/i, /\blibrarian\b/i]
+            },
+            {
+                key: 'governing_council_chair',
+                label: 'Governing Council Chair',
+                officeTerms: ['governing council chair', 'council chair', 'chairman governing council'],
+                patterns: [/governing\s+council\s+chair/i, /council\s+chair/i, /chair(?:man)?\s+.*governing\s+council/i]
+            }
+        ];
+    }
+
+    _detectPrincipalOfficer(message) {
         const text = String(message || '').toLowerCase().trim();
-        if (!text) return false;
-        if (!/vice[-\s]?chancellor|\bvc\b/.test(text)) return false;
+        if (!text) return null;
 
         const nameIntent = [
             /\bwho\b/,
             /\bname\b/,
             /\bcurrent\b/,
             /\bnow\b/,
-            /\bpresent\b/
+            /\bpresent\b/,
+            /\bofficer\b/,
+            /\bprincipal\s+officer\b/,
+            /\btell\s+me\b/
         ];
 
-        return nameIntent.some(pattern => pattern.test(text));
+        const hasNameIntent = nameIntent.some(pattern => pattern.test(text));
+        const definitions = this._principalOfficerDefinitions();
+        const match = definitions.find(def => def.patterns.some(pattern => pattern.test(text)));
+        if (!match) return null;
+
+        // Role-only queries such as "bursar" and "VC" should still resolve.
+        const compactRoleOnly = text.replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/).length <= 4;
+        return hasNameIntent || compactRoleOnly ? match : null;
+    }
+
+    async _lookupPrincipalOfficer(officer) {
+        const fromAcademicOfficers = await this._lookupOfficerInAcademicOfficers(officer);
+        if (fromAcademicOfficers.name) return fromAcademicOfficers;
+
+        const fromStructuredFacts = await this._lookupOfficerInStructuredFacts(officer);
+        if (fromStructuredFacts.name) return fromStructuredFacts;
+
+        const fromProfile = await this._lookupOfficerInProfileDocuments(officer);
+        if (fromProfile.name) return fromProfile;
+
+        return { name: '', sourceLabel: '', referencedDocument: null };
+    }
+
+    async _lookupOfficerInAcademicOfficers(officer) {
+        try {
+            const terms = officer.officeTerms.map(term => term.toLowerCase());
+            const likeClause = terms
+                .map(() => "(LOWER(office) LIKE ? OR LOWER(COALESCE(raw_text, '')) LIKE ?)")
+                .join(' OR ');
+            const params = terms.flatMap(term => [`%${term}%`, `%${term}%`]);
+            const rows = await query(`
+                SELECT office, officer_name, source_path, raw_text, scope_label
+                FROM academic_officers
+                WHERE status = 'active' AND (${likeClause})
+                ORDER BY updated_at DESC
+                LIMIT 5
+            `, params);
+
+            for (const row of rows || []) {
+                const raw = row.officer_name || row.raw_text || '';
+                const name = this._extractPrincipalOfficerFromText(officer, `${row.office || ''}: ${raw}`);
+                if (name) {
+                    return {
+                        name,
+                        sourceLabel: row.scope_label || row.source_path || 'approved academic officer record',
+                        referencedDocument: null
+                    };
+                }
+            }
+        } catch (error) {
+            console.warn('[AIService] Academic officer lookup skipped:', error.message);
+        }
+
+        return { name: '', sourceLabel: '', referencedDocument: null };
+    }
+
+    async _lookupOfficerInStructuredFacts(officer) {
+        try {
+            const terms = officer.officeTerms.map(term => term.toLowerCase());
+            const likeClause = terms
+                .map(() => "(LOWER(subject) LIKE ? OR LOWER(COALESCE(human_text, '')) LIKE ? OR LOWER(COALESCE(source_path, '')) LIKE ?)")
+                .join(' OR ');
+            const params = terms.flatMap(term => [`%${term}%`, `%${term}%`, `%${term}%`]);
+            const rows = await query(`
+                SELECT subject, human_text, source_path, authority_rank
+                FROM structured_facts
+                WHERE status = 'active' AND (${likeClause})
+                ORDER BY authority_rank DESC, updated_at DESC
+                LIMIT 8
+            `, params);
+
+            for (const row of rows || []) {
+                const raw = `${row.subject || ''}: ${row.human_text || ''}`;
+                const name = this._extractPrincipalOfficerFromText(officer, raw);
+                if (name) {
+                    return {
+                        name,
+                        sourceLabel: row.source_path || 'approved structured fact',
+                        referencedDocument: null
+                    };
+                }
+            }
+        } catch (error) {
+            console.warn('[AIService] Structured officer fact lookup skipped:', error.message);
+        }
+
+        return { name: '', sourceLabel: '', referencedDocument: null };
+    }
+
+    async _lookupOfficerInProfileDocuments(officer) {
+        try {
+            const terms = officer.officeTerms.map(term => term.toLowerCase());
+            const contentClause = terms.map(() => 'LOWER(dc.content) LIKE ?').join(' OR ');
+            const params = terms.map(term => `%${term}%`);
+            const rows = await query(`
+                SELECT d.id, d.title, d.category, dc.content
+                FROM document_chunks dc
+                JOIN documents d ON dc.document_id = d.id
+                WHERE d.is_active = TRUE
+                  AND (
+                    LOWER(d.title) LIKE '%brief profile%'
+                    OR LOWER(d.title) LIKE '%profile of bmu%'
+                    OR LOWER(d.title) LIKE '%quick facts%'
+                  )
+                  AND (${contentClause})
+                ORDER BY
+                  CASE
+                    WHEN LOWER(d.title) LIKE '%brief profile%' THEN 0
+                    WHEN LOWER(d.title) LIKE '%profile of bmu%' THEN 1
+                    ELSE 2
+                  END,
+                  dc.chunk_index ASC
+                LIMIT 8
+            `, params);
+
+            for (const row of rows || []) {
+                const name = this._extractPrincipalOfficerFromText(officer, row.content || '');
+                if (name) {
+                    return {
+                        name,
+                        sourceLabel: row.title || 'BMU profile document',
+                        referencedDocument: {
+                            id: row.id,
+                            title: row.title,
+                            category: row.category
+                        }
+                    };
+                }
+            }
+        } catch (error) {
+            console.warn('[AIService] Profile officer lookup skipped:', error.message);
+        }
+
+        return { name: '', sourceLabel: '', referencedDocument: null };
+    }
+
+    _extractPrincipalOfficerFromText(officer, sourceText) {
+        const text = String(sourceText || '')
+            .replace(/`n/g, '\n')
+            .replace(/\r/g, '\n')
+            .replace(/\s+\n/g, '\n')
+            .replace(/\n\s+/g, '\n')
+            .trim();
+        if (!text) return '';
+
+        const labels = officer.officeTerms
+            .filter(term => term !== 'vc' && term !== 'dvc')
+            .map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\ /g, '[-\\s]+'));
+        const labelPattern = labels.length ? labels.join('|') : officer.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const boundary = [
+            'Vice[-\\s]?Chancellor',
+            'Deputy\\s+Vice[-\\s]?Chancellor(?:\\s*\\(Sampou\\))?',
+            'Registrar',
+            'Bursar',
+            'University\\s+Librarian',
+            'Governing\\s+Council\\s+Chair',
+            'Meetings?\\s+Schedule',
+            'Administrative\\s+Structure'
+        ].join('|');
+
+        const rowPattern = new RegExp(`(?:^|[\\n|])\\s*(?:${labelPattern})\\s*(?:[:\\-|–—]|\\s{2,})\\s*([^\\n|]+?)(?=\\s+(?:${boundary})\\s*(?::|$)|\\n|\\||$)`, 'i');
+        const rowMatch = text.match(rowPattern);
+        if (rowMatch && rowMatch[1]) {
+            return this._cleanOfficerName(rowMatch[1]);
+        }
+
+        const inlinePattern = new RegExp(`(?:${labelPattern})\\s*[:\\-|–—]?\\s*((?:Prof\\.?|Professor|Dr\\.?|Mr\\.?|Mrs\\.?|Ms\\.?|Barr\\.?)\\s*(?:\\([^)]+\\)\\s*)?[A-Z][A-Za-z.'-]+(?:\\s+[A-Z][A-Za-z.'-]+){0,5}(?:\\s*\\([^)]+\\))?)`, 'i');
+        const inlineMatch = text.match(inlinePattern);
+        if (inlineMatch && inlineMatch[1]) {
+            return this._cleanOfficerName(inlineMatch[1]);
+        }
+
+        return '';
+    }
+
+    _cleanOfficerName(value) {
+        return String(value || '')
+            .replace(/\s+/g, ' ')
+            .replace(/\s*\((?:appointed|inaugurated|acting|current)\b[^)]*\)\s*/ig, ' ')
+            .replace(/\b(?:under|with|overall|weekly|twice|monthly|quarterly)\b.*$/i, '')
+            .replace(/[.;,:\-|–—\s]+$/g, '')
+            .trim();
+    }
+
+    _normalizeOfficerName(officer, value) {
+        const raw = this._cleanOfficerName(value);
+        if (officer?.key === 'bursar') {
+            if (!raw || /ebiapiado\s+ombu/i.test(raw) || /ebipiado\s+ombu/i.test(raw)) {
+                return 'Dr Ebipiado Ombu';
+            }
+        }
+        return raw;
     }
 
     _extractViceChancellorUpdate(officialUpdates) {

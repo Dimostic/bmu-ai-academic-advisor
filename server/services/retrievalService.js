@@ -465,10 +465,11 @@ class RetrievalService {
 
     _queryLookupTerms(processedQuery, limit = 8) {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+        const keepShort = new Set(['vc']);
         return q
             .replace(/[^a-z0-9\s-]/g, ' ')
             .split(/\s+/)
-            .filter(term => term.length > 2 && !['what', 'who', 'how', 'many', 'much', 'about', 'tell', 'does', 'are', 'the', 'for', 'can', 'will', 'with'].includes(term))
+            .filter(term => (term.length > 2 || keepShort.has(term)) && !['what', 'who', 'how', 'many', 'much', 'about', 'tell', 'does', 'are', 'the', 'for', 'can', 'will', 'with'].includes(term))
             .slice(0, limit);
     }
 
@@ -724,6 +725,7 @@ class RetrievalService {
             [/\brequirements?\b/g, 'requirement'],
             [/\bresults?\b/g, 'result'],
             [/\bexaminations?\b/g, 'exam'],
+            [/\bvc\b/g, 'vice chancellor'],
             [/\bhostel\b/g, 'hostel accommodation'],
             [/\bhostels?\b/g, 'hostel accommodation']
         ];
