@@ -2018,13 +2018,21 @@
             : '<i class="fa-solid fa-microphone"></i>';
     }
 
+    const LISTENING_SILENCE_MS = 3000;
     const VOICE_SUBMIT_RE = /\b(?:send it|submit|that's all|that is all|go ahead|please answer|answer now|done|deal)\s*[\.\?!]*$/i;
+    const VOICE_RESTART_RE = /\b(?:start over|restart|try again)\s*[\.\?!]*$/i;
+    const VOICE_CANCEL_RE = /\b(?:cancel listening|stop listening|never mind|nevermind)\s*[\.\?!]*$/i;
 
     function normalizeVoiceTranscript(raw) {
         let text = String(raw || '').replace(/\s+/g, ' ').trim();
         if (!text) return text;
 
-        text = text.replace(VOICE_SUBMIT_RE, '').replace(/\s+/g, ' ').trim();
+        text = text
+            .replace(VOICE_SUBMIT_RE, '')
+            .replace(VOICE_RESTART_RE, '')
+            .replace(VOICE_CANCEL_RE, '')
+            .replace(/\s+/g, ' ')
+            .trim();
 
         const officerIntent = /\b(who|name|current|tell me|which person|serves as|officer)\b/i.test(text);
         if (officerIntent) {
@@ -2169,11 +2177,29 @@
             recognition.continuous = true;
             let buffer = '';
             let silenceTimer = null;
+            let countdownTimer = null;
             let restarting = false;
             let submitting = false;
             const clearSilenceTimer = () => {
                 if (silenceTimer) clearTimeout(silenceTimer);
                 silenceTimer = null;
+                if (countdownTimer) clearInterval(countdownTimer);
+                countdownTimer = null;
+            };
+            const cancelListening = (label = 'Ready') => {
+                submitting = true;
+                clearSilenceTimer();
+                buffer = '';
+                questionInput.value = '';
+                state.recording = false;
+                syncMicButtonsUi(false);
+                try {
+                    recognition.onend = null;
+                    recognition.stop();
+                } catch (_) { /* ignore */ }
+                recognition = null;
+                setAvatarState('idle', label);
+                scheduleWakeWordListener(900);
             };
             const submitTranscript = () => {
                 if (submitting) return;
@@ -2195,7 +2221,15 @@
             };
             const scheduleSilenceSubmit = () => {
                 clearSilenceTimer();
-                silenceTimer = setTimeout(submitTranscript, 5000);
+                const startedAt = Date.now();
+                const updateCountdown = () => {
+                    const remaining = Math.max(0, LISTENING_SILENCE_MS - (Date.now() - startedAt));
+                    const seconds = Math.max(1, Math.ceil(remaining / 1000));
+                    setAvatarState('listening', `Listening... ${seconds}s`);
+                };
+                updateCountdown();
+                countdownTimer = setInterval(updateCountdown, 250);
+                silenceTimer = setTimeout(submitTranscript, LISTENING_SILENCE_MS);
             };
             recognition.onresult = (ev) => {
                 let interim = '';
@@ -2204,6 +2238,17 @@
                     if (ev.results[i].isFinal) buffer += ` ${t}`; else interim += ` ${t}`;
                 }
                 const heard = (buffer + ' ' + interim).trim();
+                if (VOICE_CANCEL_RE.test(heard)) {
+                    cancelListening('Cancelled');
+                    return;
+                }
+                if (VOICE_RESTART_RE.test(heard)) {
+                    clearSilenceTimer();
+                    buffer = '';
+                    questionInput.value = '';
+                    setAvatarState('listening', 'Start over');
+                    return;
+                }
                 questionInput.value = normalizeVoiceTranscript(heard);
                 setAvatarState('listening', 'Listening');
                 if (VOICE_SUBMIT_RE.test(heard)) {
