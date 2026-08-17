@@ -82,8 +82,8 @@ class RetrievalService {
             // (case-insensitive substring) has its final score multiplied by
             // `primarySourceBoost`, so when the handbook is relevant at all
             // it surfaces ahead of more specialised documents.
-            primarySourcePattern: (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || 'quick facts').toLowerCase(),
-            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.20'),
+            primarySourcePattern: (process.env.ADVISOR_PRIMARY_SOURCE_PATTERN || 'handbook').toLowerCase(),
+            primarySourceBoost:   parseFloat(process.env.ADVISOR_PRIMARY_SOURCE_BOOST || '1.45'),
 
             // Programme-policy boosts: CCMAS documents are authoritative for
             // progression / graduation / withdrawal criteria in specific
@@ -741,7 +741,13 @@ class RetrievalService {
     _detectSourcePolicy(queryText) {
         const q = String(queryText || '').toLowerCase();
         if (/(fee|tuition|payment|charges|cost|scholarship|allowance)/.test(q)) return 'fee_policy';
-        if (/(progress|promotion|probation|withdraw|graduation|cgpa|gpa|result|exam|grade|carry over|repeat)/.test(q)) return 'programme_policy';
+        const hasProgramme = this._hasProgrammeSignal(q);
+        if (/(progress|promotion|probation|withdraw|graduation|cgpa|gpa|result|exam|grade|carry over|repeat)/.test(q)) {
+            return hasProgramme ? 'programme_policy' : 'student_handbook_policy';
+        }
+        if (/(attendance|registration|register|matriculation|convocation|hostel|hall|library|discipline|misconduct|malpractice|student affairs|student union|club|association|demonstration|complaint|dress code|credit load|academic workload|credit unit|reassessment|suspension of studies)/.test(q)) {
+            return hasProgramme ? 'academic_programme' : 'student_handbook_policy';
+        }
         if (/(programme|program|course|admission|requirement|curriculum|department|faculty)/.test(q)) return 'academic_programme';
         return 'general';
     }
@@ -752,6 +758,7 @@ class RetrievalService {
         const policy = processedQuery.sourcePolicy || 'general';
         const matchers = {
             fee_policy: [/fees?|tuition|payment|charges|cost|financial/i],
+            student_handbook_policy: [/students?'?\s+handbook|student\s+handbook|academic\s+regulations|students?'\s+non-academic|halls?\s+of\s+residence|library\s+services|disciplinary\s+matters|rules\s+guiding\s+the\s+conduct\s+of\s+examinations/i],
             programme_policy: [/ccmas|progression|probation|withdrawal|graduation|academic.*standard|result|exam|grade/i],
             academic_programme: [/programme|program|curriculum|admission|requirement|course|faculty|department/i]
         };
@@ -771,6 +778,10 @@ class RetrievalService {
 
             if (policy === 'programme_policy' && /ccmas/.test(title)) {
                 score = score * 1.40;
+            }
+
+            if (policy === 'student_handbook_policy' && /(students?'?\s+handbook|student\s+handbook)/.test(title)) {
+                score = score * 1.55;
             }
 
             if (policy === 'fee_policy' && /(fees|tuition|payment|finance)/.test(title)) {
@@ -1009,13 +1020,23 @@ class RetrievalService {
 
         const asksPolicy = intent === 'programmepolicy'
             || /(progress|promotion|advance|carry[\s-]?over|repeat|probation|withdraw|graduat|cgpa|gpa|academic standard|minimum grade|criteria|requirement)/i.test(q);
-        const hasProgramme = /(mbbs|medicine|dentistry|bnsc|nursing|bmls|medical laboratory science|medical lab|allied health|pharmacy|physiotherapy|radiography|optometry|public health|biochemistry|anatomy|physiology)/i.test(q);
+        const hasProgramme = this._hasProgrammeSignal(q);
 
         return asksPolicy && hasProgramme;
     }
 
+    _hasProgrammeSignal(queryText) {
+        return /(mbbs|medicine|dentistry|bnsc|nursing|bmls|medical laboratory science|medical lab|allied health|pharmacy|physiotherapy|radiography|optometry|public health|biochemistry|anatomy|physiology|microbiology|biology|chemistry|physics|mathematics|statistics)/i.test(String(queryText || ''));
+    }
+
+    _isProgrammeDetailQuery(processedQuery) {
+        const q = String(processedQuery?.normalized || processedQuery?.original || '').toLowerCase();
+        if (!this._hasProgrammeSignal(q)) return false;
+        return /(course|courses|curriculum|admission|requirement|graduat|duration|level|semester|unit|units|professional\s+exam|minimum\s+academic\s+standard|ccmas)/i.test(q);
+    }
+
     _applyProgrammePolicyBoost(results, processedQuery) {
-        if (!this._isProgrammePolicyQuery(processedQuery)) return results;
+        if (!this._isProgrammePolicyQuery(processedQuery) && !this._isProgrammeDetailQuery(processedQuery)) return results;
 
         const ccmasPattern = this.config.ccmasPattern;
         const ccmasBoost = this.config.ccmasBoost;
@@ -1045,7 +1066,7 @@ class RetrievalService {
         }
 
         if (boosted > 0) {
-            console.log(`[RetrievalService] Programme-policy boost applied to ${boosted} chunk(s)`);
+            console.log(`[RetrievalService] Programme-detail/CCMAS boost applied to ${boosted} chunk(s)`);
         }
         return results;
     }
@@ -1063,7 +1084,7 @@ class RetrievalService {
     _applyPrimarySourceBoost(results, processedQuery = null) {
         // For programme-specific progression/withdrawal questions, the
         // curriculum (CCMAS) documents are the primary source.
-        if (this._isProgrammePolicyQuery(processedQuery)) return results;
+        if (this._isProgrammePolicyQuery(processedQuery) || this._isProgrammeDetailQuery(processedQuery)) return results;
 
         const pattern = this.config.primarySourcePattern;
         const boost   = this.config.primarySourceBoost;

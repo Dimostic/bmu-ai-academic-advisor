@@ -358,17 +358,52 @@ function _isSpecificProgrammeCourseQuery(question) {
     return false;
 }
 
+function _hasProgrammeSignal(question) {
+    return /(mbbs|medicine|dentistry|bnsc|nursing|bmls|medical\s+laboratory|medical\s+lab|allied\s+health|pharmacy|physiotherapy|radiography|optometry|public\s+health|biochemistry|anatomy|physiology|microbiology|biology|chemistry|physics|mathematics|statistics)/i.test(String(question || ''));
+}
+
+function _isStudentHandbookFirstQuery(question) {
+    const q = String(question || '').toLowerCase();
+    if (_hasProgrammeSignal(q) && /(course|courses|curriculum|admission|requirement|graduat|duration|professional\s+exam|minimum\s+academic\s+standard|ccmas)/i.test(q)) {
+        return false;
+    }
+    return /(student|students|handbook|academic\s+regulations|registration|register|attendance|semester|exam|examination|malpractice|probation|withdraw|graduation|cgpa|gpa|grade|result|reassessment|credit\s+load|academic\s+workload|credit\s+unit|hostel|hall|library|discipline|misconduct|student\s+affairs|student\s+union|club|association|demonstration|complaint|dress\s+code)/i.test(q);
+}
+
+function _isProgrammeDetailQuery(question) {
+    const q = String(question || '').toLowerCase();
+    return _hasProgrammeSignal(q)
+        && /(course|courses|curriculum|admission|requirement|graduat|duration|level|semester|unit|units|professional\s+exam|minimum\s+academic\s+standard|ccmas)/i.test(q);
+}
+
 async function _resolvePriorityDocumentIds(question) {
     try {
         const q = String(question || '').toLowerCase();
         const patterns = [];
         const isSpecificCourseQuery = _isSpecificProgrammeCourseQuery(q);
         const isGenericCoursesAsProgrammes = /(course|courses)/i.test(q) && !isSpecificCourseQuery;
+        const isHandbookFirst = _isStudentHandbookFirstQuery(q);
+        const isProgrammeDetail = _isProgrammeDetailQuery(q);
+
+        if (isHandbookFirst) {
+            patterns.push('%handbook%');
+            patterns.push("%students' handbook%");
+            patterns.push('%student handbook%');
+        }
 
         // Fees should anchor to BMU fee structure.
         if (/(fee|fees|tuition|cost|payment|indigene|non[-\s]?indigene)/i.test(q)) {
             patterns.push('%fee structure%');
             patterns.push('%fees%');
+        }
+        if (isProgrammeDetail) {
+            patterns.push('%ccmas%');
+            patterns.push('%allied health%');
+            patterns.push('%medicine%');
+            patterns.push('%dentistry%');
+            patterns.push('%pharmacy%');
+            patterns.push('%sciences%');
+            patterns.push('%social sciences%');
         }
         // Only specific discipline/programme course queries should anchor to Student Courses doc.
         if (isSpecificCourseQuery || /(department|departments|faculty|faculties)/i.test(q)) {
