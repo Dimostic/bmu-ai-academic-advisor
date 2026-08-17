@@ -252,6 +252,32 @@ function _isGovernorVisitorQuestion(question) {
         && /(who\s+is|name\s+of|current|serves\s+as|visitor)/i.test(q);
 }
 
+function _isAboutBmuOverviewQuestion(question) {
+    const q = String(question || '').trim().toLowerCase();
+    return /^(?:tell\s+me\s+about|what\s+is|describe|introduce|give\s+me\s+an\s+overview\s+of)\s+(?:bmu|bayelsa\s+medical\s+university)\??$/i.test(q)
+        || /^(?:about|overview\s+of)\s+(?:bmu|bayelsa\s+medical\s+university)\??$/i.test(q);
+}
+
+function _isDepartmentHeadIdentityQuestion(question) {
+    const q = String(question || '').trim().toLowerCase();
+    return /(who\s+heads|who\s+leads|who\s+is\s+(?:the\s+)?head|name\s+of\s+(?:the\s+)?head|current\s+head|\bhod\b)/i.test(q)
+        && /(department|head\s+of\s+department|\bhod\b)/i.test(q);
+}
+
+function _buildDepartmentHeadSafeReply() {
+    return {
+        speech_text: 'I do not currently have a verified current name for a specific BMU Head of Department in the records available to me. Please specify the department, and I can check the available BMU documents.',
+        display_markdown: "I don't currently have a verified current name for a specific **Head of Department** in the records available to me.\n\nBMU departments are headed by **Heads of Department (HODs)**, but these appointments can change. Please specify the department, and I can check the available BMU documents for that department.",
+        topic_slug: 'department_head_current_name_unavailable',
+        citations: [],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: true,
+        confidence: 0.72,
+        _source: 'fast_intent'
+    };
+}
+
 function _buildPrincipalOfficersReply() {
     const rows = BMU_PRINCIPAL_OFFICERS.map(({ position, name, note }) => ({
         position,
@@ -930,10 +956,12 @@ function _buildFastIntentReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q) return null;
 
+    if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply();
+
     const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
     if (handbookPolicyReply) return handbookPolicyReply;
 
-    if (/(tell\s+me\s+about\s+bmu|what\s+is\s+bmu|about\s+bayelsa\s+medical\s+university|about\s+bmu)/i.test(q)) {
+    if (_isAboutBmuOverviewQuestion(q)) {
         return {
             speech_text: 'Bayelsa Medical University, BMU, is a Bayelsa State medical university in Yenagoa focused on training health professionals through medicine, nursing, medical laboratory science, public health and related health-science programmes.',
             display_markdown: 'Bayelsa Medical University (BMU) is a Bayelsa State medical university in Yenagoa focused on training health professionals through medicine, nursing, medical laboratory science, public health, and related health-science programmes.\n\nYou can ask me next about BMU programmes, fees, admission requirements, hostels, exams, or student rules.',
