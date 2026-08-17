@@ -205,11 +205,11 @@ CREATE TABLE IF NOT EXISTS export_requests (
 
 -- Insert default system settings
 INSERT INTO system_settings (setting_key, setting_value, setting_type, description, is_public) VALUES
-('app_name', 'BMU AI Assistant', 'string', 'Application name', TRUE),
+('app_name', 'BMU AI Academic Advisor', 'string', 'Application name', TRUE),
 ('university_name', 'Bayelsa Medical University', 'string', 'Full university name', TRUE),
-('university_motto', 'Training Healthcare Professionals for Excellence', 'string', 'University motto', TRUE),
+('university_motto', 'Service to God and Humanity', 'string', 'University motto', TRUE),
 ('max_message_length', '5000', 'number', 'Maximum message length in characters', FALSE),
-('ai_system_prompt', 'You are an intelligent AI assistant for Bayelsa Medical University (BMU). You help staff, students, and administrators understand university policies, regulations, academic standards, and administrative procedures. Always be professional, accurate, and helpful. If you are unsure about something, say so and recommend consulting the appropriate university office.', 'string', 'AI system prompt', FALSE),
+('ai_system_prompt', 'You are Dr. Tari, the BMU AI Academic Advisor for Bayelsa Medical University (BMU). You help students, applicants, staff, and administrators understand academic policies, programme requirements, courses, fees, student handbook rules, and university procedures. Always be professional, accurate, and helpful. If you are unsure about a high-risk academic fact, say so and recommend consulting the appropriate university office.', 'string', 'AI system prompt', FALSE),
 ('enable_voice_responses', 'true', 'boolean', 'Enable voice/audio responses', FALSE),
 ('voice_accent', 'en-NG', 'string', 'Voice accent for TTS', FALSE),
 ('enable_whatsapp', 'false', 'boolean', 'Enable WhatsApp integration (deprecated: web-only)', FALSE),

@@ -1367,9 +1367,9 @@ app.get('/api/settings/public', async (req, res) => {
         res.json({
             success: true,
             settings: {
-                app_name: 'BMU AI Agent',
+                app_name: 'BMU AI Academic Advisor',
                 university_name: 'Bayelsa Medical University',
-                university_motto: 'Training Healthcare Professionals for Excellence'
+                university_motto: 'Service to God and Humanity'
             }
         });
     }

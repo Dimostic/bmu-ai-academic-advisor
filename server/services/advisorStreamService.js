@@ -278,6 +278,26 @@ function _buildDepartmentHeadSafeReply() {
     };
 }
 
+function _isMbbsDurationQuestion(question) {
+    const q = String(question || '').trim().toLowerCase();
+    return /(mbbs|mbchb|medicine\s+and\s+surgery|\bmedicine\b)/i.test(q)
+        && /(how\s+long|duration|years?|academic\s+sessions?|utme|direct\s+entry|five[-\s]?year|six[-\s]?year)/i.test(q);
+}
+
+function _buildMbbsDurationReply() {
+    return {
+        speech_text: 'For Medicine and Surgery, the six-year programme applies to UTME entry, while the five-year programme applies to Direct Entry. The Medicine and Dentistry CCMAS graduation requirement says MBBS or MBChB students undergo six or five academic sessions depending on the admission entry mode.',
+        display_markdown: 'For **Medicine and Surgery (MBBS/MBChB)**:\n\n- **UTME entry:** the **Six-Year Programme** applies.\n- **Direct Entry:** the **Five-Year Programme** applies.\n\nThe Medicine and Dentistry CCMAS section on graduation requirements states that MBBS/MBChB students undergo **six (6) or five (5) academic sessions depending on the admission entry mode**. Treat the separate general duration paragraph as context, but preserve this entry-mode distinction for advisory answers.',
+        topic_slug: 'mbbs_duration_by_entry_mode',
+        citations: [{ title: 'Medicine and Dentistry CCMAS 2023-FINAL', source: 'Admission and Graduation Requirements' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99,
+        _source: 'fast_intent'
+    };
+}
+
 function _buildPrincipalOfficersReply() {
     const rows = BMU_PRINCIPAL_OFFICERS.map(({ position, name, note }) => ({
         position,
@@ -957,6 +977,7 @@ function _buildFastIntentReply(question) {
     if (!q) return null;
 
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply();
+    if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
 
     const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
     if (handbookPolicyReply) return handbookPolicyReply;
