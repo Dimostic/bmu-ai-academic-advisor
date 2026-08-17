@@ -849,7 +849,7 @@ function _buildHandbookAcademicPolicyReply(question) {
 
     const citations = [{ title: "Students' Handbook 2026", source: 'Chapter 3: Academic Regulations, sections 3.13 and 3.15' }];
 
-    if (isCreditUnitDefinition && !isAcademicWorkload) {
+    if (isCreditUnitDefinition) {
         return {
             speech_text: 'According to the BMU Students Handbook, one credit unit is one hour of lecture plus one to three hours of tutorial or discussion per week per semester, or two to three hours of practical work per week per semester.',
             display_markdown: "According to the **BMU Students' Handbook 2026**, section **3.15 Definition of Credit Unit**, one course credit unit means either:\n\n- **1 hour of lecture** plus **1 to 3 hours of tutorial/discussion** per week per semester, or\n- **2 to 3 hours of practical work** such as workshop, laboratory, or field work per week per semester.",
