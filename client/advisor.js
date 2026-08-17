@@ -26,7 +26,7 @@
     const advisorViewParams = new URLSearchParams(location.search);
     const _existingToken = sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token');
     const _guestDemoRequested = advisorViewParams.get('demo') === '1';
-    const _isGuestDemo = !_existingToken && _guestDemoRequested;
+    const _isGuestDemo = _guestDemoRequested;
     if (!_existingToken && !_isGuestDemo) {
         const here = location.pathname + location.search;
         const params = new URLSearchParams();
@@ -105,7 +105,7 @@
             }
         })(),
         topics: [],
-        token: sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || null,
+        token: _isGuestDemo ? null : (sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || null),
         recording: false,
         mediaRecorder: null,
         audioCtx: null,
@@ -294,8 +294,15 @@
         el.scrollIntoView({ behavior: force ? 'smooth' : 'auto', block: 'start', inline: 'nearest' });
     }
 
+    function clearStoredAuth() {
+        state.token = null;
+        try { localStorage.removeItem('bmu_token'); } catch (_) {}
+        try { sessionStorage.removeItem('bmu_token'); } catch (_) {}
+        try { localStorage.removeItem('bmu_user'); } catch (_) {}
+    }
+
     function authHeaders() {
-        return state.token ? { Authorization: `Bearer ${state.token}` } : {};
+        return (!state.guestDemo?.enabled && state.token) ? { Authorization: `Bearer ${state.token}` } : {};
     }
 
     function guestDemoHeaders() {
@@ -1808,6 +1815,26 @@
                     if (state.guestDemo.enabled) {
                         incrementGuestDemoUsage(used);
                     }
+                    return;
+                }
+                if (res.status === 401 || res.status === 403) {
+                    let msg = 'Please sign in or start the guest demo to ask Dr. Tari.';
+                    try {
+                        const j = await res.json();
+                        if (j?.error) msg = j.error;
+                    } catch (_) { /* ignore */ }
+                    if (!state.guestDemo.enabled) clearStoredAuth();
+                    bubble.body.textContent = msg;
+                    if (bubble.caret) bubble.caret.remove();
+                    setAvatarState('idle', 'Sign in needed');
+                    showUsageOverlay({
+                        title: 'Sign In or Start Demo',
+                        body: msg,
+                        hints: [
+                            'Use Watch demo from the home page for five guest questions.',
+                            'Sign in or create an account for the full Academic Advisor experience.'
+                        ]
+                    });
                     return;
                 }
                 throw new Error(`HTTP ${res.status}`);
