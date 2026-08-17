@@ -60,14 +60,19 @@ function _isPrincipalOfficersQuestion(question) {
 
 function _detectPrincipalOfficerRole(question) {
     const q = String(question || '').toLowerCase();
-    const isIdentityQuestion = /(who\s+is|name\s+of|current|tell\s+me\s+about|which\s+person|who\s+serves\s+as)/i.test(q);
+    const isIdentityQuestion = /(who\s+is|who\s+heads|who\s+leads|name\s+of|what\s+is\s+the\s+name|current|currently|tell\s+me\s+about|which\s+person|who\s+serves\s+as|\bname\b)/i.test(q);
     if (!isIdentityQuestion) return null;
+    if (/(who\s+heads|who\s+leads|leader\s+of|head\s+of)/i.test(q)
+        && /\b(bmu|university|bayelsa\s+medical\s+university)\b/i.test(q)
+        && !/(faculty|department|college|school|dean|hod|head\s+of\s+department)/i.test(q)) {
+        return 'Vice-Chancellor';
+    }
     if (/deputy\s+vice[-\s]?chancellor|(^|\W)dvc(\W|$)/i.test(q)) {
         if (/academic|sampou/i.test(q)) return 'Deputy Vice-Chancellor Academic';
         if (/admin|administration/i.test(q)) return 'Deputy Vice-Chancellor Administration';
         return null;
     }
-    if (/vice[-\s]?chancellor|(^|\W)vc(\W|$)/i.test(q)) return 'Vice-Chancellor';
+    if (/vice[-\s]?chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)|(?:^|\W)v\s*c(?:\W|$)|(^|\W)vc(\W|$)|wise\s+chancellor|first\s+chancellor/i.test(q)) return 'Vice-Chancellor';
     if (/registrar/i.test(q)) return 'Registrar';
     if (/bursar/i.test(q)) return 'Bursar';
     if (/\b(?:boss|bossa|bosa|bussa|bursah)\b/i.test(q)) return 'Bursar';
@@ -77,7 +82,7 @@ function _detectPrincipalOfficerRole(question) {
 
 function _isGovernorVisitorQuestion(question) {
     const q = String(question || '').toLowerCase();
-    return /(governor|visitor\s+to\s+the\s+university|visitor\s+of\s+the\s+university|bayelsa\s+state)/i.test(q)
+    return /(governor|visitor\s+(?:to|of)\s+(?:the\s+)?(?:university|bmu|bayelsa\s+medical\s+university)|bayelsa\s+state)/i.test(q)
         && /(who\s+is|name\s+of|current|serves\s+as|visitor)/i.test(q);
 }
 

@@ -2037,6 +2037,8 @@
         const officerIntent = /\b(who|name|current|tell me|which person|serves as|officer)\b/i.test(text);
         if (officerIntent) {
             text = text
+                .replace(/\b(?:wise\s+chancellor|first\s+chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or))\b/ig, 'vice chancellor')
+                .replace(/\bv\s+c\b/ig, 'vc')
                 .replace(/\bwho\s+is\s+(?:the\s+)?(?:boss|bossa|bosa|bussa|bursah)\b/ig, 'who is the bursar')
                 .replace(/\bname\s+of\s+(?:the\s+)?(?:boss|bossa|bosa|bussa|bursah)\b/ig, 'name of the bursar')
                 .replace(/\b(?:the\s+)?(?:boss|bossa|bosa|bussa|bursah)\b/ig, 'the bursar');

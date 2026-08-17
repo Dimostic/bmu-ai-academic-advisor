@@ -1168,7 +1168,7 @@ ${officialUpdates}
                 key: 'vice_chancellor',
                 label: 'Vice-Chancellor',
                 officeTerms: ['vice-chancellor', 'vice chancellor', 'vc'],
-                patterns: [/vice[-\s]?chancellor/i, /\bvc\b/i]
+                patterns: [/vice[-\s]?chancellor/i, /vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)/i, /\bv\s*c\b/i, /\bvc\b/i, /wise\s+chancellor/i, /first\s+chancellor/i]
             },
             {
                 key: 'deputy_vice_chancellor_sampou',
