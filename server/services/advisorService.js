@@ -52,26 +52,61 @@ const BMU_VISITOR = {
     name: 'Senator Douye Diri',
     office: 'Governor of Bayelsa State'
 };
-const MEDICINE_MBBS_FEES = {
-    indigene: {
-        '100': '600,000',
-        '200_de': '730,000',
-        '200': '730,000',
-        '300': '475,000',
-        '400': '510,000',
-        '500': '510,000',
-        '600': '540,000'
-    },
-    non_indigene: {
-        '100': '1,230,000',
-        '200_de': '1,360,000',
-        '200': '1,360,000',
-        '300': '1,015,000',
-        '400': '1,110,000',
-        '500': '1,090,000',
-        '600': '1,195,000'
-    }
+const PROGRAMME_FEES = {
+    'MEDICINE': { table: 'TABLE 1: MEDICINE', display: 'Medicine and Surgery (MBBS)', indigene: { '100': '600,000', '200_de': '730,000', '200': '730,000', '300': '475,000', '400': '510,000', '500': '510,000', '600': '540,000' }, non_indigene: { '100': '1,230,000', '200_de': '1,360,000', '200': '1,360,000', '300': '1,015,000', '400': '1,110,000', '500': '1,090,000', '600': '1,195,000' } },
+    'DENTISTRY': { table: 'TABLE 2: DENTISTRY', display: 'Dentistry', indigene: { '100': '600,000', '200_de': '730,000', '200': '730,000', '300': '475,000', '400': '510,000', '500': '510,000', '600': '540,000' }, non_indigene: { '100': '1,230,000', '200_de': '1,360,000', '200': '1,360,000', '300': '1,015,000', '400': '1,110,000', '500': '1,090,000', '600': '1,195,000' } },
+    'NURSING SCIENCE': { table: 'TABLE 3: NURSING SCIENCE', display: 'Nursing Science', indigene: { '100': '435,000', '200_de': '515,000', '200': '515,000', '300': '460,000', '400': '490,000', '500': '490,000', '600': '520,000' }, non_indigene: { '100': '875,000', '200_de': '950,000', '200': '950,000', '300': '790,000', '400': '845,000', '500': '875,000', '600': '945,000' } },
+    'PHARMACY': { table: 'TABLE 4: PHARMACY', display: 'Pharmacy', indigene: { '100': '435,000', '200_de': '515,000', '200': '515,000', '300': '460,000', '400': '490,000', '500': '490,000', '600': '520,000' }, non_indigene: { '100': '875,000', '200_de': '950,000', '200': '950,000', '300': '790,000', '400': '845,000', '500': '875,000', '600': '945,000' } },
+    'MEDICAL LABORATORY SCIENCE': { table: 'TABLE 5: MEDICAL LABORATORY SCIENCE', display: 'Medical Laboratory Science', indigene: { '100': '385,000', '200_de': '465,000', '200': '465,000', '300': '455,000', '400': '485,000', '500': '485,000', '600': '535,000' }, non_indigene: { '100': '465,000', '200_de': '545,000', '200': '545,000', '300': '785,000', '400': '840,000', '500': '870,000', '600': '940,000' } },
+    'OPTOMETRY': { table: 'TABLE 6: OPTOMETRY', display: 'Optometry', indigene: { '100': '385,000', '200_de': '465,000', '200': '465,000', '300': '455,000', '400': '485,000', '500': '485,000', '600': '535,000' }, non_indigene: { '100': '465,000', '200_de': '545,000', '200': '545,000', '300': '785,000', '400': '840,000', '500': '870,000', '600': '940,000' } },
+    'PHYSIOTHERAPY': { table: 'TABLE 7: PHYSIOTHERAPY', display: 'Physiotherapy', indigene: { '100': '385,000', '200_de': '465,000', '200': '465,000', '300': '455,000', '400': '485,000', '500': '485,000', '600': '535,000' }, non_indigene: { '100': '465,000', '200_de': '545,000', '200': '545,000', '300': '785,000', '400': '840,000', '500': '870,000', '600': '940,000' } },
+    'RADIOGRAPHY': { table: 'TABLE 8: RADIOGRAPHY', display: 'Radiography', indigene: { '100': '385,000', '200_de': '465,000', '200': '465,000', '300': '455,000', '400': '485,000', '500': '485,000', '600': '535,000' }, non_indigene: { '100': '465,000', '200_de': '545,000', '200': '545,000', '300': '785,000', '400': '840,000', '500': '870,000', '600': '940,000' } },
+    'COMMUNITY HEALTH': { table: 'TABLE 9: COMMUNITY HEALTH', display: 'Community Health', indigene: { '100': '335,000', '200_de': '415,000', '200': '415,000', '300': '455,000', '400': '485,000', '500': '485,000', '600': '535,000' }, non_indigene: { '100': '415,000', '200_de': '495,000', '200': '495,000', '300': '785,000', '400': '840,000', '500': '870,000', '600': '940,000' } },
+    'PUBLIC HEALTH': { table: 'TABLE 10: PUBLIC HEALTH', display: 'Public Health', indigene: { '100': '335,000', '200_de': '415,000', '200': '415,000', '300': '455,000', '400': '485,000', '500': '485,000', '600': '535,000' }, non_indigene: { '100': '415,000', '200_de': '495,000', '200': '495,000', '300': '785,000', '400': '840,000', '500': '870,000', '600': '940,000' } },
+    'HEALTH INFORMATION MANAGEMENT': { table: 'TABLE 11: HEALTH INFORMATION MANAGEMENT', display: 'Health Information Management', indigene: { '100': '335,000', '200_de': '415,000', '200': '415,000', '300': '455,000', '400': '485,000', '500': '485,000', '600': '535,000' }, non_indigene: { '100': '415,000', '200_de': '495,000', '200': '495,000', '300': '785,000', '400': '840,000', '500': '870,000', '600': '940,000' } },
+    'HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT': { table: 'TABLE 12: HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT', display: 'Health Care Administration & Hospital Management', indigene: { '100': '173,000', '200_de': '218,000', '200': '218,000', '300': '348,000' }, non_indigene: { '100': '175,000', '200_de': '220,000', '200': '220,000', '300': '350,000' } },
+    'HUMAN NUTRITION & DIETETICS': { table: 'TABLE 13: HUMAN NUTRITION & DIETETICS', display: 'Human Nutrition & Dietetics', indigene: { '100': '173,000', '200_de': '218,000', '200': '218,000', '300': '348,000' }, non_indigene: { '100': '175,000', '200_de': '220,000', '200': '220,000', '300': '350,000' } },
+    'BIOCHEMISTRY': { table: 'TABLE 14: BIOCHEMISTRY', display: 'Biochemistry', indigene: { '100': '158,000', '200_de': '228,000', '200': '228,000', '300': '270,000', '400': '280,000' }, non_indigene: { '100': '165,000', '200_de': '235,000', '200': '235,000', '300': '530,000', '400': '560,000' } },
+    'HUMAN ANATOMY': { table: 'TABLE 15: HUMAN ANATOMY', display: 'Human Anatomy', indigene: { '100': '158,000', '200_de': '228,000', '200': '228,000', '300': '270,000', '400': '280,000' }, non_indigene: { '100': '165,000', '200_de': '235,000', '200': '235,000', '300': '530,000', '400': '560,000' } },
+    'HUMAN PHYSIOLOGY': { table: 'TABLE 16: HUMAN PHYSIOLOGY', display: 'Human Physiology', indigene: { '100': '158,000', '200_de': '228,000', '200': '228,000', '300': '270,000', '400': '280,000' }, non_indigene: { '100': '165,000', '200_de': '235,000', '200': '235,000', '300': '530,000', '400': '560,000' } },
+    'BIOLOGY': { table: 'TABLE 17: BIOLOGY', display: 'Biology', indigene: { '100': '148,000', '200_de': '188,000', '200': '188,000', '300': '130,000', '400': '160,000' }, non_indigene: { '100': '155,000', '200_de': '195,000', '200': '195,000', '300': '265,000', '400': '300,000' } },
+    'CHEMISTRY': { table: 'TABLE 18: CHEMISTRY', display: 'Chemistry', indigene: { '100': '148,000', '200_de': '188,000', '200': '188,000', '300': '130,000', '400': '160,000' }, non_indigene: { '100': '155,000', '200_de': '195,000', '200': '195,000', '300': '265,000', '400': '300,000' } },
+    'MATHEMATICS': { table: 'TABLE 19: MATHEMATICS', display: 'Mathematics', indigene: { '100': '148,000', '200_de': '188,000', '200': '188,000', '300': '130,000', '400': '160,000' }, non_indigene: { '100': '155,000', '200_de': '195,000', '200': '195,000', '300': '265,000', '400': '300,000' } },
+    'MICROBIOLOGY': { table: 'TABLE 20: MICROBIOLOGY', display: 'Microbiology', indigene: { '100': '148,000', '200_de': '188,000', '200': '188,000', '300': '130,000', '400': '160,000' }, non_indigene: { '100': '155,000', '200_de': '195,000', '200': '195,000', '300': '265,000', '400': '300,000' } },
+    'PHYSICS': { table: 'TABLE 21: PHYSICS', display: 'Physics', indigene: { '100': '148,000', '200_de': '188,000', '200': '188,000', '300': '130,000', '400': '160,000' }, non_indigene: { '100': '155,000', '200_de': '195,000', '200': '195,000', '300': '265,000', '400': '300,000' } },
+    'STATISTICS': { table: 'TABLE 22: STATISTICS', display: 'Statistics', indigene: { '100': '148,000', '200_de': '188,000', '200': '188,000', '300': '130,000', '400': '160,000' }, non_indigene: { '100': '155,000', '200_de': '195,000', '200': '195,000', '300': '265,000', '400': '300,000' } },
+    'COMPUTER SCIENCE': { table: 'TABLE 23: COMPUTER SCIENCE', display: 'Computer Science', indigene: { '100': '148,000', '200_de': '188,000', '200': '188,000', '300': '130,000', '400': '160,000' }, non_indigene: { '100': '155,000', '200_de': '195,000', '200': '195,000', '300': '265,000', '400': '300,000' } },
+    'HUMAN NUTRITION': { table: 'TABLE 24: HUMAN NUTRITION', display: 'Human Nutrition', indigene: { '100': '158,000', '200_de': '213,000', '200': '213,000', '300': '315,000', '400': '365,000' }, non_indigene: { '100': '160,000', '200_de': '205,000', '200': '205,000', '300': '660,000', '400': '760,000' } },
+    'DENTAL TECHNOLOGY': { table: 'TABLE 25: DENTAL TECHNOLOGY', display: 'Dental Technology', indigene: { '100': '158,000', '200_de': '213,000', '200': '213,000', '300': '315,000', '400': '365,000' }, non_indigene: { '100': '160,000', '200_de': '205,000', '200': '205,000', '300': '660,000', '400': '760,000' } }
 };
+
+const PROGRAMME_FEE_ALIASES = [
+    ['HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT', /\b(?:health\s+care|healthcare)\s+administration\b|\bhospital\s+management\b|\bhealth\s+care\s+administration\s+(?:and|&)\s+hospital\s+management\b/i],
+    ['HUMAN NUTRITION & DIETETICS', /\bhuman\s+nutrition\s+(?:and|&)\s+dietetics\b|\bnutrition\s+(?:and|&)\s+dietetics\b|\bdietetics\b/i],
+    ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bbmls\b|\bmls\b/i],
+    ['HEALTH INFORMATION MANAGEMENT', /\bhealth\s+information\s+management\b|\bhim\b/i],
+    ['DENTAL TECHNOLOGY', /\bdental\s+technology\b/i],
+    ['NURSING SCIENCE', /\bnursing(?:\s+science)?\b|\bbnsc\b/i],
+    ['COMMUNITY HEALTH', /\bcommunity\s+health\b/i],
+    ['PUBLIC HEALTH', /\bpublic\s+health\b/i],
+    ['HUMAN PHYSIOLOGY', /\bhuman\s+physiology\b|\bphysiology\b/i],
+    ['HUMAN ANATOMY', /\bhuman\s+anatomy\b|\banatomy\b/i],
+    ['COMPUTER SCIENCE', /\bcomputer\s+science\b/i],
+    ['HUMAN NUTRITION', /\bhuman\s+nutrition\b/i],
+    ['MEDICINE', /\bmbbs\b|\bmbchb\b|\bmedicine\s+and\s+surgery\b|\bmed\s+and\s+surg\b|\bmedicine\b/i],
+    ['DENTISTRY', /\bdentistry\b|\bbds\b|\bbchd\b/i],
+    ['PHARMACY', /\bpharmacy\b|\bpharmd\b|\bb\.?\s*pharm\b/i],
+    ['OPTOMETRY', /\boptometry\b/i],
+    ['PHYSIOTHERAPY', /\bphysiotherapy\b/i],
+    ['RADIOGRAPHY', /\bradiography\b/i],
+    ['BIOCHEMISTRY', /\bbiochemistry\b/i],
+    ['BIOLOGY', /\bbiology\b/i],
+    ['CHEMISTRY', /\bchemistry\b/i],
+    ['MATHEMATICS', /\bmathematics\b|\bmaths?\b/i],
+    ['MICROBIOLOGY', /\bmicrobiology\b/i],
+    ['PHYSICS', /\bphysics\b/i],
+    ['STATISTICS', /\bstatistics\b/i]
+];
 
 function _isPrincipalOfficersQuestion(question) {
     const q = String(question || '').toLowerCase();
@@ -204,10 +239,19 @@ function _buildMbbsDurationReply() {
     };
 }
 
+function _detectFeeProgramme(question) {
+    const q = String(question || '').trim();
+    const match = PROGRAMME_FEE_ALIASES.find(([, pattern]) => pattern.test(q));
+    return match ? match[0] : null;
+}
+
+function _isProgrammeFeeQuestion(question) {
+    const q = String(question || '').trim();
+    return /(fee|fees|tuition|cost|payment|payable|levy)/i.test(q) && Boolean(_detectFeeProgramme(q));
+}
+
 function _isMedicineFeeQuestion(question) {
-    const q = String(question || '').trim().toLowerCase();
-    return /(fee|fees|tuition|cost|payment|payable|levy)/i.test(q)
-        && /(mbbs|mbchb|medicine\s+and\s+surgery|\bmedicine\b|med\s+and\s+surg)/i.test(q);
+    return _isProgrammeFeeQuestion(question) && _detectFeeProgramme(question) === 'MEDICINE';
 }
 
 function _detectFeeLevel(question) {
@@ -230,25 +274,29 @@ function _formatFeeLevel(level) {
     return `${level} level`;
 }
 
-function _medicineFeeRow(level, values) {
+function _programmeFeeRow(level, values) {
     return `| ${_formatFeeLevel(level)} | ${values.indigene} | ${values.non_indigene} |`;
 }
 
-function _buildMedicineFeeReply(question) {
+function _buildProgrammeFeeReply(question) {
+    const programmeKey = _detectFeeProgramme(question);
+    const fees = programmeKey ? PROGRAMME_FEES[programmeKey] : null;
+    if (!fees || !_isProgrammeFeeQuestion(question)) return null;
+
     const level = _detectFeeLevel(question);
     const category = _detectFeeCategory(question);
     const levelOrder = ['100', '200_de', '200', '300', '400', '500', '600'];
     const sourceNote = 'Source: BMU fee structures new.docx. Acceptance fee is N50,000 for new students only; accommodation is optional at N100,000 per session.';
 
     if (level && category) {
-        const amount = MEDICINE_MBBS_FEES[category]?.[level];
+        const amount = fees[category]?.[level];
         if (!amount) return null;
         const categoryLabel = category === 'indigene' ? 'indigene' : 'non-indigene';
         return {
-            speech_text: `For ${_formatFeeLevel(level)} Medicine and Surgery, MBBS, ${categoryLabel}, the official total payable per session is ${amount} naira. Acceptance fee and optional accommodation are separate where applicable.`,
-            display_markdown: `For **${_formatFeeLevel(level)} Medicine and Surgery (MBBS)**, **${categoryLabel}**, the official **total payable per session** is **N${amount}**.\n\n${sourceNote}`,
-            topic_slug: 'medicine_mbbs_fee',
-            citations: [{ title: 'bmu fee structures new.docx', source: 'TABLE 1: MEDICINE' }],
+            speech_text: `For ${_formatFeeLevel(level)} ${fees.display}, ${categoryLabel}, the official total payable per session is ${amount} naira. Acceptance fee and optional accommodation are separate where applicable.`,
+            display_markdown: `For **${_formatFeeLevel(level)} ${fees.display}**, **${categoryLabel}**, the official **total payable per session** is **N${amount}**.\n\n${sourceNote}`,
+            topic_slug: 'programme_fee',
+            citations: [{ title: 'bmu fee structures new.docx', source: fees.table }],
             suggested_actions: [],
             follow_up_questions: [],
             needs_escalation: false,
@@ -257,24 +305,29 @@ function _buildMedicineFeeReply(question) {
     }
 
     const rows = levelOrder
-        .filter(item => !level || item === level)
-        .map(item => _medicineFeeRow(item, {
-            indigene: `N${MEDICINE_MBBS_FEES.indigene[item]}`,
-            non_indigene: `N${MEDICINE_MBBS_FEES.non_indigene[item]}`
+        .filter(item => (!level || item === level) && fees.indigene[item] && fees.non_indigene[item])
+        .map(item => _programmeFeeRow(item, {
+            indigene: `N${fees.indigene[item]}`,
+            non_indigene: `N${fees.non_indigene[item]}`
         }));
+    if (!rows.length) return null;
     const table = ['| Level | Indigene total payable | Non-indigene total payable |', '| --- | ---: | ---: |', ...rows].join('\n');
     const scope = level ? ` for **${_formatFeeLevel(level)}**` : '';
     const categoryHint = category ? `\n\nYou asked about **${category === 'indigene' ? 'indigene' : 'non-indigene'}** fees; the table includes both categories for comparison.` : '';
     return {
-        speech_text: `Here are the official Medicine and Surgery, MBBS, fee totals${level ? ` for ${_formatFeeLevel(level)}` : ''}. Please use the total payable values from the fee structure and do not recompute them from the displayed columns.`,
-        display_markdown: `Official **Medicine and Surgery (MBBS)** fee totals${scope}:\n\n${table}${categoryHint}\n\n${sourceNote}`,
-        topic_slug: 'medicine_mbbs_fee_table',
-        citations: [{ title: 'bmu fee structures new.docx', source: 'TABLE 1: MEDICINE' }],
+        speech_text: `Here are the official ${fees.display} fee totals${level ? ` for ${_formatFeeLevel(level)}` : ''}. Please use the total payable values from the fee structure and do not recompute them from the displayed columns.`,
+        display_markdown: `Official **${fees.display}** fee totals${scope}:\n\n${table}${categoryHint}\n\n${sourceNote}`,
+        topic_slug: 'programme_fee_table',
+        citations: [{ title: 'bmu fee structures new.docx', source: fees.table }],
         suggested_actions: [],
         follow_up_questions: [],
         needs_escalation: false,
         confidence: 0.99
     };
+}
+
+function _buildMedicineFeeReply(question) {
+    return _buildProgrammeFeeReply(question);
 }
 
 function _buildHandbookAcademicPolicyReply(question) {
@@ -331,7 +384,8 @@ function _buildCommonStaticReply(question) {
     if (!q) return null;
 
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply();
-    if (_isMedicineFeeQuestion(q)) return _buildMedicineFeeReply(q);
+    const programmeFeeReply = _buildProgrammeFeeReply(q);
+    if (programmeFeeReply) return programmeFeeReply;
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
 
     const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
