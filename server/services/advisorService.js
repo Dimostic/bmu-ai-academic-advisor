@@ -17,6 +17,7 @@ const persona = require('./advisorPersonaService');
 const tts = require('./ttsService');
 const responseQualityService = require('./responseQualityService');
 const courseCatalogService = require('./courseCatalogService');
+const bmuLawService = require('./bmuLawService');
 
 let faqService = null;
 try { faqService = require('./faqService'); }
@@ -389,6 +390,8 @@ async function _buildCommonStaticReply(question) {
     if (programmeFeeReply) return programmeFeeReply;
     const courseCatalogReply = await courseCatalogService.buildCourseListReply(q);
     if (courseCatalogReply) return courseCatalogReply;
+    const lawReply = bmuLawService.buildLawReply(q);
+    if (lawReply) return lawReply;
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
 
     const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
