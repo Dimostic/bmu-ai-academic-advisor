@@ -10,7 +10,7 @@ const SOURCE_PATH = path.join(__dirname, '../../sources', SOURCE_TITLE);
 let _catalogPromise = null;
 
 const PROGRAMME_ALIASES = [
-    ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bbmls\b|\bmls\b/i],
+    ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bmed\s+lab\b|\bbmls\b|\bmls\b/i],
     ['HEALTH INFORMATION MANAGEMENT', /\bhealth\s+information\s+management\b|\bhim\b/i],
     ['HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT', /\b(?:health\s+care|healthcare)\s+administration\b|\bhospital\s+management\b/i],
     ['HUMAN NUTRITION & DIETETICS', /\bhuman\s+nutrition\s+(?:and|&)\s+dietetics\b|\bnutrition\s+(?:and|&)\s+dietetics\b|\bdietetics\b/i],
@@ -89,9 +89,10 @@ function detectSemester(question) {
 
 function isCourseListQuestion(question) {
     const q = String(question || '');
-    return /\b(course|courses|curriculum|course\s+list|subjects?)\b/i.test(q)
-        && Boolean(detectProgramme(q))
-        && Boolean(detectLevel(q));
+    const hasProgrammeAndLevel = Boolean(detectProgramme(q)) && Boolean(detectLevel(q));
+    const asksForCourses = /\b(course|courses|curriculum|course\s+list|subjects?)\b/i.test(q);
+    const hasSemester = Boolean(detectSemester(q));
+    return hasProgrammeAndLevel && (asksForCourses || hasSemester);
 }
 
 async function loadCatalog() {

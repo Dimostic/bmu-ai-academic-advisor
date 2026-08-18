@@ -231,7 +231,7 @@ const PROGRAMME_FEES = {
 const PROGRAMME_FEE_ALIASES = [
     ['HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT', /\b(?:health\s+care|healthcare)\s+administration\b|\bhospital\s+management\b|\bhealth\s+care\s+administration\s+(?:and|&)\s+hospital\s+management\b/i],
     ['HUMAN NUTRITION & DIETETICS', /\bhuman\s+nutrition\s+(?:and|&)\s+dietetics\b|\bnutrition\s+(?:and|&)\s+dietetics\b|\bdietetics\b/i],
-    ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bbmls\b|\bmls\b/i],
+    ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bmed\s+lab\b|\bbmls\b|\bmls\b/i],
     ['HEALTH INFORMATION MANAGEMENT', /\bhealth\s+information\s+management\b|\bhim\b/i],
     ['DENTAL TECHNOLOGY', /\bdental\s+(?:technology|tech)\b/i],
     ['NURSING SCIENCE', /\bnursing(?:\s+science)?\b|\bbnsc\b/i],
@@ -278,7 +278,7 @@ function _detectPrincipalOfficerRole(question) {
     if (/vice[-\s]?chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)|(?:^|\W)v\s*c(?:\W|$)|(^|\W)vc(\W|$)|wise\s+chancellor|first\s+chancellor/i.test(q)) return 'Vice-Chancellor';
     if (/registrar/i.test(q)) return 'Registrar';
     if (/bursar/i.test(q)) return 'Bursar';
-    if (/\b(?:boss|bossa|bosa|bussa|bursah)\b/i.test(q)) return 'Bursar';
+    if (/\b(?:boss|bossa|bosa|busa|bussa|bursah)\b/i.test(q)) return 'Bursar';
     if (/university\s+librarian|\blibrarian\b/i.test(q)) return 'University Librarian';
     return null;
 }
