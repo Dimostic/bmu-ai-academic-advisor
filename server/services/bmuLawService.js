@@ -10,7 +10,7 @@ function hasLawScope(question) {
         && /\b(bmu|chancellors?|pro[-\s]?chancellors?|vice[-\s]?chancellors?|vc|dvc|council|senate|staff|student|examiners?|professors?|academic\s+staff|bodies|university|registrar|bursar|librarian)\b/i.test(q)) {
         return true;
     }
-    if (/\b(define|meaning\s+of|corporate\s+status|legal\s+status|perpetual\s+succession|movable\s+property|immovable\s+property|own\s+property|be\s+sued|quorum|co-opted|pre[-\s]?action|chief\s+executive\s+academic\s+officer|chief\s+financial\s+officer|financial\s+affairs|university\s+library|library\s+services|compulsory\s+retirement|lecturer\s+retirement|visitor|visits?\s+bmu|above\s+other\s+university\s+members|presides?\s+over\s+congregation|pro\s+chancellor|governing\s+council|governing\s+body|controls?\s+finances|property\s+expenditure|teaching\s+control|controls?\s+exams?|professor\s+emeritus|student\s+welfare|academic\s+and\s+non-academic|two\s+thirds|statute\s+start|staff\s+suspension|rustication\s+goes|appeal\s+pause|land\s+disposal|residential\s+lease|regulations\s+do\s+not\s+say|committee\s+have\s+outsiders|council\s+committees|authenticate\s+seal|under\s+seal\s+evidence|conflict\s+of\s+interest|courses\s+of\s+study|halls\s+of\s+residence|honorary\s+degrees?|proposed\s+statute|21\s+year\s+land\s+exception|parent\s+body|finance\s+and\s+general\s+purposes|chooses?\s+the\s+chancellor|chancellor\s+tenure)\b/i.test(q)) return true;
+    if (/\b(define|definition|meaning\s+of|incorporation|corporate\s+status|legal\s+status|continue\s+forever|perpetual\s+succession|movable\s+property|immovable\s+property|own\s+property|dispose\s+property|be\s+sued|situated|another\s+campus|sort\s+of\s+institution|research\s+benefit|health\s+care\s+database|offer\s+diplomas|list\s+as\s+bmu\s+authorities|part\s+of\s+the\s+university|precedence\s+at\s+convocation|in\s+charge\s+of\s+university\s+activities|chair\s+of\s+senate\s+by\s+office|controls?\s+admission|controls?\s+student\s+discipline|controls?\s+examinations|majority.*statute|certif(?:y|ies)\s+statutes|investigates\s+staff\s+removal|examiner\s+be\s+replaced|examiner\s+make\s+representation|mortgage\s+land|land\s+lease|body\s+create\s+a\s+committee|non\s+members|signs?\s+the\s+seal|interest\s+be\s+disclosed|months\s+before\s+suing|35\s+year\s+rule|professor\s+allowances|removes?\s+the\s+chancellor|pro\s+chancellor\s+first\s+term|vc\s+serve|bursar\s+reports|librarian\s+is\s+responsible|quorum|co-opted|pre[-\s]?action|chief\s+executive\s+academic\s+officer|chief\s+financial\s+officer|financial\s+affairs|university\s+library|library\s+services|compulsory\s+retirement|lecturer\s+retirement|visitor|visits?\s+bmu|above\s+other\s+university\s+members|presides?\s+over\s+congregation|pro\s+chancellor|governing\s+council|governing\s+body|controls?\s+finances|property\s+expenditure|teaching\s+control|controls?\s+exams?|professor\s+emeritus|student\s+welfare|academic\s+and\s+non-academic|two\s+thirds|statute\s+start|staff\s+suspension|rustication\s+goes|appeal\s+pause|land\s+disposal|residential\s+lease|regulations\s+do\s+not\s+say|committee\s+have\s+outsiders|council\s+committees|authenticate\s+seal|under\s+seal\s+evidence|conflict\s+of\s+interest|courses\s+of\s+study|halls\s+of\s+residence|honorary\s+degrees?|proposed\s+statute|21\s+year\s+land\s+exception|parent\s+body|finance\s+and\s+general\s+purposes|chooses?\s+the\s+chancellor|chancellor\s+tenure)\b/i.test(q)) return true;
     if (/\bdiscrimination\b/i.test(q)) return true;
     if (/\b(visitation|notice\s+of\s+action|pre[-\s]?action\s+notice|personal\s+interest|proceedings?|vacanc\w*)\b/i.test(q)) return true;
     if (/\bcommittee\b/i.test(q) && /\b(property|expenditure)\b/i.test(q)) return true;
@@ -35,6 +35,189 @@ function reply({ speech, markdown, section, confidence = 0.99 }) {
 function buildLawReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q || !hasLawScope(q)) return null;
+
+    if (/(incorporation|corporate\s+status|continue\s+forever|perpetual\s+succession|own\s+(land|property)|dispose\s+property|be\s+sued)/i.test(q)) {
+        return reply({
+            section: 'Section 1 - Establishment and Incorporation',
+            speech: 'Section 1 establishes BMU as a body corporate with perpetual succession and a common seal. It can sue and be sued, and may acquire, hold and dispose of movable and immovable property for its functions.',
+            markdown: `Under **Section 1** of the **${LAW_TITLE}**, BMU is a **body corporate** with **perpetual succession** and a **common seal**.\n\nIt can **sue and be sued**, and may **acquire, hold and dispose of movable and immovable property**, including land, for its functions under the Law.`
+        });
+    }
+
+    if (/(situated|another\s+campus)/i.test(q)) {
+        return reply({
+            section: 'Section 2 - Location of the University',
+            speech: 'Section 2 places the main campus at Imgbi Road, Amarata-Yenagoa, and allows the University to establish other campuses within the State.',
+            markdown: `Under **Section 2** of the **${LAW_TITLE}**, BMU's main campus is at **Imgbi Road, Amarata-Yenagoa**. The University may also establish **other campuses within the State**.`
+        });
+    }
+
+    if (/(sort\s+of\s+institution|research\s+benefit|health\s+care\s+database)/i.test(q)) {
+        return reply({
+            section: 'Section 3 - The Vision and Mission of the University',
+            speech: 'Section 3 describes BMU as a leading internationally recognized medical institution, with mission items including research for public benefit and health-care database development.',
+            markdown: `Under **Section 3** of the **${LAW_TITLE}**, BMU's vision is to be a leading internationally recognized **medical institution**.\n\nIts mission includes research for **public benefit**, health needs identification, and health-care **database** development.`
+        });
+    }
+
+    if (/(appoint\s+lecturers|offer\s+diplomas|provide\s+welfare\s+and\s+discipline)/i.test(q)) {
+        return reply({
+            section: 'Section 4 - Powers of the University',
+            speech: 'Section 4 empowers BMU to institute academic posts and appointments, award diplomas and other qualifications, and provide for discipline and welfare.',
+            markdown: `Under **Section 4** of the **${LAW_TITLE}**, BMU may institute academic **posts** and make appointments, award **diplomas** and other qualifications, and provide for **discipline** and **welfare**.`
+        });
+    }
+
+    if (/(list\s+as\s+bmu\s+authorities|part\s+of\s+the\s+university|graduates?\s+part\s+of\s+the\s+university)/i.test(q)) {
+        return reply({
+            section: 'Section 5 - Constitution and Principal Officers',
+            speech: 'Section 5 lists the University as including its officers, Council, Senate, Congregation, Convocation, campuses, colleges, faculties, schools, graduates, undergraduates and other members recognized by statute.',
+            markdown: `Under **Section 5** of the **${LAW_TITLE}**, BMU includes **Council**, **Senate**, **Congregation**, **Convocation**, its officers, campuses, colleges, faculties and schools, as well as **graduates**, **undergraduates**, and other members recognized by statute.`
+        });
+    }
+
+    if (/(precedence\s+at\s+convocation|chairs?\s+council\s+if\s+present)/i.test(q)) {
+        return reply({
+            section: 'Section 6 - Functions of the Chancellor, Pro-Chancellor and Chairman of Council',
+            speech: 'Section 6 gives the Chancellor precedence and the role of presiding at Congregation or Convocation for conferring degrees. The Pro-Chancellor chairs Council meetings when present.',
+            markdown: `Under **Section 6** of the **${LAW_TITLE}**, the **Chancellor** takes precedence and presides at **Congregation or Convocation** for conferring degrees. The **Pro-Chancellor** chairs **Council** meetings when present.`
+        });
+    }
+
+    if (/(in\s+charge\s+of\s+university\s+activities|chair\s+of\s+senate\s+by\s+office)/i.test(q)) {
+        return reply({
+            section: 'Section 7 - Functions of the Vice-Chancellor',
+            speech: 'Section 7 makes the Vice-Chancellor responsible for directing University activities and the ex-officio Chairman of Senate.',
+            markdown: `Under **Section 7** of the **${LAW_TITLE}**, the **Vice-Chancellor** directs the activities of the University and is the **ex-officio Chairman of Senate**.`
+        });
+    }
+
+    if (/(committee\s+handles\s+expenditure|which\s+committee\s+handles\s+expenditure)/i.test(q)) {
+        return reply({
+            section: 'Section 8 - Functions of the Council',
+            speech: 'The Finance and General Purposes Committee controls the property and expenditure of the University, subject to Council directions.',
+            markdown: `Under **Section 8** of the **${LAW_TITLE}**, the **Finance and General Purposes Committee** controls University **property and expenditure**, subject to Council directions.`
+        });
+    }
+
+    if (/(controls?\s+admission|controls?\s+student\s+discipline|controls?\s+examinations|honorary\s+fellowship)/i.test(q)) {
+        return reply({
+            section: 'Section 9 - Functions of the Senate',
+            speech: 'Section 9 gives Senate control over teaching, admission, student discipline, courses, examinations, and recommendations for honorary fellowship or honorary degree.',
+            markdown: `Under **Section 9** of the **${LAW_TITLE}**, **Senate** controls **teaching**, **admission**, **student discipline**, courses and **examinations**. It also recommends **honorary fellowship** or honorary degree to Council.`
+        });
+    }
+
+    if (/(majority.*statute|certif(?:y|ies)\s+statutes?|true\s+copies)/i.test(q)) {
+        if (/certif|true\s+copies/i.test(q)) {
+            return reply({
+                section: 'Section 12 - Proof of Statutes',
+                speech: 'Section 12 says statutes may be proved by a certified true copy signed by the Vice-Chancellor or Registrar.',
+                markdown: `Under **Section 12** of the **${LAW_TITLE}**, statutes may be proved by a copy certified as true by the **Vice-Chancellor** or **Registrar**.`
+            });
+        }
+        return reply({
+            section: 'Section 11 - Mode of exercising power to make Statutes',
+            speech: 'Section 11 requires approval by not less than two-thirds of members present and voting in Senate and Council.',
+            markdown: `Under **Section 11** of the **${LAW_TITLE}**, a statute requires approval by not less than **two-thirds** of members present and voting in **Senate** and **Council**.`
+        });
+    }
+
+    if (/(investigates\s+staff\s+removal|examiner\s+(be\s+)?replaced|examiner\s+make\s+representation)/i.test(q)) {
+        if (/examiner/i.test(q)) {
+            return reply({
+                section: 'Section 17 - Removal of Examiners',
+                speech: 'Section 17 provides that the Vice-Chancellor may remove and replace an examiner on Senate recommendation after giving the examiner an opportunity to make representations.',
+                markdown: `Under **Section 17** of the **${LAW_TITLE}**, the **Vice-Chancellor** may remove and appoint a **replacement** examiner on Senate's recommendation, after giving the examiner an opportunity to make **representations**.`
+            });
+        }
+        return reply({
+            section: 'Section 16 - Discipline and Removal of Academic, Administrative and Technical Staff',
+            speech: 'Section 16 provides for a joint Council and Senate committee to investigate staff removal when properly requested.',
+            markdown: `Under **Section 16** of the **${LAW_TITLE}**, when staff removal is contested as provided, a joint **Council and Senate** committee investigates and reports.`
+        });
+    }
+
+    if (/(mortgage\s+land|land\s+lease)/i.test(q)) {
+        return reply({
+            section: 'Section 20 - Restriction on Disposal of Land by University',
+            speech: 'Section 20 requires prior written consent of the State Governor before BMU disposes of or charges land, except for leases or tenancies at rack-rent not exceeding twenty-one years and residential leases to University members.',
+            markdown: `Under **Section 20** of the **${LAW_TITLE}**, BMU needs the **prior written consent** of the **State Governor** to dispose of or charge land.\n\nThe exception includes a lease or tenancy at rack-rent not exceeding **twenty-one years**, and a residential lease or tenancy to a University member.`
+        });
+    }
+
+    if (/(body\s+create\s+a\s+committee|non\s+members)/i.test(q)) {
+        return reply({
+            section: 'Section 22 - Appointment of Committees',
+            speech: 'Section 22 allows a University body to appoint committees, including committees that do not consist exclusively of members of that body.',
+            markdown: `Under **Section 22** of the **${LAW_TITLE}**, a University body may create a committee, and the committee need **not consist exclusively** of members of that body.`
+        });
+    }
+
+    if (/(signs?\s+the\s+seal|interest\s+be\s+disclosed)/i.test(q)) {
+        return reply({
+            section: 'Section 23 - Miscellaneous Administrative Provisions',
+            speech: 'Section 23 provides for seal authentication by the Pro-Chancellor, Vice-Chancellor, Registrar or other authorized person, and requires disclosure of personal interest before voting.',
+            markdown: `Under **Section 23** of the **${LAW_TITLE}**, the University seal may be authenticated by the **Pro-Chancellor**, **Vice-Chancellor**, **Registrar**, or another authorized person.\n\nA member with a **personal interest** in a matter must disclose it and must not vote on that matter.`
+        });
+    }
+
+    if (/(months\s+before\s+suing|35\s+year\s+rule|professor\s+allowances|removes?\s+the\s+chancellor|pro\s+chancellor\s+first\s+term|vc\s+serve|bursar\s+reports|librarian\s+is\s+responsible)/i.test(q)) {
+        if (/35\s+year/i.test(q)) {
+            return reply({
+                section: 'Section 25 - Retiring Age of Academic Staff',
+                speech: 'Section 25 says the thirty-five year public service retirement rule does not apply to BMU academic staff.',
+                markdown: `Under **Section 25** of the **${LAW_TITLE}**, the public-service retirement rule after thirty-five years **does not apply** to BMU academic staff.`
+            });
+        }
+        if (/professor\s+allowances/i.test(q)) {
+            return reply({
+                section: 'Section 26 - Special Provision relating to Pension of Professors',
+                speech: 'Section 26 says Council determines the pension and allowances that qualify as retirement benefits for professors under the section.',
+                markdown: `Under **Section 26** of the **${LAW_TITLE}**, **Council** determines the pension and allowances qualifying as retirement benefits for professors under the section.`
+            });
+        }
+        if (/months\s+before\s+suing/i.test(q)) {
+            return reply({
+                section: 'Section 24 - Notice of Action against the Authority',
+                speech: 'Section 24 requires three months written notice before suing BMU or covered officers for acts done under the Law.',
+                markdown: `Under **Section 24** of the **${LAW_TITLE}**, a person must give **three months** written notice before suing BMU or covered officers for acts done under the Law.`
+            });
+        }
+        if (/removes?\s+the\s+chancellor/i.test(q)) {
+            return reply({
+                section: 'First Schedule - Appointment of Chancellor',
+                speech: 'Under the First Schedule, the Visitor may remove the Chancellor by notice in the Gazette for misconduct or inability.',
+                markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **Visitor** may remove the **Chancellor** by notice in the Gazette for misconduct or inability.`
+            });
+        }
+        if (/pro\s+chancellor\s+first\s+term/i.test(q)) {
+            return reply({
+                section: 'First Schedule - Appointment of Pro-Chancellor',
+                speech: 'Under the First Schedule, the Pro-Chancellor holds office for four years, and may be reappointed for a second term of three years.',
+                markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **Pro-Chancellor** holds office for **four years**, and may be reappointed for a second term of **three years**.`
+            });
+        }
+        if (/vc\s+serve/i.test(q)) {
+            return reply({
+                section: 'First Schedule - Appointment and Removal of Vice-Chancellor',
+                speech: 'Under the First Schedule, the Vice-Chancellor holds office for five years, with no second term.',
+                markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **Vice-Chancellor** serves for **five years**, with **no second term**.`
+            });
+        }
+        if (/bursar\s+reports/i.test(q)) {
+            return reply({
+                section: 'First Schedule - Bursar',
+                speech: 'Under the First Schedule, the Bursar is responsible to the Vice-Chancellor for day-to-day administration and control of the University financial affairs.',
+                markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **Bursar** reports to the **Vice-Chancellor** for day-to-day administration and control of the University's financial affairs.`
+            });
+        }
+        return reply({
+            section: 'First Schedule - University Librarian',
+            speech: 'Under the First Schedule, the University Librarian is responsible to the Vice-Chancellor for the University Library and coordination of library services.',
+            markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **University Librarian** is responsible for the **University Library** and library services, under the Vice-Chancellor.`
+        });
+    }
 
     if (/(what\s+law|law\s+establish|establish(?:ed|ment)|short\s+title|citation)/i.test(q)) {
         return reply({
