@@ -24,7 +24,7 @@ const PROGRAMME_ALIASES = [
     ['HUMAN NUTRITION', /\bhuman\s+nutrition\b/i],
     ['MEDICINE AND SURGERY', /\bmbbs\b|\bmbchb\b|\bmedicine\s+and\s+surgery\b|\bmed\s+and\s+surg\b|\bmedicine\b/i],
     ['DENTISTRY', /\bdentistry\b|\bbds\b|\bbchd\b/i],
-    ['PHARMACY', /\bpharmacy\b|\bpharmd\b|\bb\.?\s*pharm\b/i],
+    ['PHARMACY', /\bpharmacy\b|\bpharm\s*d\b|\bpharmd\b|\bb\.?\s*pharm\b/i],
     ['OPTOMETRY', /\boptometry\b/i],
     ['PHYSIOTHERAPY', /\bphysiotherapy\b/i],
     ['RADIOGRAPHY', /\bradiography\b/i],
@@ -76,7 +76,7 @@ function detectProgramme(question) {
 }
 
 function detectLevel(question) {
-    const match = String(question || '').match(/\b(100|200|300|400|500|600)\s*(?:level|lvl|l)?\b/i);
+    const match = String(question || '').match(/\b(100|200|300|400|500|600|700)\s*(?:level|lvl|l)?\b/i);
     return match ? match[1] : null;
 }
 

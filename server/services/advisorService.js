@@ -96,7 +96,7 @@ const PROGRAMME_FEE_ALIASES = [
     ['HUMAN NUTRITION', /\bhuman\s+nutrition\b/i],
     ['MEDICINE', /\bmbbs\b|\bmbchb\b|\bmedicine\s+and\s+surgery\b|\bmed\s+and\s+surg\b|\bmedicine\b/i],
     ['DENTISTRY', /\bdentistry\b|\bbds\b|\bbchd\b/i],
-    ['PHARMACY', /\bpharmacy\b|\bpharmd\b|\bb\.?\s*pharm\b/i],
+    ['PHARMACY', /\bpharmacy\b|\bpharm\s*d\b|\bpharmd\b|\bb\.?\s*pharm\b/i],
     ['OPTOMETRY', /\boptometry\b/i],
     ['PHYSIOTHERAPY', /\bphysiotherapy\b/i],
     ['RADIOGRAPHY', /\bradiography\b/i],
@@ -129,7 +129,7 @@ function _detectPrincipalOfficerRole(question) {
         return null;
     }
     if (/vice[-\s]?chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)|(?:^|\W)v\s*c(?:\W|$)|(^|\W)vc(\W|$)|wise\s+chancellor|first\s+chancellor/i.test(q)) return 'Vice-Chancellor';
-    if (/registrar/i.test(q)) return 'Registrar';
+    if (/registrar|registerer/i.test(q)) return 'Registrar';
     if (/bursar/i.test(q)) return 'Bursar';
     if (/\b(?:boss|bossa|bosa|busa|bussa|bursah)\b/i.test(q)) return 'Bursar';
     if (/university\s+librarian|\blibrarian\b/i.test(q)) return 'University Librarian';
@@ -336,7 +336,7 @@ function _buildHandbookAcademicPolicyReply(question) {
     if (!q) return null;
 
     const isCreditUnitDefinition = /(define|definition|what\s+is|meaning\s+of).{0,40}credit\s+unit|credit\s+unit.{0,40}(define|definition|mean)/i.test(q);
-    const isAcademicWorkload = /(student\s+academic\s+workload|academic\s+workload|credit\s+load|course\s+load|credit\s+units?|register\s+(?:less|more)|less\s+than\s+15|more\s+than\s+24|above\s+30|below\s+9)/i.test(q);
+    const isAcademicWorkload = /(student\s+academic\s+workload|academic\s+workload|credit\s+load|course\s+load|credit\s+units?|how\s+many\s+units|units?.{0,40}(?:register|take)|register.{0,40}units?|register\s+(?:less|more)|less\s+than\s+15|more\s+than\s+24|above\s+30|below\s+9)/i.test(q);
     const isReassessment = /(reassessment|re-assessment|remark|re-mark|results?\s+review|appeal.{0,30}results?|after\s+results?\s+(?:are\s+)?published)/i.test(q);
     if (!isCreditUnitDefinition && !isAcademicWorkload && !isReassessment) return null;
 
