@@ -52,6 +52,26 @@ const BMU_VISITOR = {
     name: 'Senator Douye Diri',
     office: 'Governor of Bayelsa State'
 };
+const MEDICINE_MBBS_FEES = {
+    indigene: {
+        '100': '600,000',
+        '200_de': '730,000',
+        '200': '730,000',
+        '300': '475,000',
+        '400': '510,000',
+        '500': '510,000',
+        '600': '540,000'
+    },
+    non_indigene: {
+        '100': '1,230,000',
+        '200_de': '1,360,000',
+        '200': '1,360,000',
+        '300': '1,015,000',
+        '400': '1,110,000',
+        '500': '1,090,000',
+        '600': '1,195,000'
+    }
+};
 
 function _isPrincipalOfficersQuestion(question) {
     const q = String(question || '').toLowerCase();
@@ -166,6 +186,7 @@ function _buildDepartmentHeadSafeReply() {
 
 function _isMbbsDurationQuestion(question) {
     const q = String(question || '').trim().toLowerCase();
+    if (/(fee|fees|tuition|cost|payment|payable|levy|indigene|non[-\s]?indigene)/i.test(q)) return false;
     return /(mbbs|mbchb|medicine\s+and\s+surgery|\bmedicine\b)/i.test(q)
         && /(how\s+long|duration|years?|academic\s+sessions?|utme|direct\s+entry|five[-\s]?year|six[-\s]?year)/i.test(q);
 }
@@ -176,6 +197,79 @@ function _buildMbbsDurationReply() {
         display_markdown: 'For **Medicine and Surgery (MBBS/MBChB)**:\n\n- **UTME entry:** the **Six-Year Programme** applies.\n- **Direct Entry:** the **Five-Year Programme** applies.\n\nThe Medicine and Dentistry CCMAS section on graduation requirements states that MBBS/MBChB students undergo **six (6) or five (5) academic sessions depending on the admission entry mode**. Treat the separate general duration paragraph as context, but preserve this entry-mode distinction for advisory answers.',
         topic_slug: 'mbbs_duration_by_entry_mode',
         citations: [{ title: 'Medicine and Dentistry CCMAS 2023-FINAL', source: 'Admission and Graduation Requirements' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99
+    };
+}
+
+function _isMedicineFeeQuestion(question) {
+    const q = String(question || '').trim().toLowerCase();
+    return /(fee|fees|tuition|cost|payment|payable|levy)/i.test(q)
+        && /(mbbs|mbchb|medicine\s+and\s+surgery|\bmedicine\b|med\s+and\s+surg)/i.test(q);
+}
+
+function _detectFeeLevel(question) {
+    const q = String(question || '').toLowerCase();
+    const level = q.match(/\b(100|200|300|400|500|600)\s*(?:level|lvl)?\b/);
+    if (!level) return null;
+    if (level[1] === '200' && /(direct\s+entry|\bde\b)/i.test(q)) return '200_de';
+    return level[1];
+}
+
+function _detectFeeCategory(question) {
+    const q = String(question || '').toLowerCase();
+    if (/non[-\s]?indigene|non[-\s]?bayelsa|not\s+(?:an\s+)?indigene/i.test(q)) return 'non_indigene';
+    if (/\bindigene|bayelsa\s+indigene/i.test(q)) return 'indigene';
+    return null;
+}
+
+function _formatFeeLevel(level) {
+    if (level === '200_de') return '200 Direct Entry';
+    return `${level} level`;
+}
+
+function _medicineFeeRow(level, values) {
+    return `| ${_formatFeeLevel(level)} | ${values.indigene} | ${values.non_indigene} |`;
+}
+
+function _buildMedicineFeeReply(question) {
+    const level = _detectFeeLevel(question);
+    const category = _detectFeeCategory(question);
+    const levelOrder = ['100', '200_de', '200', '300', '400', '500', '600'];
+    const sourceNote = 'Source: BMU fee structures new.docx. Acceptance fee is N50,000 for new students only; accommodation is optional at N100,000 per session.';
+
+    if (level && category) {
+        const amount = MEDICINE_MBBS_FEES[category]?.[level];
+        if (!amount) return null;
+        const categoryLabel = category === 'indigene' ? 'indigene' : 'non-indigene';
+        return {
+            speech_text: `For ${_formatFeeLevel(level)} Medicine and Surgery, MBBS, ${categoryLabel}, the official total payable per session is ${amount} naira. Acceptance fee and optional accommodation are separate where applicable.`,
+            display_markdown: `For **${_formatFeeLevel(level)} Medicine and Surgery (MBBS)**, **${categoryLabel}**, the official **total payable per session** is **N${amount}**.\n\n${sourceNote}`,
+            topic_slug: 'medicine_mbbs_fee',
+            citations: [{ title: 'bmu fee structures new.docx', source: 'TABLE 1: MEDICINE' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.99
+        };
+    }
+
+    const rows = levelOrder
+        .filter(item => !level || item === level)
+        .map(item => _medicineFeeRow(item, {
+            indigene: `N${MEDICINE_MBBS_FEES.indigene[item]}`,
+            non_indigene: `N${MEDICINE_MBBS_FEES.non_indigene[item]}`
+        }));
+    const table = ['| Level | Indigene total payable | Non-indigene total payable |', '| --- | ---: | ---: |', ...rows].join('\n');
+    const scope = level ? ` for **${_formatFeeLevel(level)}**` : '';
+    const categoryHint = category ? `\n\nYou asked about **${category === 'indigene' ? 'indigene' : 'non-indigene'}** fees; the table includes both categories for comparison.` : '';
+    return {
+        speech_text: `Here are the official Medicine and Surgery, MBBS, fee totals${level ? ` for ${_formatFeeLevel(level)}` : ''}. Please use the total payable values from the fee structure and do not recompute them from the displayed columns.`,
+        display_markdown: `Official **Medicine and Surgery (MBBS)** fee totals${scope}:\n\n${table}${categoryHint}\n\n${sourceNote}`,
+        topic_slug: 'medicine_mbbs_fee_table',
+        citations: [{ title: 'bmu fee structures new.docx', source: 'TABLE 1: MEDICINE' }],
         suggested_actions: [],
         follow_up_questions: [],
         needs_escalation: false,
@@ -237,6 +331,7 @@ function _buildCommonStaticReply(question) {
     if (!q) return null;
 
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply();
+    if (_isMedicineFeeQuestion(q)) return _buildMedicineFeeReply(q);
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
 
     const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
