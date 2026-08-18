@@ -50,7 +50,7 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(where|location|campus|main\s+campus|other\s+campuses)/i.test(q)) {
+    if (/(where|location|campus|main\s+campus|other\s+campuses)/i.test(q) && !/notice\s+of\s+action/i.test(q)) {
         return reply({
             section: 'Section 2 - Location of the University',
             speech: 'Section 2 says the main campus is at Imgbi Road, Amarata-Yenagoa. The University may also establish other campuses within Bayelsa State for smooth running of its programmes.',
