@@ -421,6 +421,26 @@ async function _buildCommonStaticReply(question) {
         };
     }
 
+    if (/^(hi|hello|hey|good\s+(morning|afternoon|evening))(\b|[!.,?\s])/.test(q)) {
+        return {
+            speech_text: 'Hello. I am Dr Tari, your BMU academic advisor. Ask me about programmes, fees, courses, exams, or student policies.',
+            display_markdown: 'Hello. I am Dr Tari, your BMU Academic Advisor. Ask me about programmes, fees, courses, exams, hostel, or student policies.',
+            topic_slug: null,
+            citations: [],
+            suggested_actions: [
+                { label: 'Show me BMU programmes and requirements', action: 'open_topic:programmes' },
+                { label: 'What are current BMU fees by programme?', action: 'open_topic:fees' }
+            ],
+            follow_up_questions: [
+                'What courses are offered in Medicine and Surgery?',
+                'What is the current BMU tuition fee for Nursing Science?',
+                'What are the exam and grading rules at BMU?'
+            ],
+            needs_escalation: false,
+            confidence: 0.95
+        };
+    }
+
     return null;
 }
 
