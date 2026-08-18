@@ -86,7 +86,7 @@ const PROGRAMME_FEE_ALIASES = [
     ['HUMAN NUTRITION & DIETETICS', /\bhuman\s+nutrition\s+(?:and|&)\s+dietetics\b|\bnutrition\s+(?:and|&)\s+dietetics\b|\bdietetics\b/i],
     ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bbmls\b|\bmls\b/i],
     ['HEALTH INFORMATION MANAGEMENT', /\bhealth\s+information\s+management\b|\bhim\b/i],
-    ['DENTAL TECHNOLOGY', /\bdental\s+technology\b/i],
+    ['DENTAL TECHNOLOGY', /\bdental\s+(?:technology|tech)\b/i],
     ['NURSING SCIENCE', /\bnursing(?:\s+science)?\b|\bbnsc\b/i],
     ['COMMUNITY HEALTH', /\bcommunity\s+health\b/i],
     ['PUBLIC HEALTH', /\bpublic\s+health\b/i],
@@ -248,7 +248,7 @@ function _detectFeeProgramme(question) {
 
 function _isProgrammeFeeQuestion(question) {
     const q = String(question || '').trim();
-    return /(fee|fees|tuition|cost|payment|payable|levy)/i.test(q) && Boolean(_detectFeeProgramme(q));
+    return /(fee|fees|tuition|cost|payment|payable|levy|how\s+much|pay)/i.test(q) && Boolean(_detectFeeProgramme(q));
 }
 
 function _isMedicineFeeQuestion(question) {
@@ -257,7 +257,7 @@ function _isMedicineFeeQuestion(question) {
 
 function _detectFeeLevel(question) {
     const q = String(question || '').toLowerCase();
-    const level = q.match(/\b(100|200|300|400|500|600)\s*(?:level|lvl)?\b/);
+    const level = q.match(/\b(100|200|300|400|500|600)\s*(?:level|lvl|l)?\b/);
     if (!level) return null;
     if (level[1] === '200' && /(direct\s+entry|\bde\b)/i.test(q)) return '200_de';
     return level[1];
@@ -438,6 +438,25 @@ async function _buildCommonStaticReply(question) {
             ],
             needs_escalation: false,
             confidence: 0.95
+        };
+    }
+
+    if (/(what\s+can\s+you\s+do|help\s+me|how\s+do\s+i\s+use\s+this|how\s+to\s+use)/.test(q)) {
+        return {
+            speech_text: 'I can answer BMU questions on programmes, courses, fees, calendar, hostel, and student rules. You can type, tap follow ups, or use voice.',
+            display_markdown: 'I can help with BMU programmes, course requirements, fees, academic calendar, hostel, and student rules.\n\nYou can type your question, use voice, or tap suggested follow-up prompts.',
+            topic_slug: null,
+            citations: [],
+            suggested_actions: [
+                { label: 'Show me key BMU student handbook topics', action: 'open_topic:conduct' },
+                { label: 'What are BMU admission programme options?', action: 'open_topic:programmes' }
+            ],
+            follow_up_questions: [
+                'What are BMU hostel rules for students?',
+                'What is the BMU academic calendar for this session?'
+            ],
+            needs_escalation: false,
+            confidence: 0.92
         };
     }
 
