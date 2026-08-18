@@ -3,17 +3,18 @@ const LAW_TITLE = 'Bayelsa Medical University Yenagoa Law, 2018';
 
 function hasLawScope(question) {
     const q = String(question || '');
-    if (/\b(bmu\s+law|bayelsa\s+medical\s+university\s+yenagoa\s+law|university\s+law|under\s+the\s+law|according\s+to\s+the\s+law|statute|statutes|section\s+\d+|what\s+law)\b/i.test(q)) {
+    if (/\b(bmu\s+law|bayelsa\s+medical\s+university(?:\s+yenagoa)?\s+law|enabling\s+law|university\s+law|under\s+the\s+law|according\s+to\s+the\s+law|statute|statutes|section\s+\d+|what\s+law)\b/i.test(q)) {
         return true;
     }
-    if (/\b(functions?|roles?|appoints?|appointed|appointment|remove|removed|removal|tenure|term|listed|principal|disputes?|resolves?|controls?|chairs?|chairman|meetings?|delegate|delegation|certify|certified|true\s+copy|visitation|disciplin\w*|suspend|misconduct|rusticat\w*|expel|expelled|expulsion|appeal|discrimination|discriminate|quorum|committee|seal|notice|retir\w*|retirement|pension|award|degree|certificate|honorary|fees?|manpower|speciali[sz]ed|proceedings?|vacanc\w*|personal\s+interest|cause\s+of\s+action|commissioner|governor|graduate|prescribed|teacher|undergraduate)\b/i.test(q)
-        && /\b(bmu|chancellors?|pro[-\s]?chancellors?|vice[-\s]?chancellors?|vc|dvc|council|senate|staff|student|examiner|professors?|academic\s+staff|bodies|university)\b/i.test(q)) {
+    if (/\b(functions?|roles?|appoints?|appointed|appointment|remove|removed|removal|tenure|term|listed|principal|disputes?|resolves?|controls?|chairs?|chairman|meetings?|delegate|delegation|certify|certified|true\s+copy|visitation|disciplin\w*|suspend|misconduct|rusticat\w*|expel|expelled|expulsion|appeal|discrimination|discriminate|quorum|committee|seal|notice|retir\w*|retirement|pension|award|degree|certificate|honorary|fees?|manpower|speciali[sz]ed|proceedings?|vacanc\w*|personal\s+interest|cause\s+of\s+action|commissioner|governor|graduate|prescribed|teacher|undergraduate|acquire|open|create|scholarships?|medals?|expenditure|first\s+schedule)\b/i.test(q)
+        && /\b(bmu|chancellors?|pro[-\s]?chancellors?|vice[-\s]?chancellors?|vc|dvc|council|senate|staff|student|examiner|professors?|academic\s+staff|bodies|university|registrar|bursar|librarian)\b/i.test(q)) {
         return true;
     }
     if (/\bdiscrimination\b/i.test(q)) return true;
     if (/\b(visitation|notice\s+of\s+action|personal\s+interest|proceedings?|vacanc\w*)\b/i.test(q)) return true;
+    if (/\bcommittee\b/i.test(q) && /\b(property|expenditure)\b/i.test(q)) return true;
     return /\bbmu\b/i.test(q)
-        && /\b(establish|body\s+corporate|sue|main\s+campus|vision|mission|manpower|powers?|award|degree|certificate|honorary|fees?|speciali[sz]ed|principal\s+officers?|chancellor|vice[-\s]?chancellor|dvc|visitor|council|senate|disciplin|misconduct|rusticat|expel|discrimination|land|quorum|committee|seal|notice|retir|pension|appoint|remove|removal)\b/i.test(q);
+        && /\b(establish|body\s+corporate|sue|main\s+campus|vision|mission|manpower|powers?|award|degree|certificate|honorary|fees?|speciali[sz]ed|principal\s+officers?|chancellor|vice[-\s]?chancellor|dvc|visitor|council|senate|disciplin|misconduct|rusticat|expel|discrimination|land|quorum|committee|seal|notice|retir|pension|appoint|remove|removal|acquire|open|create|scholarships?|medals?|expenditure|registrar|bursar|librarian)\b/i.test(q);
 }
 
 function reply({ speech, markdown, section, confidence = 0.99 }) {
@@ -42,7 +43,7 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(body\s+corporate|sue\s+and\s+be\s+sued|corporate\s+name|perpetual\s+succession|property\s+powers?)/i.test(q)) {
+    if (/(legal\s+personality|body\s+corporate|sue\s+and\s+be\s+sued|corporate\s+name|perpetual\s+succession|common\s+seal|acquire.*property|immovable\s+property|property\s+powers?)/i.test(q)) {
         return reply({
             section: 'Section 1 - Establishment and Incorporation',
             speech: 'Section 1 establishes BMU as a body corporate with perpetual succession and a common seal. It can sue and be sued, and may acquire, hold and dispose of movable and immovable property for its functions.',
@@ -50,7 +51,7 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(where|location|campus|main\s+campus|other\s+campuses)/i.test(q) && !/notice\s+of\s+action/i.test(q)) {
+    if (/(where|location|campus|main\s+campus|other\s+campuses|open\s+campuses)/i.test(q) && !/notice\s+of\s+action/i.test(q)) {
         return reply({
             section: 'Section 2 - Location of the University',
             speech: 'Section 2 says the main campus is at Imgbi Road, Amarata-Yenagoa. The University may also establish other campuses within Bayelsa State for smooth running of its programmes.',
@@ -58,7 +59,7 @@ function buildLawReply(question) {
         });
     }
 
-    if (/\b(vision|mission|manpower|partner|partnership|health\s+needs|health\s+technology)\b/i.test(q)) {
+    if (/\b(vision|mission|manpower|partner|partnership|health\s+needs|health\s+technology|public\s+benefit|meant\s+to\s+become)\b/i.test(q)) {
         return reply({
             section: 'Section 3 - The Vision and Mission of the University',
             speech: 'Section 3 gives BMU a vision of being a leading internationally recognized medical institution and a mission to provide scientific, technological and professional training in medical sciences, identify health needs, and support sustainable development.',
@@ -66,20 +67,36 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(committee|committees|co-opt|joint\s+meetings?|delegate.*award.*degree|award.*degree.*committee)/i.test(q)) {
+    if (/(finance\s+and\s+general\s+purposes|committee.*controls?.*(property|expenditure)|(property|expenditure).*committee)/i.test(q)) {
         return reply({
-            section: 'Section 22 - Appointment of Committees',
-            speech: 'Section 22 allows University bodies to appoint committees, but it does not allow Senate to delegate the award of degrees to a committee.',
-            markdown: `Under **Section 22** of the **${LAW_TITLE}**, University bodies may appoint committees and authorize some functions.\n\nHowever, the section does **not** allow **Senate** to delegate the **award of degrees** to a committee.`
+            section: 'Section 8 - Functions of the Council',
+            speech: 'Section 8 provides for a Finance and General Purposes Committee, which exercises control over the property and expenditure of the University, subject to Council directions.',
+            markdown: `Under **Section 8** of the **${LAW_TITLE}**, the **Finance and General Purposes Committee** exercises control over the University's **property and expenditure**, subject to the directions of **Council**.`
         });
     }
 
-    if (/(power|powers|facult|college|school|department|award|degree|certificate|honorary|fees?|speciali[sz]ed\s+health|research)|(power|powers).*(discipline|welfare)/i.test(q)
+    if (/(who\s+awards?.*degrees?|degrees?.*awarded)|(appoints?.*(internal|external).*examiners?)|(internal|external).*examiners?/i.test(q)) {
+        return reply({
+            section: 'Section 9 - Functions of the Senate',
+            speech: 'Section 9 gives Senate control of courses and examinations, including appointing internal and external examiners, and awarding degrees and other prescribed qualifications.',
+            markdown: `Under **Section 9** of the **${LAW_TITLE}**, **Senate** controls courses and examinations, including appointment of **internal and external examiners**, and awards **degrees and other prescribed qualifications**.`
+        });
+    }
+
+    if (/(committee|committees|co-opt|coopt|joint\s+meetings?|delegate.*award.*degree|award.*degree.*committee|council\s+committees?)/i.test(q)) {
+        return reply({
+            section: 'Section 22 - Appointment of Committees',
+            speech: 'Section 22 allows University bodies to appoint committees, including committees that need not consist only of members of the appointing body, and permits co-opted members. It does not allow Senate to delegate the award of degrees to a committee.',
+            markdown: `Under **Section 22** of the **${LAW_TITLE}**, University bodies may appoint committees, including committees that need not consist exclusively of their own members. A committee may also co-opt members, subject to the Law, statutes and regulations.\n\nThe section does **not** allow **Senate** to delegate the **award of degrees** to a committee. The Pro-Chancellor and Vice-Chancellor are members of Council committees except a committee of inquiry into conduct.`
+        });
+    }
+
+    if (/(power|powers|facult|college|school|schools|institute|institutes|department|award|degree|certificate|honorary|fees?|speciali[sz]ed\s+health|research|scholarships?|medals?)|(power|powers).*(discipline|welfare)/i.test(q)
         && !/(student|disciplinary\s+measures)/i.test(q)) {
         return reply({
             section: 'Section 4 - Powers of the University',
-            speech: 'Section 4 gives BMU powers including establishing colleges, faculties, schools and departments; appointing staff; awarding degrees, diplomas, certificates and honorary degrees; charging fees; providing discipline and welfare; and providing specialized health services and research.',
-            markdown: `Under **Section 4** of the **${LAW_TITLE}**, BMU may, among other powers:\n\n- establish **colleges, faculties, schools, departments, centres and other teaching/research units**;\n- institute academic and administrative posts and make appointments;\n- award **degrees, diplomas, certificates, academic titles and other distinctions**;\n- award **honorary degrees and fellowships**;\n- demand and receive fees as determined, subject to Governing Council directives;\n- provide for discipline and welfare; and\n- provide specialized health services and medical research.`
+            speech: 'Section 4 gives BMU powers including establishing colleges, faculties, schools and departments; appointing staff; awarding degrees, diplomas, certificates, scholarships, medals and honorary degrees; charging fees; providing discipline and welfare; and providing specialized health services and research.',
+            markdown: `Under **Section 4** of the **${LAW_TITLE}**, BMU may, among other powers:\n\n- establish **colleges, faculties, schools, departments, centres and other teaching/research units**;\n- institute academic and administrative posts and make appointments;\n- award **degrees, diplomas, certificates, academic titles and other distinctions**;\n- award **fellowships, scholarships, medals**, honorary degrees and fellowships;\n- demand and receive fees as determined, subject to Governing Council directives;\n- provide for discipline and welfare; and\n- provide specialized health services and medical research.`
         });
     }
 
@@ -111,8 +128,8 @@ function buildLawReply(question) {
     if (/(visitor|visitation|visitations?)/i.test(q)) {
         return reply({
             section: 'Section 14 - The Visitor of the University',
-            speech: 'Section 14 states that the Governor is the Visitor of the University, and visitation should occur as circumstances require, not less than once every four years.',
-            markdown: `Under **Section 14** of the **${LAW_TITLE}**:\n\n- The **Governor** is the **Visitor of the University**.\n- The Visitor should conduct, or direct, a visitation **as circumstances require, not less than once every four years**.`
+            speech: 'Section 14 states that the Governor is the Visitor of the University, visitation should occur as circumstances require and not less than once every four years, and University bodies must provide the facilities and assistance needed for the visitation.',
+            markdown: `Under **Section 14** of the **${LAW_TITLE}**:\n\n- The **Governor** is the **Visitor of the University**.\n- The Visitor should conduct, or direct, a visitation **as circumstances require, not less than once every four years**.\n- University bodies and persons must provide required **facilities and assistance** and give effect to lawful visitation instructions.`
         });
     }
 
@@ -193,7 +210,7 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(examiner|examiners).*(remove|removal)|(remove|removal).*(examiner|examiners)/i.test(q)) {
+    if (/(examiner|examiners).*(remove|removal|appoint|replacement|heard)|(remove|removal|appoint|replacement|heard).*(examiner|examiners)/i.test(q)) {
         return reply({
             section: 'Section 17 - Removal of Examiners',
             speech: 'Section 17 says that on Senate recommendation, the Vice-Chancellor may remove an examiner after giving the examiner an opportunity to make representations, and may appoint another examiner in the removed examiner place.',
@@ -249,15 +266,15 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(seal|document|contract|instrument|proceedings?|vacanc\w*|personal\s+interest|stamp|administrative\s+provisions)/i.test(q)) {
+    if (/(seal|document|contract|instrument|proceedings?|vacanc\w*|personal\s+interest|conflict\s+of\s+interest|stamp|administrative\s+provisions)/i.test(q)) {
         return reply({
             section: 'Section 23 - Miscellaneous Administrative Provisions',
-            speech: 'Section 23 covers administrative matters including the University seal, execution and evidence of sealed documents, contracts authorized by Council, validity of proceedings despite vacancies, disclosure of personal interest, and service of notices.',
-            markdown: `**Section 23** of the **${LAW_TITLE}** covers miscellaneous administrative matters, including:\n\n- the University seal and authentication of the seal;\n- receiving sealed University documents in evidence;\n- contracts or instruments made by persons authorized by Council;\n- validity of proceedings despite vacancies;\n- disclosure of personal interest by members of University bodies; and\n- service of notices or instruments.`
+            speech: 'Section 23 covers administrative matters including the University seal, authentication by the Pro-Chancellor, Vice-Chancellor, Registrar or other authorized person, receiving sealed documents in evidence, validity of proceedings despite vacancies, and disclosure of personal interest.',
+            markdown: `**Section 23** of the **${LAW_TITLE}** covers miscellaneous administrative matters, including:\n\n- the University seal and authentication by the **Pro-Chancellor, Vice-Chancellor, Registrar**, or other authorized person;\n- receiving sealed University documents in **evidence**;\n- contracts or instruments made by persons authorized by Council;\n- validity of proceedings despite **vacancies**;\n- disclosure of **personal interest** by members of University bodies; and\n- service of notices or instruments.`
         });
     }
 
-    if (/(pension|allowance|fifteen\s+years|15\s+years|professors?.*pension|pension.*professors?)/i.test(q)) {
+    if (/(pension|allowance|benefits?|fifteen\s+years|15\s+years|professors?.*pension|pension.*professors?)/i.test(q) && /professor|retirement\s+benefits|pension/i.test(q)) {
         return reply({
             section: 'Section 26 - Special Provision relating to Pension of Professors',
             speech: 'Section 26 provides for pension and allowances for a professor who retires after serving at least fifteen years as a professor in the University or continuously in State service up to retiring age, subject to the conditions in the section and Council determination of qualifying benefits.',
@@ -273,7 +290,7 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(commissioner|governor|graduate|misconduct|prescribed|professor|property|regulation|senate|state|teacher|undergraduate).*(mean|definition)|what\s+does\s+.+\s+mean|interpretation/i.test(q)) {
+    if (/(commissioner|governor|graduate|misconduct|prescribed|professor|property|regulation|senate|state|teacher|undergraduate).*(\bmean\b|definition)|\bdefine\b|what\s+does\s+.+\s+\bmean\b|interpretation/i.test(q)) {
         const definitions = [
             ['commissioner', 'Commissioner means the State Commissioner charged with responsibility for Education.'],
             ['governor', 'Governor means the Governor of Bayelsa State of Nigeria.'],
@@ -308,6 +325,28 @@ function buildLawReply(question) {
             section: 'First Schedule - Appointment and Removal of Vice-Chancellor',
             speech: 'Under the First Schedule, the Vice-Chancellor is appointed by the Governor on the recommendation of a joint selection committee of Senate and Council. The VC holds office for five years with no second term.',
             markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **Vice-Chancellor** is appointed by the **Governor**, acting on the recommendation of a **joint selection committee of Senate and Council**.\n\nThe Schedule also states that the Vice-Chancellor holds office for **five years**, with **no second term**.`
+        });
+    }
+
+    if (/(registrar|bursar|librarian).*(first\s+schedule|do|role|function|responsible|chief)|first\s+schedule.*(registrar|bursar|librarian)/i.test(q)) {
+        if (/bursar/i.test(q)) {
+            return reply({
+                section: 'First Schedule - Bursar',
+                speech: 'Under the First Schedule, the Bursar is the Chief Financial Officer and is responsible to the Vice-Chancellor for day-to-day administration and control of the University financial affairs.',
+                markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **Bursar** is the **Chief Financial Officer** of the University and is responsible to the **Vice-Chancellor** for day-to-day administration and control of the University's financial affairs.`
+            });
+        }
+        if (/librarian/i.test(q)) {
+            return reply({
+                section: 'First Schedule - University Librarian',
+                speech: 'Under the First Schedule, the University Librarian is responsible to the Vice-Chancellor for the University Library and coordination of library services.',
+                markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **University Librarian** is responsible to the **Vice-Chancellor** for the **University Library** and for coordinating library services.`
+            });
+        }
+        return reply({
+            section: 'First Schedule - Registrar',
+            speech: 'Under the First Schedule, the Registrar is the Chief Administrative Officer and Secretary to Council, Senate, Congregation and Convocation.',
+            markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **Registrar** is the **Chief Administrative Officer** of the University and serves as Secretary to **Council, Senate, Congregation and Convocation**.`
         });
     }
 
