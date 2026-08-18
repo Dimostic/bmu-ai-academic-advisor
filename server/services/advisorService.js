@@ -1302,6 +1302,20 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         text: trimmed
     });
 
+    const explicitLawReply = bmuLawService.buildLawReply(trimmed);
+    if (explicitLawReply) {
+        return await _persistAndPackage({
+            conversation,
+            parsed: explicitLawReply,
+            llmUsage: null,
+            voiceEnabled,
+            startedAt,
+            advisorGender,
+            questionText: trimmed,
+            ragContext: ''
+        });
+    }
+
     const commonStaticReply = !isOfficeHolderIdentity && !requestedPrincipalOfficerRole && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion
         ? await _buildCommonStaticReply(trimmed)
         : null;

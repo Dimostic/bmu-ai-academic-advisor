@@ -1485,9 +1485,10 @@ async function askStream({
     const requestedPrincipalOfficerRole = _detectPrincipalOfficerRole(trimmed);
     const isPrincipalOfficersQuestion = _isPrincipalOfficersQuestion(trimmed);
     const isGovernorVisitorQuestion = _isGovernorVisitorQuestion(trimmed);
-    const fastIntentReply = !requestedPrincipalOfficerRole && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED
+    const explicitLawReply = bmuLawService.buildLawReply(trimmed);
+    const fastIntentReply = explicitLawReply || ((!requestedPrincipalOfficerRole && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED)
         ? await _buildFastIntentReply(trimmed)
-        : null;
+        : null);
 
     let conversation;
     try {
