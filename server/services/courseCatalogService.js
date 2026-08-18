@@ -37,6 +37,18 @@ const PROGRAMME_ALIASES = [
     ['STATISTICS', /\bstatistics\b/i]
 ];
 
+const CATALOG_PROGRAMME_EQUIVALENTS = {
+    'PHARMACY': ['PHARMACY', 'DOCTOR OF PHARMACY'],
+    'RADIOGRAPHY': ['RADIOGRAPHY', 'RADIOGRAPHY & RADIATION SCIENCE'],
+    'HUMAN NUTRITION & DIETETICS': ['HUMAN NUTRITION & DIETETICS', 'NUTRITION & DIETETICS'],
+    'HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT': [
+        'HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT',
+        'HEALTH CARE ADMINISTRATION AND HOSPITAL MANAGEMENT'
+    ],
+    'MEDICAL LABORATORY SCIENCE': ['MEDICAL LABORATORY SCIENCE', 'MEDICAL LABORATORY SCIENCES'],
+    'PHYSICS': ['PHYSICS', 'PHYSICS WITH ELECTRONICS']
+};
+
 function cleanCell(html) {
     return String(html || '')
         .replace(/<[^>]+>/g, ' ')
@@ -130,17 +142,43 @@ function formatProgramme(value) {
         .replace(/\bBmu\b/g, 'BMU');
 }
 
+function programmeKeysFor(programme) {
+    return CATALOG_PROGRAMME_EQUIVALENTS[programme] || [programme];
+}
+
 async function buildCourseListReply(question) {
     if (!isCourseListQuestion(question)) return null;
     const programme = detectProgramme(question);
     const level = detectLevel(question);
     const semester = detectSemester(question);
+    const programmeKeys = programmeKeysFor(programme);
+    const allProgrammeRows = (await loadCatalog())
+        .filter(row => programmeKeys.includes(row.programme));
     const rows = (await loadCatalog())
-        .filter(row => row.level === level && row.programme === programme && (!semester || row.semester === semester))
+        .filter(row => row.level === level && programmeKeys.includes(row.programme) && (!semester || row.semester === semester))
         .sort((a, b) => {
             const sem = String(a.semester).localeCompare(String(b.semester));
             return sem || a.sn - b.sn;
         });
+
+    const displayProgramme = formatProgramme(programme);
+    const semesterScope = semester ? `, ${formatSemester(semester)} semester` : '';
+
+    if (!rows.length && allProgrammeRows.length) {
+        const availableLevels = [...new Set(allProgrammeRows.map(row => row.level))]
+            .sort((a, b) => Number(a) - Number(b));
+        return {
+            speech_text: `I checked the BMU student courses document. It does not show ${level} level ${displayProgramme}${semesterScope} courses. The available levels in that source are ${availableLevels.join(', ')} level.`,
+            display_markdown: `I checked **${SOURCE_TITLE}**. It does **not** show courses for **${level} level ${displayProgramme}**${semesterScope}.\n\nAvailable level(s) for **${displayProgramme}** in that BMU source: **${availableLevels.map(item => `${item} level`).join(', ')}**.\n\nI should not substitute CCMAS/general curriculum data as BMU's exact student course list unless you ask for national CCMAS guidance separately.`,
+            topic_slug: 'bmu_student_courses_not_listed',
+            citations: [{ title: SOURCE_TITLE, source: `${displayProgramme} course list availability` }],
+            suggested_actions: [],
+            follow_up_questions: availableLevels.slice(0, 2).map(item => `Show ${item} level ${displayProgramme} courses`),
+            needs_escalation: false,
+            confidence: 0.94,
+            _source: 'student_courses_catalog'
+        };
+    }
 
     if (!rows.length) return null;
 
@@ -150,8 +188,6 @@ async function buildCourseListReply(question) {
         '| --- | --- | --- | --- |',
         ...tableRows
     ].join('\n');
-    const displayProgramme = formatProgramme(programme);
-    const semesterScope = semester ? `, ${formatSemester(semester)} semester` : '';
     const codes = rows.map(row => row.courseCode).join(', ');
 
     return {
