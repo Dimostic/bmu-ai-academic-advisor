@@ -286,7 +286,9 @@ router.post('/ask', optionalAuth, enforceLimits, enforceGuestDemoLimit, async (r
         }
 
         const normalizedQuestion = String(question).toLowerCase();
-        if (/(governor|visitor\s+to\s+the\s+university|visitor\s+of\s+the\s+university|bayelsa\s+state)/i.test(normalizedQuestion)
+        const isExplicitBmuLawQuestion = /\b(bmu\s+law|bayelsa\s+medical\s+university\s+yenagoa\s+law|university\s+law|under\s+the\s+law|according\s+to\s+the\s+law)\b/i.test(normalizedQuestion);
+        if (!isExplicitBmuLawQuestion
+            && /(governor|visitor\s+to\s+the\s+university|visitor\s+of\s+the\s+university|bayelsa\s+state)/i.test(normalizedQuestion)
             && /(who\s+is|name\s+of|current|serves\s+as|visitor)/i.test(normalizedQuestion)) {
             const guestDemo = recordGuestDemoUsage(req);
             return res.json({
