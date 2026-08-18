@@ -24,6 +24,7 @@ const llm = require('./llmClient');
 const persona = require('./advisorPersonaService');
 const tts = require('./ttsService');
 const responseQualityService = require('./responseQualityService');
+const courseCatalogService = require('./courseCatalogService');
 
 let faqService = null;
 try { faqService = require('./faqService'); }
@@ -1121,13 +1122,15 @@ function _buildHandbookAcademicPolicyReply(question) {
     };
 }
 
-function _buildFastIntentReply(question) {
+async function _buildFastIntentReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q) return null;
 
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply();
     const programmeFeeReply = _buildProgrammeFeeReply(q);
     if (programmeFeeReply) return programmeFeeReply;
+    const courseCatalogReply = await courseCatalogService.buildCourseListReply(q);
+    if (courseCatalogReply) return courseCatalogReply;
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
 
     const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
@@ -1479,7 +1482,9 @@ async function askStream({
     const requestedPrincipalOfficerRole = _detectPrincipalOfficerRole(trimmed);
     const isPrincipalOfficersQuestion = _isPrincipalOfficersQuestion(trimmed);
     const isGovernorVisitorQuestion = _isGovernorVisitorQuestion(trimmed);
-    const fastIntentReply = !requestedPrincipalOfficerRole && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED ? _buildFastIntentReply(trimmed) : null;
+    const fastIntentReply = !requestedPrincipalOfficerRole && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED
+        ? await _buildFastIntentReply(trimmed)
+        : null;
 
     let conversation;
     try {
