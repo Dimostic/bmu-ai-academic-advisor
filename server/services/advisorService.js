@@ -145,6 +145,10 @@ function _isGovernorVisitorQuestion(question) {
         && /(who\s+is|name\s+of|current|serves\s+as|visitor)/i.test(q);
 }
 
+function _isExplicitLawQuestion(question) {
+    return /\b(bmu\s+law|bayelsa\s+medical\s+university(?:\s+yenagoa)?\s+law|university\s+law|under\s+the\s+law|according\s+to\s+the\s+law|statute|statutes|section\s+\d+|legal\s+action|suing|sue|pre[-\s]?action\s+notice|notice\s+of\s+action)\b/i.test(String(question || ''));
+}
+
 function _buildPrincipalOfficersReply() {
     const rows = BMU_PRINCIPAL_OFFICERS.map(({ position, name, note }) => ({
         position,
@@ -1311,7 +1315,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         text: trimmed
     });
 
-    const explicitLawReply = (requestedPrincipalOfficerRole || isPrincipalOfficersQuestion || isGovernorVisitorQuestion)
+    const explicitLawReply = (requestedPrincipalOfficerRole || isPrincipalOfficersQuestion || isGovernorVisitorQuestion || !_isExplicitLawQuestion(trimmed))
         ? null
         : bmuLawService.buildLawReply(trimmed);
     if (explicitLawReply) {
