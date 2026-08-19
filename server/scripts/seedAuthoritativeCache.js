@@ -238,10 +238,10 @@ function feeQuestions() {
         for (const level of levels) {
             for (const category of ['indigene', 'non-indigene']) {
                 entries.push([
-                    `What is the fee for ${level} level ${programme} ${category} at BMU?`,
+                    `What is the fee for ${level} ${programme} ${category} at BMU?`,
                     [
-                        `How much does ${category} pay for ${programme} ${level} level?`,
-                        `${programme} ${level} level ${category} fees`
+                        `How much does ${category} pay for ${programme} ${level}?`,
+                        `${programme} ${level} ${category} fees`
                     ]
                 ]);
             }
@@ -294,6 +294,20 @@ async function buildEntries() {
     });
 }
 
+async function deactivateMalformedSeedRows() {
+    const { query } = getDb();
+    const result = await query(
+        `UPDATE cached_qa
+         SET is_active = 0,
+             updated_at = NOW()
+         WHERE qa_type = ?
+           AND is_active = 1
+           AND question LIKE '% level level %'`,
+        [QA_TYPE]
+    );
+    return Number(result?.affectedRows || 0);
+}
+
 async function main() {
     const entries = await buildEntries();
     if (DRY_RUN) {
@@ -313,6 +327,7 @@ async function main() {
     let created = 0;
     let refreshed = 0;
     let skipped = 0;
+    const deactivated = await deactivateMalformedSeedRows();
 
     console.log(`[seedAuthoritativeCache] seeding ${entries.length} authoritative entries...`);
 
@@ -330,7 +345,7 @@ async function main() {
         }
     } catch (_) {}
 
-    console.log(`[seedAuthoritativeCache] done: ${created} created, ${refreshed} refreshed, ${skipped} skipped`);
+    console.log(`[seedAuthoritativeCache] done: ${created} created, ${refreshed} refreshed, ${skipped} skipped, ${deactivated} malformed deactivated`);
     getDb().pool.end();
     process.exit(0);
 }

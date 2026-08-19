@@ -49,6 +49,25 @@ function _classifyCourseIntent(question) {
     };
 }
 
+function _isFeeAmountQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    return /(fee|fees|tuition|cost|payment|payable|levy|how\s+much|pay)/i.test(q)
+        && /(indigene|non[-\s]?indigene|programme|program|course|level|\b100\b|\b200\b|\b300\b|\b400\b|\b500\b|\b600\b|medicine|mbbs|nursing|pharmacy|laboratory|dentistry|public\s+health|community\s+health|optometry|physiotherapy|radiography|anatomy|physiology|biochemistry|computer\s+science|microbiology|statistics|mathematics|physics|chemistry|biology|nutrition|dental)/i.test(q);
+}
+
+function _qaLooksLikeFeeAmount(qa) {
+    const hay = `${qa?.question || ''}\n${qa?.answer || ''}\n${JSON.stringify(qa?.answerSources || [])}`.toLowerCase();
+    return /fee structures? new\.docx|official\s+total\s+payable|indigene\s+total\s+payable|non[-\s]?indigene\s+total\s+payable|\bn\d{2,}/i.test(hay);
+}
+
+function _cacheMatchAllowed(userQuery, qa) {
+    if (_isFeeAmountQuestion(userQuery) && !_qaLooksLikeFeeAmount(qa)) {
+        console.log(`[FAQService] Rejected FAQ match for fee amount query: "${String(userQuery).slice(0, 50)}..." -> "${String(qa?.question || '').slice(0, 50)}..."`);
+        return false;
+    }
+    return true;
+}
+
 // Q&A generation phase configurations
 const QA_GENERATION_PHASES = {
     // Phase 1: Foundational/Definitional questions
@@ -415,6 +434,7 @@ class FAQService {
             // Get full Q&A details
             const fullQA = await CachedQA.findById(bestMatch.id);
             if (!fullQA) return null;
+            if (!_cacheMatchAllowed(userQuery, fullQA)) return null;
 
             const responseTime = Date.now() - startTime;
             
