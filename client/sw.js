@@ -4,7 +4,7 @@
  */
 
 // Bump this to force clients to update cached assets after deploys.
-const CACHE_NAME = 'bmu-ai-assistant-v64';
+const CACHE_NAME = 'bmu-ai-assistant-v65';
 
 const APP_SHELL = [
   '/',

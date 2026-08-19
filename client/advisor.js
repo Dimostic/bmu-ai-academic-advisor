@@ -2039,10 +2039,14 @@
         return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
     }
 
+    function shouldUseBrowserSpeechRecognition() {
+        return hasWebSpeech();
+    }
+
     // Server-side STT capability is only known after /api/advisor/health
-    // resolves at boot. Until we know, assume it's available (avoids
-    // hiding the mic on the very first frame for the common case).
-    let serverSttAvailable = true;
+    // resolves at boot. Start disabled so iPad/Safari cannot fall into a
+    // broken upload path before production tells us STT is configured.
+    let serverSttAvailable = false;
 
     /** Update the mic button to reflect what speech-to-text actually works
      *  in this browser. If neither browser Web Speech API nor server
@@ -2052,7 +2056,7 @@
      *  Firefox today. */
     function updateMicAvailability() {
         if (!micBtn) return;
-        const browserOk = hasWebSpeech();
+        const browserOk = shouldUseBrowserSpeechRecognition();
         const canVoice  = browserOk || serverSttAvailable;
         if (canVoice) {
             micBtn.disabled = false;
@@ -2127,7 +2131,7 @@
     let wakeNeedsUserGesture = true;
 
     function armWakeWordFromUserGesture() {
-        if (!state.wakeWordEnabled || !hasWebSpeech()) return;
+        if (!state.wakeWordEnabled || !shouldUseBrowserSpeechRecognition()) return;
         wakeNeedsUserGesture = false;
         scheduleWakeWordListener(240);
     }
@@ -2156,7 +2160,7 @@
     }
 
     function scheduleWakeWordListener(delay = 900) {
-        if (!state.wakeWordEnabled || !hasWebSpeech()) return;
+        if (!state.wakeWordEnabled || !shouldUseBrowserSpeechRecognition()) return;
         if (wakeNeedsUserGesture) return;
         if (wakeRestartTimer) clearTimeout(wakeRestartTimer);
         wakeRestartTimer = setTimeout(() => {
@@ -2166,7 +2170,7 @@
     }
 
     function startWakeWordListener() {
-        if (!state.wakeWordEnabled || !hasWebSpeech()) return;
+        if (!state.wakeWordEnabled || !shouldUseBrowserSpeechRecognition()) return;
         if (wakeNeedsUserGesture) return;
         if (wakeRecognition || state.recording || document.hidden) {
             scheduleWakeWordListener(1000);
@@ -2246,12 +2250,12 @@
         // Hard-stop the early misleading error: if neither path can work,
         // bail out with a friendly toast rather than starting a recording
         // we know will fail at upload time.
-        if (!hasWebSpeech() && !serverSttAvailable) {
+        if (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable) {
             toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
             return;
         }
         setAvatarState('listening', 'Listening');
-        if (hasWebSpeech()) {
+        if (shouldUseBrowserSpeechRecognition()) {
             const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new Rec();
             recognition.lang = 'en-NG';
@@ -2374,12 +2378,7 @@
                     recognition.stop();
                 } catch (_) { /* ignore */ }
                 recognition = null;
-                if (serverSttAvailable && !hasWebSpeech()) {
-                    toast('Mic error — using server transcription.', 'error');
-                    startServerRecording();
-                } else {
-                    toast('Microphone could not hear clearly. Please tap the mic and try again.', 'error');
-                }
+                toast('Microphone could not hear clearly. Please tap the mic and try again.', 'error');
             };
             recognition.onend = () => {
                 if (submitting) return;
@@ -2409,6 +2408,13 @@
     }
 
     async function startServerRecording() {
+        if (!serverSttAvailable) {
+            updateMicAvailability();
+            toast('Voice input is not available in this browser yet. Please type your question, or use Chrome / Edge with microphone access enabled.', 'error');
+            setAvatarState('idle', 'Ready');
+            syncMicButtonsUi(false);
+            return;
+        }
         try {
             stopWakeWordListener();
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -2477,11 +2483,11 @@
                         toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
                         setAvatarState('idle', 'Ready');
                     } else {
-                        toast(data?.error || 'Could not transcribe audio.', 'error');
+                        toast(data?.error || 'Could not transcribe audio. Please tap the mic and try again, or type your question.', 'error');
                         setAvatarState('idle', 'Ready');
                     }
                 } catch (err) {
-                    toast('Transcription failed.', 'error');
+                    toast('Could not transcribe audio. Please type your question or try again.', 'error');
                     setAvatarState('idle', 'Ready');
                 }
                 scheduleWakeWordListener(900);
@@ -3036,6 +3042,7 @@
         loadGuestDemoUsage();
         bindGuestDemoSuggestions();
         bindBrowserVoiceWarmupGestures();
+        updateMicAvailability();
 
         // Establish provider availability before wiring the mic, so Firefox
         // users (no Web Speech API) and any deployment without a Whisper
