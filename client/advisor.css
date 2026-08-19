@@ -343,7 +343,8 @@ html[data-theme="dark"] .avatar-stage-controls {
    character motion (head bob, hand wave, tilt) but the background and
    halos stay still. */
 
-/* Listening: just reveal the dashed ring — no spin, no flicker. */
+/* Listening ring: hidden by default; only visible while the mic is actively listening. */
+.avatar-svg-host svg #listenRing { opacity: 0; animation: none; }
 .avatar-svg-host svg.av-listening #listenRing { opacity: .55; }
 
 /* Thinking: only a slow, subtle head tilt. No glow. */
@@ -417,7 +418,6 @@ html[data-theme="dark"] .avatar-stage-controls {
 /* SVG avatar element animations */
 #avatarSvg .eye { transition: transform .12s linear; transform-box: fill-box; transform-origin: center; }
 #avatarSvg.blink .eye { transform: scaleY(0.08); }
-#avatarSvg.listening #listenRing { opacity: 1; animation: spin 6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); transform-origin: 100px 120px; } }
 
 /* -------- Chat pane -------- */

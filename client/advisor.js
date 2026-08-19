@@ -560,6 +560,7 @@
             advisorSvg.classList.toggle('av-listening', stateName === 'listening');
             advisorSvg.classList.toggle('av-thinking',  stateName === 'thinking');
             advisorSvg.classList.toggle('av-speaking',  speaking);
+            advisorSvg.classList.remove('listening');
         }
     }
 
@@ -2347,6 +2348,13 @@
                 askNow();
                 scheduleWakeWordListener(1400);
             };
+            const queueVoiceSubmit = (delay = LISTENING_SILENCE_MS) => {
+                clearPendingVoiceSubmit();
+                pendingVoiceSubmitTimer = setTimeout(() => {
+                    pendingVoiceSubmitTimer = null;
+                    submitTranscript();
+                }, delay);
+            };
             const scheduleSilenceSubmit = () => {
                 clearSilenceTimer();
                 const startedAt = Date.now();
@@ -2416,10 +2424,7 @@
                 if (submitting) return;
                 if (state.recording && (questionInput.value.trim() || lastHeardTranscript.trim() || buffer.trim())) {
                     finishListeningUi('Processing');
-                    pendingVoiceSubmitTimer = setTimeout(() => {
-                        pendingVoiceSubmitTimer = null;
-                        submitTranscript();
-                    }, LISTENING_SILENCE_MS);
+                    queueVoiceSubmit();
                     return;
                 }
                 finishListeningUi('Ready');
