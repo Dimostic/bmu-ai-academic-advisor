@@ -406,6 +406,32 @@ class FAQService {
         }
 
         try {
+            const exactRows = await query(
+                `SELECT *
+                 FROM cached_qa
+                 WHERE is_active = TRUE
+                   AND (LOWER(TRIM(question)) = ? OR LOWER(TRIM(question)) = ?)
+                 ORDER BY is_verified DESC, usage_count DESC, updated_at DESC
+                 LIMIT 1`,
+                [
+                    String(userQuery || '').trim().toLowerCase(),
+                    String(searchQuery || '').trim().toLowerCase()
+                ]
+            );
+            if (exactRows.length) {
+                const exactQA = CachedQA._parseRow(exactRows[0]);
+                if (_cacheMatchAllowed(userQuery, exactQA)) {
+                    const responseTime = Date.now() - startTime;
+                    console.log(`[FAQService] FAQ exact match: "${searchQuery.substring(0, 40)}..." -> "${exactQA.question.substring(0, 40)}..."`);
+                    return {
+                        cachedQA: exactQA,
+                        similarityScore: 1,
+                        responseTimeMs: responseTime,
+                        source: 'faq_cache'
+                    };
+                }
+            }
+
             // Generate embedding for user query
             const queryEmbedding = await aiService.generateEmbedding(searchQuery, true);
             if (!queryEmbedding || queryEmbedding.length === 0) return null;
