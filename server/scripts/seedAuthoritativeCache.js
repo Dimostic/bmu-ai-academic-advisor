@@ -139,6 +139,15 @@ function sourcesFrom(reply, fallbackTitle) {
     return [{ title: fallbackTitle || 'BMU authoritative advisor source', source: reply?.topic_slug || 'authoritative seed' }];
 }
 
+function isFeeSeedQuestion(question) {
+    return /(fee|fees|tuition|how\s+much|payable)/i.test(String(question || ''));
+}
+
+function replyUsesFeeStructure(reply) {
+    const hay = `${reply?.display_markdown || ''}\n${reply?.speech_text || ''}\n${JSON.stringify(reply?.citations || [])}`.toLowerCase();
+    return /bmu fee structures? new\.docx|official\s+total\s+payable|indigene\s+total\s+payable|non[-\s]?indigene\s+total\s+payable/i.test(hay);
+}
+
 async function generateEmbedding(question) {
     if (!EMBEDDINGS_ENABLED) return null;
     try {
@@ -216,6 +225,9 @@ async function addFastIntentQuestion(entries, item, fallbackTitle) {
 
     if (!reply) reply = await advisorStreamService._buildFastIntentReply(question);
     if (!reply) reply = bmuLawService.buildLawReply(question);
+    if (isFeeSeedQuestion(question) && !replyUsesFeeStructure(reply)) {
+        return;
+    }
     const answer = formatAnswer(reply);
     if (!answer) {
         console.warn(`[seedAuthoritativeCache] no fast answer for "${question}"`);
