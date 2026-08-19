@@ -1311,7 +1311,9 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         text: trimmed
     });
 
-    const explicitLawReply = bmuLawService.buildLawReply(trimmed);
+    const explicitLawReply = (requestedPrincipalOfficerRole || isPrincipalOfficersQuestion || isGovernorVisitorQuestion)
+        ? null
+        : bmuLawService.buildLawReply(trimmed);
     if (explicitLawReply) {
         return await _persistAndPackage({
             conversation,
