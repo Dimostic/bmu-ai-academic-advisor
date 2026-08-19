@@ -286,17 +286,44 @@ function _detectPrincipalOfficerRole(question) {
     return null;
 }
 
+function _normaliseOfficerName(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/\b(?:prof(?:essor)?|dr|mrs|mr|miss|ms)\.?\b/g, ' ')
+        .replace(/[^a-z]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function _detectPrincipalOfficerByName(question) {
+    const q = _normaliseOfficerName(question);
+    if (!q) return null;
+    const isPersonLookup = /(who is|tell me about|what do you know about|identify|profile of|current role of|position of|office of|name)/i.test(String(question || ''));
+    if (!isPersonLookup) return null;
+    return BMU_PRINCIPAL_OFFICERS.find(officer => {
+        const name = _normaliseOfficerName(officer.name);
+        if (!name) return false;
+        if (q.includes(name)) return true;
+        const parts = name.split(' ').filter(part => part.length > 2);
+        return parts.length >= 2 && parts.every(part => new RegExp(`\\b${part}\\b`, 'i').test(q));
+    }) || null;
+}
+
 function _diagnoseStaticQuestion(question) {
     const requestedPrincipalOfficerRole = _detectPrincipalOfficerRole(question);
+    const requestedPrincipalOfficerByName = _detectPrincipalOfficerByName(question);
     const isPrincipalOfficersQuestion = _isPrincipalOfficersQuestion(question);
     const isGovernorVisitorQuestion = _isGovernorVisitorQuestion(question);
     const isOfficeHolderIdentity = _isOfficeHolderIdentityQuestion(question);
-    const parsed = requestedPrincipalOfficerRole
+    const parsed = requestedPrincipalOfficerByName
+        ? _buildPrincipalOfficerPersonReply(requestedPrincipalOfficerByName)
+        : requestedPrincipalOfficerRole
         ? _buildPrincipalOfficerReply(requestedPrincipalOfficerRole)
         : (isPrincipalOfficersQuestion ? _buildPrincipalOfficersReply() : (isGovernorVisitorQuestion ? _buildGovernorVisitorReply() : null));
     return {
         question,
         requestedPrincipalOfficerRole,
+        requestedPrincipalOfficerByName: requestedPrincipalOfficerByName ? requestedPrincipalOfficerByName.name : null,
         isPrincipalOfficersQuestion,
         isGovernorVisitorQuestion,
         isOfficeHolderIdentity,
@@ -507,6 +534,21 @@ function _buildPrincipalOfficerReply(position) {
     return {
         speech_text: `The ${officer.position} of Bayelsa Medical University is ${officer.name}${note}.`,
         display_markdown: `The **${officer.position}** of Bayelsa Medical University is **${officer.name}**${note}.`,
+        topic_slug: 'bmu_principal_officer',
+        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99
+    };
+}
+
+function _buildPrincipalOfficerPersonReply(officer) {
+    if (!officer) return null;
+    const note = officer.note ? `, ${officer.note}` : '';
+    return {
+        speech_text: `${officer.name} is the ${officer.position} of Bayelsa Medical University${note}.`,
+        display_markdown: `**${officer.name}** is the **${officer.position}** of Bayelsa Medical University${note}.`,
         topic_slug: 'bmu_principal_officer',
         citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
         suggested_actions: [],
@@ -1518,12 +1560,13 @@ async function askStream({
     const trimmed = question.trim().slice(0, 4000);
     const isOfficeHolderIdentity = _isOfficeHolderIdentityQuestion(trimmed);
     const requestedPrincipalOfficerRole = _detectPrincipalOfficerRole(trimmed);
+    const requestedPrincipalOfficerByName = _detectPrincipalOfficerByName(trimmed);
     const isPrincipalOfficersQuestion = _isPrincipalOfficersQuestion(trimmed);
     const isGovernorVisitorQuestion = _isGovernorVisitorQuestion(trimmed);
-    const explicitLawReply = (requestedPrincipalOfficerRole || isPrincipalOfficersQuestion || isGovernorVisitorQuestion || !_isExplicitLawQuestion(trimmed))
+    const explicitLawReply = (requestedPrincipalOfficerRole || requestedPrincipalOfficerByName || isPrincipalOfficersQuestion || isGovernorVisitorQuestion || !_isExplicitLawQuestion(trimmed))
         ? null
         : bmuLawService.buildLawReply(trimmed);
-    const fastIntentReply = explicitLawReply || ((!requestedPrincipalOfficerRole && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED)
+    const fastIntentReply = explicitLawReply || ((!requestedPrincipalOfficerRole && !requestedPrincipalOfficerByName && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED)
         ? await _buildFastIntentReply(trimmed)
         : null);
 
@@ -1641,7 +1684,7 @@ async function askStream({
     // for a semantically equivalent question, serve it without paying the
     // LLM round-trip. Falls through silently on any error.
     // ------------------------------------------------------------------
-    if (faqService && !isOfficeHolderIdentity && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion) {
+    if (faqService && !requestedPrincipalOfficerByName && !isOfficeHolderIdentity && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion) {
         try {
             const cached = await faqService.getCachedResponse(trimmed, {
                 userId: student?.user_id || null,
@@ -1749,8 +1792,10 @@ async function askStream({
         }
     }
 
-    if (requestedPrincipalOfficerRole || isPrincipalOfficersQuestion) {
-        const parsed = requestedPrincipalOfficerRole
+    if (requestedPrincipalOfficerByName || requestedPrincipalOfficerRole || isPrincipalOfficersQuestion) {
+        const parsed = requestedPrincipalOfficerByName
+            ? _buildPrincipalOfficerPersonReply(requestedPrincipalOfficerByName)
+            : requestedPrincipalOfficerRole
             ? _buildPrincipalOfficerReply(requestedPrincipalOfficerRole)
             : _buildPrincipalOfficersReply();
         send('speech_ready', { speech_text: parsed.speech_text });
