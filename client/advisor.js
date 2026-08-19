@@ -2040,8 +2040,20 @@
         return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
     }
 
+    function isMobileSpeechDevice() {
+        const ua = navigator.userAgent || '';
+        const isiPadDesktopMode = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+        return /Android|iPhone|iPad|iPod/i.test(ua)
+            || isiPadDesktopMode
+            || (window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(hover: none)').matches);
+    }
+
     function shouldUseBrowserSpeechRecognition() {
-        return hasWebSpeech();
+        // Mobile Web Speech often fires `end` before the user has actually
+        // finished speaking, even with `continuous = true`. On touch devices
+        // prefer our MediaRecorder + server STT path so the 3-second silence
+        // timer is controlled by the app.
+        return hasWebSpeech() && !isMobileSpeechDevice();
     }
 
     // Server-side STT capability is only known after /api/advisor/health
@@ -2064,7 +2076,7 @@
             micBtn.classList.remove('mic-btn--disabled');
             micBtn.title = browserOk
                 ? 'Speak your question'
-                : 'Speak your question (server transcription)';
+                : 'Speak your question';
             if (avatarMicBtn) {
                 avatarMicBtn.disabled = false;
                 avatarMicBtn.classList.remove('is-disabled');
@@ -2467,6 +2479,7 @@
             const chunks = [];
             let discardRecording = false;
             let monitorTimer = null;
+            let maxRecordingTimer = null;
             let captureCtx = null;
             let analyser = null;
             let source = null;
@@ -2474,10 +2487,13 @@
             const startedAt = Date.now();
             let heardSpeech = false;
             let lastSpeechAt = 0;
+            let noiseFloor = 0.008;
             const stopRecorder = (discard = false) => {
                 discardRecording = discardRecording || discard;
                 if (monitorTimer) clearInterval(monitorTimer);
                 monitorTimer = null;
+                if (maxRecordingTimer) clearTimeout(maxRecordingTimer);
+                maxRecordingTimer = null;
                 try { source?.disconnect(); } catch (_) { /* ignore */ }
                 try { captureCtx?.close(); } catch (_) { /* ignore */ }
                 if (recorder.state === 'recording') {
@@ -2488,6 +2504,8 @@
             recorder.onstop = async () => {
                 if (monitorTimer) clearInterval(monitorTimer);
                 monitorTimer = null;
+                if (maxRecordingTimer) clearTimeout(maxRecordingTimer);
+                maxRecordingTimer = null;
                 try { source?.disconnect(); } catch (_) { /* ignore */ }
                 try { captureCtx?.close(); } catch (_) { /* ignore */ }
                 stream.getTracks().forEach(t => t.stop());
@@ -2534,9 +2552,13 @@
             state.recording = true;
             syncMicButtonsUi(true);
             setAvatarState('listening', 'Listening');
+            maxRecordingTimer = setTimeout(() => stopRecorder(false), 30000);
 
             try {
                 captureCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (captureCtx.state === 'suspended') {
+                    try { await captureCtx.resume(); } catch (_) { /* ignore */ }
+                }
                 analyser = captureCtx.createAnalyser();
                 analyser.fftSize = 256;
                 source = captureCtx.createMediaStreamSource(stream);
@@ -2550,7 +2572,11 @@
                     }
                     const rms = Math.sqrt(sum / sample.length);
                     const now = Date.now();
-                    if (rms > 0.018) {
+                    if (!heardSpeech) {
+                        noiseFloor = (noiseFloor * 0.92) + (Math.min(rms, 0.035) * 0.08);
+                    }
+                    const speechThreshold = Math.max(0.010, Math.min(0.030, noiseFloor * 2.4));
+                    if (rms > speechThreshold) {
                         heardSpeech = true;
                         lastSpeechAt = now;
                         setAvatarState('listening', 'Listening');
@@ -2563,6 +2589,12 @@
                     if (heardSpeech && now - lastSpeechAt >= LISTENING_SILENCE_MS) {
                         setAvatarState('idle', 'Processing');
                         stopRecorder(false);
+                        return;
+                    }
+                    if (heardSpeech) {
+                        const remaining = Math.max(0, LISTENING_SILENCE_MS - (now - lastSpeechAt));
+                        const seconds = Math.max(1, Math.ceil(remaining / 1000));
+                        setAvatarState('listening', `Listening... ${seconds}s`);
                     }
                 }, 120);
             } catch (_) {
