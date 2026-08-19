@@ -2081,6 +2081,7 @@
     }
 
     const LISTENING_SILENCE_MS = 3000;
+    const LISTENING_NO_SPEECH_MS = 3000;
     const VOICE_SUBMIT_RE = /\b(?:send it|submit|that's all|that is all|go ahead|please answer|answer now|done|deal)\s*[\.\?!]*$/i;
     const VOICE_RESTART_RE = /\b(?:start over|restart|try again)\s*[\.\?!]*$/i;
     const VOICE_CANCEL_RE = /\b(?:cancel listening|stop listening|never mind|nevermind)\s*[\.\?!]*$/i;
@@ -2221,8 +2222,15 @@
     }
 
     let recognition = null;
+    let pendingVoiceSubmitTimer = null;
+    function clearPendingVoiceSubmit() {
+        if (pendingVoiceSubmitTimer) clearTimeout(pendingVoiceSubmitTimer);
+        pendingVoiceSubmitTimer = null;
+    }
+
     function startListening() {
         if (state.recording) return;
+        clearPendingVoiceSubmit();
         wakeNeedsUserGesture = false;
         stopWakeWordListener();
         // Hard-stop the early misleading error: if neither path can work,
@@ -2242,21 +2250,32 @@
             let buffer = '';
             let silenceTimer = null;
             let countdownTimer = null;
-            let restarting = false;
             let submitting = false;
+            let heardSpeech = false;
+            let noSpeechTimer = null;
             const clearSilenceTimer = () => {
                 if (silenceTimer) clearTimeout(silenceTimer);
                 silenceTimer = null;
                 if (countdownTimer) clearInterval(countdownTimer);
                 countdownTimer = null;
             };
-            const cancelListening = (label = 'Ready') => {
-                submitting = true;
+            const clearNoSpeechTimer = () => {
+                if (noSpeechTimer) clearTimeout(noSpeechTimer);
+                noSpeechTimer = null;
+            };
+            const finishListeningUi = (label = 'Ready') => {
                 clearSilenceTimer();
-                buffer = '';
-                questionInput.value = '';
+                clearNoSpeechTimer();
                 state.recording = false;
                 syncMicButtonsUi(false);
+                setAvatarState('idle', label);
+            };
+            const cancelListening = (label = 'Ready') => {
+                submitting = true;
+                clearPendingVoiceSubmit();
+                buffer = '';
+                questionInput.value = '';
+                finishListeningUi(label);
                 try {
                     recognition.onend = null;
                     recognition.stop();
@@ -2267,10 +2286,12 @@
             };
             const submitTranscript = () => {
                 if (submitting) return;
+                clearPendingVoiceSubmit();
                 const normalized = normalizeVoiceTranscript(questionInput.value || buffer);
                 if (!normalized) return;
                 submitting = true;
                 clearSilenceTimer();
+                clearNoSpeechTimer();
                 questionInput.value = normalized;
                 state.recording = false;
                 syncMicButtonsUi(false);
@@ -2295,6 +2316,11 @@
                 countdownTimer = setInterval(updateCountdown, 250);
                 silenceTimer = setTimeout(submitTranscript, LISTENING_SILENCE_MS);
             };
+            noSpeechTimer = setTimeout(() => {
+                if (!heardSpeech && !submitting) {
+                    cancelListening('Ready');
+                }
+            }, LISTENING_NO_SPEECH_MS);
             recognition.onresult = (ev) => {
                 let interim = '';
                 for (let i = ev.resultIndex; i < ev.results.length; i++) {
@@ -2302,6 +2328,10 @@
                     if (ev.results[i].isFinal) buffer += ` ${t}`; else interim += ` ${t}`;
                 }
                 const heard = (buffer + ' ' + interim).trim();
+                if (heard) {
+                    heardSpeech = true;
+                    clearNoSpeechTimer();
+                }
                 if (VOICE_CANCEL_RE.test(heard)) {
                     cancelListening('Cancelled');
                     return;
@@ -2322,43 +2352,47 @@
                 }
             };
             recognition.onerror = (e) => {
-                console.warn('[advisor] speech error:', e.error);
-                clearSilenceTimer();
-                toast('Mic error — using server transcription.', 'error');
-                state.recording = false;
-                syncMicButtonsUi(false);
+                const code = String(e?.error || '').toLowerCase();
+                console.warn('[advisor] speech error:', code);
+                if (code === 'no-speech' || code === 'aborted') {
+                    cancelListening('Ready');
+                    return;
+                }
+                finishListeningUi('Ready');
                 try {
                     recognition.onend = null;
                     recognition.stop();
                 } catch (_) { /* ignore */ }
                 recognition = null;
-                startServerRecording();
+                if (serverSttAvailable && !hasWebSpeech()) {
+                    toast('Mic error — using server transcription.', 'error');
+                    startServerRecording();
+                } else {
+                    toast('Microphone could not hear clearly. Please tap the mic and try again.', 'error');
+                }
             };
             recognition.onend = () => {
-                clearSilenceTimer();
                 if (submitting) return;
-                if (state.recording && questionInput.value.trim()) {
-                    if (!restarting) {
-                        restarting = true;
-                        setTimeout(() => {
-                            restarting = false;
-                            try {
-                                recognition.start();
-                                scheduleSilenceSubmit();
-                            } catch (_) {
-                                submitTranscript();
-                            }
-                        }, 180);
-                    }
+                if (state.recording && (questionInput.value.trim() || buffer.trim())) {
+                    finishListeningUi('Processing');
+                    pendingVoiceSubmitTimer = setTimeout(() => {
+                        pendingVoiceSubmitTimer = null;
+                        submitTranscript();
+                    }, LISTENING_SILENCE_MS);
                     return;
                 }
-                state.recording = false;
-                syncMicButtonsUi(false);
-                setAvatarState('idle', 'Ready');
+                finishListeningUi('Ready');
                 scheduleWakeWordListener(900);
             };
-            try { recognition.start(); state.recording = true; syncMicButtonsUi(true); }
-            catch (err) { console.warn(err); }
+            try {
+                recognition.start();
+                state.recording = true;
+                syncMicButtonsUi(true);
+            }
+            catch (err) {
+                console.warn(err);
+                finishListeningUi('Ready');
+            }
         } else {
             startServerRecording();
         }
@@ -2368,16 +2402,55 @@
         try {
             stopWakeWordListener();
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            const preferredMime = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4',
+                'audio/aac'
+            ].find(type => window.MediaRecorder?.isTypeSupported?.(type));
+            const recorder = preferredMime
+                ? new MediaRecorder(stream, { mimeType: preferredMime })
+                : new MediaRecorder(stream);
             const chunks = [];
+            let discardRecording = false;
+            let monitorTimer = null;
+            let captureCtx = null;
+            let analyser = null;
+            let source = null;
+            const sample = new Uint8Array(128);
+            const startedAt = Date.now();
+            let heardSpeech = false;
+            let lastSpeechAt = 0;
+            const stopRecorder = (discard = false) => {
+                discardRecording = discardRecording || discard;
+                if (monitorTimer) clearInterval(monitorTimer);
+                monitorTimer = null;
+                try { source?.disconnect(); } catch (_) { /* ignore */ }
+                try { captureCtx?.close(); } catch (_) { /* ignore */ }
+                if (recorder.state === 'recording') {
+                    try { recorder.stop(); } catch (_) { /* ignore */ }
+                }
+            };
             recorder.ondataavailable = (e) => e.data && chunks.push(e.data);
             recorder.onstop = async () => {
+                if (monitorTimer) clearInterval(monitorTimer);
+                monitorTimer = null;
+                try { source?.disconnect(); } catch (_) { /* ignore */ }
+                try { captureCtx?.close(); } catch (_) { /* ignore */ }
                 stream.getTracks().forEach(t => t.stop());
                 state.recording = false; syncMicButtonsUi(false);
+                state.mediaRecorder = null;
+                if (discardRecording || !chunks.length) {
+                    setAvatarState('idle', 'Ready');
+                    scheduleWakeWordListener(900);
+                    return;
+                }
                 setAvatarState('thinking', 'Transcribing');
-                const blob = new Blob(chunks, { type: 'audio/webm' });
+                const blobType = recorder.mimeType || preferredMime || 'audio/webm';
+                const blob = new Blob(chunks, { type: blobType });
                 const form = new FormData();
-                form.append('audio', blob, 'voice.webm');
+                const ext = /mp4|aac/i.test(blobType) ? 'm4a' : 'webm';
+                form.append('audio', blob, `voice.${ext}`);
                 form.append('language', 'en');
                 try {
                     const res = await fetch('/api/advisor/stt', { method: 'POST', headers: { ...authHeaders(), ...guestDemoHeaders() }, body: form });
@@ -2407,6 +2480,41 @@
             state.mediaRecorder = recorder;
             state.recording = true;
             syncMicButtonsUi(true);
+            setAvatarState('listening', 'Listening');
+
+            try {
+                captureCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = captureCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source = captureCtx.createMediaStreamSource(stream);
+                source.connect(analyser);
+                monitorTimer = setInterval(() => {
+                    analyser.getByteTimeDomainData(sample);
+                    let sum = 0;
+                    for (let i = 0; i < sample.length; i++) {
+                        const centered = (sample[i] - 128) / 128;
+                        sum += centered * centered;
+                    }
+                    const rms = Math.sqrt(sum / sample.length);
+                    const now = Date.now();
+                    if (rms > 0.018) {
+                        heardSpeech = true;
+                        lastSpeechAt = now;
+                        setAvatarState('listening', 'Listening');
+                        return;
+                    }
+                    if (!heardSpeech && now - startedAt >= LISTENING_NO_SPEECH_MS) {
+                        stopRecorder(true);
+                        return;
+                    }
+                    if (heardSpeech && now - lastSpeechAt >= LISTENING_SILENCE_MS) {
+                        setAvatarState('idle', 'Processing');
+                        stopRecorder(false);
+                    }
+                }, 120);
+            } catch (_) {
+                setTimeout(() => stopRecorder(false), LISTENING_SILENCE_MS);
+            }
         } catch (err) {
             console.warn('[advisor] getUserMedia failed:', err.message);
             toast('Microphone access denied.', 'error');
@@ -2416,6 +2524,7 @@
     }
 
     function stopListening() {
+        clearPendingVoiceSubmit();
         if (recognition) { try { recognition.stop(); } catch (_) {} }
         if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
             try { state.mediaRecorder.stop(); } catch (_) {}
