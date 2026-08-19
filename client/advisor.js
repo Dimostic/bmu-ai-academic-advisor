@@ -1332,6 +1332,11 @@
      * Play audioUrl while updating mouth from amplitude.
      * Returns the actual duration in ms when finished, or 0 if aborted.
      */
+    function clearComposerWhenAdvisorSpeaks() {
+        if (!advisorFullView || !questionInput) return;
+        questionInput.value = '';
+    }
+
     async function playWithLipSync(audioUrl, spokenText = '', bubbleEl = null) {
         return new Promise((resolve) => {
             try {
@@ -1386,7 +1391,11 @@
                     raf = requestAnimationFrame(tick);
                 };
 
-                audio.addEventListener('play', () => { setAvatarState('speaking', 'Speaking'); tick(); });
+                audio.addEventListener('play', () => {
+                    clearComposerWhenAdvisorSpeaks();
+                    setAvatarState('speaking', 'Speaking');
+                    tick();
+                });
                 audio.addEventListener('pause', () => {
                     if (!audio.ended) setAvatarState('idle', 'Paused');
                 });
@@ -1701,6 +1710,7 @@
                 };
 
                 u.onstart = () => {
+                    clearComposerWhenAdvisorSpeaks();
                     setAvatarState('speaking', 'Speaking');
                     animate();
                 };
