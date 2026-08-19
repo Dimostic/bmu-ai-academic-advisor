@@ -286,8 +286,9 @@ async function courseQuestions() {
                 .replace(/\b\w/g, ch => ch.toUpperCase())
                 .replace(/\bAnd\b/g, 'and');
             return [
-                `What courses are offered in ${programme} at ${row.level} level?`,
+                `What courses are offered in ${programme} at ${row.level} level student courses?`,
                 [
+                    `What courses are offered in ${programme} at ${row.level} level?`,
                     `Show ${row.level} level ${programme} courses`,
                     `List ${programme} ${row.level} level courses`
                 ]
