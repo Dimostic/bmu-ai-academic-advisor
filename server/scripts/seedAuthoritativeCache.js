@@ -232,7 +232,15 @@ async function addFastIntentQuestion(entries, item, fallbackTitle) {
 
 function feeQuestions() {
     const entries = [];
-    const levels = ['100', '200 Direct Entry', '200', '300', '400', '500', '600'];
+    const levels = [
+        '100 level',
+        '200 Direct Entry',
+        '200 level',
+        '300 level',
+        '400 level',
+        '500 level',
+        '600 level'
+    ];
     for (const programme of PROGRAMMES) {
         entries.push([`What are the fees for ${programme} at BMU?`, [`Show ${programme} fee table`, `How much is ${programme} at BMU?`]]);
         for (const level of levels) {
@@ -302,7 +310,17 @@ async function deactivateMalformedSeedRows() {
              updated_at = NOW()
          WHERE qa_type = ?
            AND is_active = 1
-           AND question LIKE '% level level %'`,
+           AND (
+                question LIKE '% level level %'
+                OR (
+                    (LOWER(question) LIKE '%fee%' OR LOWER(question) LIKE '%tuition%' OR LOWER(question) LIKE '%how much%')
+                    AND (
+                        LOWER(answer) LIKE '%bayelsa medical university yenagoa law%'
+                        OR LOWER(answer_sources) LIKE '%bmu law%'
+                        OR LOWER(answer_sources) LIKE '%bayelsa medical university yenagoa law%'
+                    )
+                )
+           )`,
         [QA_TYPE]
     );
     return Number(result?.affectedRows || 0);
