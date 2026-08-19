@@ -2100,8 +2100,32 @@
     const VOICE_RESTART_RE = /\b(?:start over|restart|try again)\s*[\.\?!]*$/i;
     const VOICE_CANCEL_RE = /\b(?:cancel listening|stop listening|never mind|nevermind)\s*[\.\?!]*$/i;
 
+    function collapseRepeatedVoicePhrases(raw) {
+        const words = String(raw || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+        if (words.length < 2) return words.join(' ');
+
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (let i = 0; i < words.length; i++) {
+                const maxSize = Math.min(6, Math.floor((words.length - i) / 2));
+                for (let size = maxSize; size >= 1; size--) {
+                    const left = words.slice(i, i + size).join(' ').toLowerCase();
+                    const right = words.slice(i + size, i + size * 2).join(' ').toLowerCase();
+                    if (left && left === right) {
+                        words.splice(i + size, size);
+                        changed = true;
+                        break;
+                    }
+                }
+                if (changed) break;
+            }
+        }
+        return words.join(' ');
+    }
+
     function normalizeVoiceTranscript(raw) {
-        let text = String(raw || '').replace(/\s+/g, ' ').trim();
+        let text = collapseRepeatedVoicePhrases(raw);
         if (!text) return text;
 
         text = text
@@ -2342,11 +2366,13 @@
             }, LISTENING_NO_SPEECH_MS);
             recognition.onresult = (ev) => {
                 let interim = '';
-                for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                let finalText = '';
+                for (let i = 0; i < ev.results.length; i++) {
                     const t = ev.results[i][0].transcript;
-                    if (ev.results[i].isFinal) buffer += ` ${t}`; else interim += ` ${t}`;
+                    if (ev.results[i].isFinal) finalText += ` ${t}`; else interim += ` ${t}`;
                 }
-                const heard = (buffer + ' ' + interim).trim();
+                buffer = normalizeVoiceTranscript(finalText);
+                const heard = normalizeVoiceTranscript(`${buffer} ${interim}`);
                 if (heard) {
                     heardSpeech = true;
                     lastHeardTranscript = heard;
