@@ -591,11 +591,19 @@ html[data-theme="dark"] .avatar-stage-controls {
     font-size: 1rem; outline: none;
 }
 .composer input[type="text"]:focus { border-color: var(--accent); }
-.mic-btn, .send-btn {
+.mic-btn, .send-btn, .clear-input-btn {
     width: 42px; height: 42px; border-radius: 50%; border: none; cursor: pointer;
     display: grid; place-items: center; flex-shrink: 0;
 }
 .mic-btn { background: #f0f7f4; color: var(--bg-deep); }
+.clear-input-btn {
+    background: #eef3f2;
+    color: var(--muted);
+}
+.clear-input-btn:hover {
+    background: #dfe8e6;
+    color: var(--text);
+}
 .mic-btn--disabled,
 .mic-btn[disabled] {
     opacity: .45; cursor: not-allowed; background: var(--bg-elev);
@@ -606,7 +614,7 @@ html[data-theme="dark"] .avatar-stage-controls {
 @keyframes pulse-bg { 50% { box-shadow: 0 0 0 8px rgba(198,66,66,.2); } }
 .send-btn { background: var(--accent); color: #fff; }
 .send-btn:hover { background: #136a5b; }
-.send-btn:disabled, .mic-btn:disabled { opacity: .5; cursor: not-allowed; }
+.send-btn:disabled, .mic-btn:disabled, .clear-input-btn:disabled { opacity: .5; cursor: not-allowed; }
 #micWave { width: 0; height: 40px; transition: width .2s; }
 .mic-btn[aria-pressed="true"] + #micWave { width: 100px; }
 

@@ -14,7 +14,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260819-mobile-voice-fix" />
+    <link rel="stylesheet" href="/advisor.css?v=20260819-input-clear" />
     <link rel="stylesheet" href="/pages.css?v=20260815-thinking-label" />
 </head>
 <body>
@@ -146,6 +146,9 @@
                 </button>
                 <canvas id="micWave" width="160" height="40" aria-hidden="true"></canvas>
                 <input type="text" id="questionInput" placeholder="Ask the advisor a question…" maxlength="2000" />
+                <button type="button" class="clear-input-btn" id="clearInputBtn" title="Clear question" aria-label="Clear question" hidden>
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
                 <button type="submit" class="send-btn" id="sendBtn" title="Send">
                     <i class="fa-solid fa-paper-plane"></i>
                 </button>
@@ -233,7 +236,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260817-advisor-accuracy" defer></script>
-    <script src="/advisor.js?v=20260819-mobile-voice-fix" defer></script>
+    <script src="/advisor.js?v=20260819-input-clear" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>

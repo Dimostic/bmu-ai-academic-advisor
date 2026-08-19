@@ -43,6 +43,7 @@
     const composer      = $('composer');
     const questionInput = $('questionInput');
     const sendBtn       = $('sendBtn');
+    const clearInputBtn = $('clearInputBtn');
     const micBtn        = $('micBtn');
     const micWave       = $('micWave');
     const topicsScroller= $('topicsScroller');
@@ -368,8 +369,16 @@
         if (sendBtn) sendBtn.disabled = locked;
         if (micBtn) micBtn.disabled = locked || micBtn.classList.contains('mic-btn--disabled');
         if (avatarMicBtn) avatarMicBtn.disabled = locked || avatarMicBtn.classList.contains('is-disabled');
+        updateClearInputButton();
         document.body.classList.toggle('guest-demo-mode', true);
         document.body.classList.toggle('guest-demo-locked', locked);
+    }
+
+    function updateClearInputButton() {
+        if (!clearInputBtn || !questionInput) return;
+        const hasText = !!questionInput.value.trim();
+        clearInputBtn.hidden = !hasText;
+        clearInputBtn.disabled = questionInput.disabled;
     }
 
     function incrementGuestDemoUsage(serverUsed) {
@@ -1336,6 +1345,7 @@
     function clearComposerWhenAdvisorSpeaks() {
         if (!advisorFullView || !questionInput) return;
         questionInput.value = '';
+        updateClearInputButton();
     }
 
     async function playWithLipSync(audioUrl, spokenText = '', bubbleEl = null) {
@@ -1795,7 +1805,7 @@
             updateGuestDemoUi();
             return;
         }
-        questionInput.value = '';
+        updateClearInputButton();
         sendBtn.disabled = true;
         followups.innerHTML = '';
         addStudentBubble(q);
@@ -2011,6 +2021,7 @@
             setAvatarState('idle', 'Ready');
         } finally {
             sendBtn.disabled = state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit;
+            updateClearInputButton();
             if (!audioStarted) setAvatarState('idle', 'Ready');
             if (state.token && state.historyLoaded) {
                 loadHistoryList(true).catch(() => {});
@@ -2328,6 +2339,7 @@
                 clearPendingVoiceSubmit();
                 buffer = '';
                 questionInput.value = '';
+                updateClearInputButton();
                 finishListeningUi(label);
                 try {
                     recognition.onend = null;
@@ -2350,6 +2362,7 @@
                 clearSilenceTimer();
                 clearNoSpeechTimer();
                 questionInput.value = normalized;
+                updateClearInputButton();
                 state.recording = false;
                 syncMicButtonsUi(false);
                 setAvatarState('thinking', 'Thinking');
@@ -2408,10 +2421,12 @@
                     clearSilenceTimer();
                     buffer = '';
                     questionInput.value = '';
+                    updateClearInputButton();
                     setAvatarState('listening', 'Start over');
                     return;
                 }
                 questionInput.value = normalizeVoiceTranscript(heard);
+                updateClearInputButton();
                 setAvatarState('listening', 'Listening');
                 if (VOICE_SUBMIT_RE.test(heard)) {
                     submitTranscript();
@@ -2539,6 +2554,7 @@
                     const data = await res.json();
                     if (data?.success && data.text) {
                         questionInput.value = data.text;
+                        updateClearInputButton();
                         askNow();
                     } else if (res.status === 503 || /not configured/i.test(data?.error || '')) {
                         // The server told us its Whisper credential is
@@ -2629,6 +2645,7 @@
             const normalized = normalizeVoiceTranscript(questionInput.value);
             if (normalized) {
                 questionInput.value = normalized;
+                updateClearInputButton();
                 state.recording = false;
                 syncMicButtonsUi(false);
                 setAvatarState('thinking', 'Thinking');
@@ -2792,6 +2809,14 @@
 
     // ---------- Form ----------
     composer.addEventListener('submit', (ev) => { ev.preventDefault(); askNow(); });
+    questionInput?.addEventListener('input', updateClearInputButton);
+    clearInputBtn?.addEventListener('click', () => {
+        if (!questionInput || questionInput.disabled) return;
+        questionInput.value = '';
+        updateClearInputButton();
+        questionInput.focus();
+    });
+    updateClearInputButton();
 
     // ---------- Handbook (FAQ) browser ----------
     // State for the open dialog: which category filter is active and the
