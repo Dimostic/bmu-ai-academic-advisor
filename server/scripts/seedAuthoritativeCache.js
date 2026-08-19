@@ -306,6 +306,7 @@ async function main() {
         for (const [source, count] of Object.entries(topics).sort()) {
             console.log(`  ${count} ${source}`);
         }
+        process.exit(0);
         return;
     }
 
@@ -331,6 +332,7 @@ async function main() {
 
     console.log(`[seedAuthoritativeCache] done: ${created} created, ${refreshed} refreshed, ${skipped} skipped`);
     getDb().pool.end();
+    process.exit(0);
 }
 
 main().catch(err => {
