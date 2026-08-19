@@ -2161,4 +2161,4 @@ async function askStream({
     _trackOutcome({ latencyMs: Date.now() - startedAt, source: 'llm', isError: Boolean(llmError && !accumulated) });
 }
 
-module.exports = { askStream, getStreamMetrics, triggerSloAlert, _diagnoseStaticQuestion };
+module.exports = { askStream, getStreamMetrics, triggerSloAlert, _diagnoseStaticQuestion, _buildFastIntentReply };
