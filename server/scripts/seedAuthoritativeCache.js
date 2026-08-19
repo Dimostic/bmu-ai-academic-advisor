@@ -84,6 +84,7 @@ const HANDBOOK_QUESTIONS = [
 const GENERAL_QUESTIONS = [
     ['Tell me about BMU', ['What is Bayelsa Medical University?', 'Give me an overview of BMU']],
     ['What programmes offered at BMU?', ['What programmes are offered at BMU?', 'List BMU programmes offered', 'What courses are offered at Bayelsa Medical University?']],
+    ['What are the admission requirements for MBBS at BMU?', ['What are the entry requirements for Medicine and Surgery at BMU?', 'What are the UTME and Direct Entry requirements for MBBS?', 'Admission requirements for Medicine and Surgery']],
     ['How long is MBBS at BMU for UTME and Direct Entry?', ['What is the duration of Medicine and Surgery at BMU?', 'How many years is MBBS?']]
 ];
 

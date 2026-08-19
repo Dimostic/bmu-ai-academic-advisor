@@ -234,6 +234,26 @@ function _isMbbsDurationQuestion(question) {
         && /(how\s+long|duration|years?|academic\s+sessions?|utme|direct\s+entry|five[-\s]?year|six[-\s]?year)/i.test(q);
 }
 
+function _isMbbsAdmissionQuestion(question) {
+    const q = String(question || '').trim().toLowerCase();
+    if (/(fee|fees|tuition|cost|payment|payable|levy)/i.test(q)) return false;
+    return /(mbbs|mbchb|medicine\s+and\s+surgery|\bmedicine\b)/i.test(q)
+        && /(admission|admit|entry|requirement|requirements|eligib|utme|direct\s+entry|o'?level|ssce|waec|neco|jamb|post[-\s]?utme)/i.test(q);
+}
+
+function _buildMbbsAdmissionReply() {
+    return {
+        speech_text: 'For MBBS, the Medicine and Dentistry CCMAS gives two entry routes. Six-year UTME entry requires credit passes in Physics, Chemistry, Biology, Mathematics and English Language at SSC or equivalent at one sitting, plus acceptable UTME and post-UTME scores. Five-year Direct Entry requires relevant A-level passes in Physics, Chemistry and Biology or Zoology, or a first degree in a relevant science area, plus the same SSC credits and JAMB/post-UTME screening.',
+        display_markdown: 'For **Medicine and Surgery (MBBS/MBChB)**, the **Medicine and Dentistry CCMAS 2023** gives two admission routes:\n\n**Six-Year Programme / UTME entry**\n\n- Acceptable score in the **Unified Tertiary Matriculation Examination (UTME)**.\n- Credit pass in **Physics, Chemistry, Biology, Mathematics, and English Language** at **Senior Secondary Certificate (SSC)** level or equivalent.\n- The five credit passes must be obtained **at one sitting**.\n- Candidate must also obtain an acceptable score in the university **post-UTME** process.\n\n**Five-Year Programme / Direct Entry**\n\n- Relevant **A-level passes** in **Physics, Chemistry, and Biology/Zoology**; or\n- a **first degree in a relevant science area**.\n- Direct Entry candidates must also have credit passes in **Physics, Chemistry, Biology, Mathematics, and English Language** at SSC/equivalent **at one sitting**.\n- Admission is through **JAMB**, plus the university post-UTME/screening process.\n\nThis is from the **Medicine and Dentistry CCMAS**, not the general Sciences CCMAS. BMU may still publish current cut-off marks or screening dates separately through its Admissions Office.',
+        topic_slug: 'mbbs_admission_requirements',
+        citations: [{ title: 'Medicine and Dentistry-CCMAS 2023-FINAL.pdf', source: 'Bachelor of Medicine and Bachelor of Surgery (MBBS/MBChB), Admission Requirements' }],
+        suggested_actions: [],
+        follow_up_questions: [],
+        needs_escalation: false,
+        confidence: 0.99
+    };
+}
+
 function _buildMbbsDurationReply() {
     return {
         speech_text: 'For Medicine and Surgery, the six-year programme applies to UTME entry, while the five-year programme applies to Direct Entry. The Medicine and Dentistry CCMAS graduation requirement says MBBS or MBChB students undergo six or five academic sessions depending on the admission entry mode.',
@@ -396,6 +416,7 @@ async function _buildCommonStaticReply(question) {
     if (programmeFeeReply) return programmeFeeReply;
     const courseCatalogReply = await courseCatalogService.buildCourseListReply(q);
     if (courseCatalogReply) return courseCatalogReply;
+    if (_isMbbsAdmissionQuestion(q)) return _buildMbbsAdmissionReply();
     const lawReply = bmuLawService.buildLawReply(q);
     if (lawReply) return lawReply;
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
