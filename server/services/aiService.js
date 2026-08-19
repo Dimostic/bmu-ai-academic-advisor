@@ -1202,9 +1202,9 @@ ${officialUpdates}
             },
             {
                 key: 'governing_council_chair',
-                label: 'Governing Council Chair',
-                officeTerms: ['governing council chair', 'council chair', 'chairman governing council'],
-                patterns: [/governing\s+council\s+chair/i, /council\s+chair/i, /chair(?:man)?\s+.*governing\s+council/i]
+                label: 'Pro-Chancellor / Chairman of Governing Council',
+                officeTerms: ['pro-chancellor', 'pro chancellor', 'governing council chair', 'governing council chairman', 'council chair', 'council chairman', 'chairman governing council', 'chairman of the governing council'],
+                patterns: [/pro[-\s]?chancellor/i, /governing\s+council\s+chair(?:man)?/i, /council\s+chair(?:man)?/i, /chair(?:man)?\s+(?:of\s+)?(?:the\s+)?governing\s+council/i]
             }
         ];
     }
@@ -1380,6 +1380,8 @@ ${officialUpdates}
             'Bursar',
             'University\\s+Librarian',
             'Governing\\s+Council\\s+Chair',
+            'Governing\\s+Council\\s+Chairman',
+            'Pro[-\\s]?Chancellor',
             'Meetings?\\s+Schedule',
             'Administrative\\s+Structure'
         ].join('|');

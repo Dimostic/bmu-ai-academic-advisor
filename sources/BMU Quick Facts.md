@@ -101,6 +101,14 @@ When a student uses a degree code, treat it as the named programme:
 
 ---
 
+## Principal Officer Synonyms
+
+- **Pro-Chancellor** → Chairman of the Governing Council
+- **Chairman of the Governing Council** → Pro-Chancellor
+- **BMU Pro-Chancellor / Chairman of Governing Council**: Prof. Tarila Tebepah
+
+---
+
 ## Academic Calendar 2025/2026 (key dates)
 
 The full calendar lives in *ACADEMIC CALENDAR 2025_2026.docx*. First

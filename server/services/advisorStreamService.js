@@ -187,8 +187,9 @@ async function triggerSloAlert({ status = 'warning', p95 = 0, errorRatePct = 0 }
     };
 }
 
-const OFFICE_HOLDER_DOC_TITLE = '%profile of bmu%';
+const OFFICE_HOLDER_DOC_TITLE_PATTERNS = ['%profile of bmu%', '%brief profile%', '%bmu brief profile%'];
 const BMU_PRINCIPAL_OFFICERS = [
+    { position: 'Pro-Chancellor / Chairman of Governing Council', name: 'Prof. Tarila Tebepah', note: 'inaugurated July 2024' },
     { position: 'Vice-Chancellor', name: 'Prof. Dimie Ogoina', note: 'appointed October 2024' },
     { position: 'Deputy Vice-Chancellor Administration', name: 'Prof. Ebi Aloysius Lihah', note: '' },
     { position: 'Deputy Vice-Chancellor Academic', name: 'Prof. Godwill Ziriki', note: 'in charge of Sampou campus' },
@@ -276,6 +277,7 @@ function _detectPrincipalOfficerRole(question) {
         if (/admin|administration/i.test(q)) return 'Deputy Vice-Chancellor Administration';
         return null;
     }
+    if (/pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman)/i.test(q)) return 'Pro-Chancellor / Chairman of Governing Council';
     if (/vice[-\s]?chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)|(?:^|\W)v\s*c(?:\W|$)|(^|\W)vc(\W|$)|wise\s+chancellor|first\s+chancellor/i.test(q)) return 'Vice-Chancellor';
     if (/registrar|registerer/i.test(q)) return 'Registrar';
     if (/bursar/i.test(q)) return 'Bursar';
@@ -463,7 +465,7 @@ function _buildPrincipalOfficersReply() {
 
     return {
         speech_text: BMU_PRINCIPAL_OFFICERS.map(({ position, name }) => `${position}: ${name}`).join('; ') + '.',
-        display_markdown: `Based on the BMU Brief Institutional Profile (May 2025), the principal officers are:\n\n${table}\n\nAlso listed in the same profile: Governing Council Chair, Prof. Tarila Tebepah; and Visitor to the University, Senator Douye Diri.`,
+        display_markdown: `Based on the BMU Brief Institutional Profile (May 2025), the principal officers are:\n\n${table}\n\nAlso listed in the same profile: Visitor to the University, Senator Douye Diri.`,
         topic_slug: 'bmu_principal_officers',
         citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
         suggested_actions: [],
@@ -509,10 +511,10 @@ async function _getProfileDocumentContent() {
              FROM documents
              WHERE is_active = TRUE
                AND content_text IS NOT NULL
-               AND LOWER(title) LIKE ?
+               AND (${OFFICE_HOLDER_DOC_TITLE_PATTERNS.map(() => 'LOWER(title) LIKE ?').join(' OR ')})
              ORDER BY id DESC
              LIMIT 1`,
-            [OFFICE_HOLDER_DOC_TITLE]
+            OFFICE_HOLDER_DOC_TITLE_PATTERNS
         );
 
         return rows[0] || null;
@@ -532,6 +534,7 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
         'vice-chancellor': /^\s*vice[-\s]?chancellor\s*[:\-]\s*([^\r\n]{3,160})/im,
         'bursar': /^\s*bursar\s*[:\-]\s*([^\r\n]{3,160})/im,
         'dean': /^\s*dean\s*[:\-]\s*([^\r\n]{3,160})/im,
+        'pro-chancellor / chairman of governing council': /^\s*(?:pro[-\s]?chancellor\s*(?:\/|and|,)?\s*)?(?:governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman))\s*[:\-]\s*([^\r\n]{3,160})/im,
         'chancellor': /^\s*chancellor\s*[:\-]\s*([^\r\n]{3,160})/im,
         'librarian': /^\s*(?:university\s+)?librarian\s*[:\-]\s*([^\r\n]{3,160})/im
     };
@@ -554,6 +557,7 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
         'registrar': /\bregistrar\b/i,
         'bursar': /\bbursar\b/i,
         'dean': /\bdean\b/i,
+        'pro-chancellor / chairman of governing council': /pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman)/i,
         'chancellor': /\bchancellor\b/i,
         'librarian': /university\s+librarian|\blibrarian\b/i
     };
@@ -702,7 +706,7 @@ async function _resolvePriorityDocumentIds(question) {
             patterns.push('%programme%');
             patterns.push('%programmes%');
         }
-        if (/(who\s+is|name\s+of|current)/i.test(q) && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor)/i.test(q)) {
+        if (/(who\s+is|name\s+of|current)/i.test(q) && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|pro[-\s]?chancellor|governing\s+council|council\s+(?:chair|chairman))/i.test(q)) {
             patterns.push('%profile of bmu%');
             patterns.push('%profile%');
             patterns.push('%management%');
@@ -734,7 +738,7 @@ async function _resolvePriorityDocumentIds(question) {
 function _isOfficeHolderIdentityQuestion(question) {
     const q = String(question || '').toLowerCase();
     return /(who\s+is|name\s+of|current)/i.test(q)
-    && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|librarian|university\s+librarian)/i.test(q);
+    && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|pro[-\s]?chancellor|governing\s+council|council\s+(?:chair|chairman)|librarian|university\s+librarian)/i.test(q);
 }
 
 async function _getOfficeHolderDocumentContext(question) {
@@ -742,6 +746,7 @@ async function _getOfficeHolderDocumentContext(question) {
         const q = String(question || '').toLowerCase();
         const roleLabel = _detectOfficeRoleLabel(q);
         const roleNeedleMap = {
+            'Pro-Chancellor / Chairman of Governing Council': /pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman)/i,
             'Vice-Chancellor': /vice[-\s]?chancellor|\bvc\b/i,
             'Registrar': /\bregistrar\b/i,
             'Bursar': /\bbursar\b/i,
@@ -818,6 +823,7 @@ async function _getOfficeHolderDocumentContext(question) {
 
 function _detectOfficeRoleLabel(question) {
     const q = String(question || '').toLowerCase();
+    if (/pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman)/.test(q)) return 'Pro-Chancellor / Chairman of Governing Council';
     if (/vice[-\s]?chancellor|\bvc\b/.test(q)) return 'Vice-Chancellor';
     if (/registrar/.test(q)) return 'Registrar';
     if (/bursar/.test(q)) return 'Bursar';
@@ -832,6 +838,7 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
     if (!text.trim()) return null;
 
     const patterns = {
+        'Pro-Chancellor / Chairman of Governing Council': /^\s*[-•]?\s*(?:pro[-\s]?chancellor\s*(?:\/|and|,)?\s*)?(?:governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman))\s*[:\-]\s*([^\n\r;]{3,220})/im,
         'Vice-Chancellor': /^\s*[-•]?\s*(?:current\s+)?vice[-\s]?chancellor\s*[:\-]\s*([^\n\r;]{3,220})/im,
         'Registrar': /^\s*[-•]?\s*registrar\s*[:\-]\s*([^\n\r;]{3,220})/im,
         'Bursar': /^\s*[-•]?\s*bursar\s*[:\-]\s*([^\n\r;]{3,220})/im,
@@ -840,6 +847,7 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
         'Librarian': /^\s*[-•]?\s*(?:university\s+)?librarian\s*[:\-]\s*([^\n\r;]{3,220})/im
     };
     const loosePatterns = {
+        'Pro-Chancellor / Chairman of Governing Council': /(?:^|\s)(?:pro[-\s]?chancellor\s*(?:\/|and|,)?\s*)?(?:governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman))\s*[:\-]\s*([^\n\r]{3,260})/i,
         'Vice-Chancellor': /(?:^|\s)(?:current\s+)?vice[-\s]?chancellor\s*[:\-]\s*([^\n\r]{3,260})/i,
         'Registrar': /(?:^|\s)registrar\s*[:\-]\s*([^\n\r]{3,260})/i,
         'Bursar': /(?:^|\s)bursar\s*[:\-]\s*([^\n\r]{3,260})/i,
@@ -892,6 +900,7 @@ function _extractRoleExcerptFromContext(roleLabel, ragContext) {
     if (!text) return null;
 
     const patterns = {
+        'Pro-Chancellor / Chairman of Governing Council': /(?:pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman))[^\n\r]{0,220}/i,
         'Vice-Chancellor': /(?:vice[-\s]?chancellor|\bvc\b)[^\n\r]{0,220}/i,
         'Registrar': /\bregistrar\b[^\n\r]{0,220}/i,
         'Bursar': /\bbursar\b[^\n\r]{0,220}/i,
