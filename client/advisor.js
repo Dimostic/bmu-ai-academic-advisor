@@ -2053,7 +2053,7 @@
         // finished speaking, even with `continuous = true`. On touch devices
         // prefer our MediaRecorder + server STT path so the 3-second silence
         // timer is controlled by the app.
-        return hasWebSpeech() && !isMobileSpeechDevice();
+        return hasWebSpeech() && !(isMobileSpeechDevice() && serverSttAvailable);
     }
 
     // Server-side STT capability is only known after /api/advisor/health
@@ -2305,6 +2305,7 @@
             let heardSpeech = false;
             let lastHeardTranscript = '';
             let noSpeechTimer = null;
+            let mobileRestartCount = 0;
             const clearSilenceTimer = () => {
                 if (silenceTimer) clearTimeout(silenceTimer);
                 silenceTimer = null;
@@ -2396,6 +2397,7 @@
                 if (heard) {
                     heardSpeech = true;
                     lastHeardTranscript = heard;
+                    mobileRestartCount = 0;
                     clearNoSpeechTimer();
                 }
                 if (VOICE_CANCEL_RE.test(heard)) {
@@ -2435,7 +2437,16 @@
             recognition.onend = () => {
                 if (submitting) return;
                 if (state.recording && (questionInput.value.trim() || lastHeardTranscript.trim() || buffer.trim())) {
-                    finishListeningUi('Processing');
+                    if (isMobileSpeechDevice() && shouldUseBrowserSpeechRecognition() && mobileRestartCount < 3) {
+                        mobileRestartCount += 1;
+                        try {
+                            recognition.start();
+                            return;
+                        } catch (_) {
+                            // Fall through to submit after the grace timer.
+                        }
+                    }
+                    setAvatarState('listening', 'Listening... 3s');
                     queueVoiceSubmit();
                     return;
                 }
