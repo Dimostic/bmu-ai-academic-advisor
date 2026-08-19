@@ -2266,6 +2266,7 @@
             let countdownTimer = null;
             let submitting = false;
             let heardSpeech = false;
+            let lastHeardTranscript = '';
             let noSpeechTimer = null;
             const clearSilenceTimer = () => {
                 if (silenceTimer) clearTimeout(silenceTimer);
@@ -2301,8 +2302,12 @@
             const submitTranscript = () => {
                 if (submitting) return;
                 clearPendingVoiceSubmit();
-                const normalized = normalizeVoiceTranscript(questionInput.value || buffer);
-                if (!normalized) return;
+                const normalized = normalizeVoiceTranscript(questionInput.value || lastHeardTranscript || buffer);
+                if (!normalized) {
+                    finishListeningUi('Ready');
+                    recognition = null;
+                    return;
+                }
                 submitting = true;
                 clearSilenceTimer();
                 clearNoSpeechTimer();
@@ -2344,6 +2349,7 @@
                 const heard = (buffer + ' ' + interim).trim();
                 if (heard) {
                     heardSpeech = true;
+                    lastHeardTranscript = heard;
                     clearNoSpeechTimer();
                 }
                 if (VOICE_CANCEL_RE.test(heard)) {
@@ -2382,7 +2388,7 @@
             };
             recognition.onend = () => {
                 if (submitting) return;
-                if (state.recording && (questionInput.value.trim() || buffer.trim())) {
+                if (state.recording && (questionInput.value.trim() || lastHeardTranscript.trim() || buffer.trim())) {
                     finishListeningUi('Processing');
                     pendingVoiceSubmitTimer = setTimeout(() => {
                         pendingVoiceSubmitTimer = null;
