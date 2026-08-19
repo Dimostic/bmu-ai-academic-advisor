@@ -110,7 +110,8 @@
         mediaRecorder: null,
         audioCtx: null,
         currentAudio: null,
-        ttsMuted: localStorage.getItem('bmu_tts_muted') === '1',
+        audioOutputUnlocked: false,
+        ttsMuted: true,
         ttsPaused: false,
         browserVoiceReady: false,
         browserVoiceWarmupPromise: null,
@@ -119,7 +120,7 @@
         activeResponseBubble: null,
         speakingFocusTimer: null,
         lastSpeakingFocusAt: 0,
-        wakeWordEnabled: localStorage.getItem('bmu_wake_word') !== '0',
+        wakeWordEnabled: false,
         historyLoaded: false,
         loadingHistory: false,
         usageIntroShown: false,
@@ -408,9 +409,13 @@
             bubble.body.textContent = GUEST_DEMO_CLOSING_TEXT;
             setActiveResponseBubble(bubble.el);
             setAvatarState('talking', 'Wrapping up');
-            try {
-                await speakWithBrowser(GUEST_DEMO_CLOSING_TEXT, bubble.el);
-            } catch (_) {
+            if (isSpeechOutputEnabled()) {
+                try {
+                    await speakWithBrowser(GUEST_DEMO_CLOSING_TEXT, bubble.el);
+                } catch (_) {
+                    setAvatarState('idle', 'Demo complete');
+                }
+            } else {
                 setAvatarState('idle', 'Demo complete');
             }
             setTimeout(() => {
@@ -636,7 +641,9 @@
             });
         } catch (_) { /* non-fatal */ }
         syncAvatarGenderToggle();
-        warmBrowserVoice({ force: true }).catch(() => {});
+        if (state.audioOutputUnlocked && !state.ttsMuted) {
+            warmBrowserVoice({ force: true }).catch(() => {});
+        }
     }
 
     // Initial paint
@@ -1087,6 +1094,7 @@
     async function replayAdvisorSpeech(bubble, speechText) {
         const spoken = String(speechText || '').trim();
         if (!spoken) return;
+        enableSpeechOutput();
 
         if (bubble?.playBtn) {
             bubble.playBtn.disabled = true;
@@ -1331,7 +1339,7 @@
                 stopCurrentAudio();
                 const audio = new Audio(audioUrl);
                 audio.crossOrigin = 'anonymous';
-                audio.volume = state.ttsMuted ? 0 : 1;
+                audio.volume = isSpeechOutputEnabled() ? 1 : 0;
                 state.currentAudio = audio;
 
                 if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1418,17 +1426,38 @@
         }
     }
 
+    function isSpeechOutputEnabled() {
+        return state.audioOutputUnlocked && !state.ttsMuted;
+    }
+
+    function enableSpeechOutput() {
+        state.audioOutputUnlocked = true;
+        state.ttsMuted = false;
+        try { localStorage.setItem('bmu_tts_muted', '0'); } catch (_) { /* ignore */ }
+        applyMuteState();
+        warmBrowserVoice().catch(() => {});
+    }
+
+    function disableSpeechOutput() {
+        state.ttsMuted = true;
+        try { localStorage.setItem('bmu_tts_muted', '1'); } catch (_) { /* ignore */ }
+        stopCurrentAudio();
+        applyMuteState();
+    }
+
     function applyMuteState() {
         if (state.currentAudio) {
-            state.currentAudio.volume = state.ttsMuted ? 0 : 1;
+            state.currentAudio.volume = isSpeechOutputEnabled() ? 1 : 0;
         }
         if (avatarMuteBtn) {
-            avatarMuteBtn.setAttribute('aria-pressed', state.ttsMuted ? 'true' : 'false');
-            avatarMuteBtn.classList.toggle('is-active', state.ttsMuted);
-            avatarMuteBtn.title = state.ttsMuted ? 'Unmute advisor' : 'Mute advisor';
-            avatarMuteBtn.innerHTML = state.ttsMuted
-                ? '<i class="fa-solid fa-volume-xmark"></i>'
-                : '<i class="fa-solid fa-volume-high"></i>';
+            const enabled = isSpeechOutputEnabled();
+            avatarMuteBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+            avatarMuteBtn.classList.toggle('is-active', enabled);
+            avatarMuteBtn.title = enabled ? 'Turn advisor speech off' : 'Turn advisor speech on';
+            avatarMuteBtn.setAttribute('aria-label', avatarMuteBtn.title);
+            avatarMuteBtn.innerHTML = enabled
+                ? '<i class="fa-solid fa-volume-high"></i>'
+                : '<i class="fa-solid fa-volume-xmark"></i>';
         }
     }
 
@@ -1634,7 +1663,7 @@
                 u.lang = (v && v.lang) || 'en-NG';
                 u.rate = 1.02;
                 u.pitch = gender === 'male' ? 0.85 : 1.10;
-                u.volume = state.ttsMuted ? 0 : 1;
+                u.volume = isSpeechOutputEnabled() ? 1 : 0;
                 console.info('[advisor] browser TTS voice:', v ? `${v.name} (${v.lang})` : 'default', '| gender wanted:', gender);
 
                 // Drive lip-sync during browser TTS. Since we cannot read
@@ -1704,22 +1733,26 @@
         });
     }
 
-    // Preload voices: most browsers populate getVoices() asynchronously.
+    // Cache voice lists only; do not speak or warm audio until a user taps
+    // the speech control. Mobile Safari can otherwise surface repeated audio
+    // session activations even for silent utterances.
     if (window.speechSynthesis) {
         try { speechSynthesis.getVoices(); } catch (_) { /* ignore */ }
         speechSynthesis.addEventListener?.('voiceschanged', () => {
             try {
                 speechSynthesis.getVoices();
-                warmBrowserVoice({ force: true }).catch(() => {});
+                if (isSpeechOutputEnabled()) {
+                    warmBrowserVoice({ force: true }).catch(() => {});
+                }
             } catch (_) {}
         });
-        warmBrowserVoice().catch(() => {});
     }
 
     function bindBrowserVoiceWarmupGestures() {
         if (!window.speechSynthesis) return;
         let primed = false;
         const prime = () => {
+            if (!isSpeechOutputEnabled()) return;
             if (primed) return;
             primed = true;
             warmBrowserVoice().catch(() => {});
@@ -1777,7 +1810,7 @@
                     question: q,
                     sessionToken: state.sessionToken,
                     guestDemo: state.guestDemo.enabled,
-                    voiceEnabled: true,
+                    voiceEnabled: isSpeechOutputEnabled(),
                     inputMode: 'text',
                     responseStyle: 'concise_conversational',
                     advisorGender: getAdvisorGender()
@@ -1886,7 +1919,9 @@
                         bubble.body.textContent += (data.text || '');
                         scrollToBottom();
                     } else if (event === 'audio') {
-                        if (data.audio_url) {
+                        if (!isSpeechOutputEnabled()) {
+                            audioUrl = data.audio_url || audioUrl;
+                        } else if (data.audio_url) {
                             audioUrl = data.audio_url;
                             // Start playback immediately — runs in parallel with continued typing.
                             if (!audioStarted) {
@@ -2405,12 +2440,22 @@
 
     micBtn.addEventListener('click', () => {
         wakeNeedsUserGesture = false;
-        if (state.recording) stopListening(); else startListening();
+        if (state.recording) {
+            stopListening();
+        } else {
+            enableSpeechOutput();
+            startListening();
+        }
     });
 
     avatarMicBtn?.addEventListener('click', () => {
         wakeNeedsUserGesture = false;
-        if (state.recording) stopListening(); else startListening();
+        if (state.recording) {
+            stopListening();
+        } else {
+            enableSpeechOutput();
+            startListening();
+        }
     });
     syncMicButtonsUi(false);
 
@@ -2424,10 +2469,13 @@
 
     if (avatarMuteBtn) {
         avatarMuteBtn.addEventListener('click', () => {
-            state.ttsMuted = !state.ttsMuted;
-            localStorage.setItem('bmu_tts_muted', state.ttsMuted ? '1' : '0');
-            applyMuteState();
-            toast(state.ttsMuted ? 'Advisor speech muted' : 'Advisor speech unmuted');
+            if (isSpeechOutputEnabled()) {
+                disableSpeechOutput();
+                toast('Advisor speech off');
+            } else {
+                enableSpeechOutput();
+                toast('Advisor speech on');
+            }
         });
         applyMuteState();
     }
@@ -2869,7 +2917,6 @@
         loadGuestDemoUsage();
         bindGuestDemoSuggestions();
         bindBrowserVoiceWarmupGestures();
-        warmBrowserVoice().catch(() => {});
 
         // Establish provider availability before wiring the mic, so Firefox
         // users (no Web Speech API) and any deployment without a Whisper
@@ -2887,8 +2934,10 @@
         }
         updateMicAvailability();
         updateGuestDemoUi();
-        bindWakeWordGestureArmer();
-        scheduleWakeWordListener(1100);
+        if (state.wakeWordEnabled) {
+            bindWakeWordGestureArmer();
+            scheduleWakeWordListener(1100);
+        }
         loadTopics();
 
         // Fetch persona name (optional — server doesn't yet expose it; use defaults)
