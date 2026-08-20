@@ -79,7 +79,9 @@
     const guestDemoMiniCount = $('guestDemoMiniCount');
     const guestDemoMiniFill = $('guestDemoMiniFill');
     const guestDemoSuggestions = $('guestDemoSuggestions');
+    const fullPageAnswerWrap = $('fullPageAnswerWrap');
     const fullPageAnswer = $('fullPageAnswer');
+    const clearAnswerBtn = $('clearAnswerBtn');
     const voiceCommandBar = $('voiceCommandBar');
 
     // Handbook (FAQ) browser
@@ -1072,7 +1074,9 @@
         const value = stripAdvisorMetaBlock(formatAssistantDisplayText(text || ''));
         fullPageAnswer.dataset.state = stateName;
         fullPageAnswer.classList.toggle('hidden', !value);
+        fullPageAnswerWrap?.classList.toggle('hidden', !value);
         fullPageAnswer.textContent = value;
+        if (clearAnswerBtn) clearAnswerBtn.hidden = !value;
         if (value) {
             requestAnimationFrame(() => {
                 fullPageAnswer.scrollTop = fullPageAnswer.scrollHeight;
@@ -3262,6 +3266,9 @@
         questionInput.value = '';
         updateClearInputButton();
         questionInput.focus();
+    });
+    clearAnswerBtn?.addEventListener('click', () => {
+        setFullPageAnswer('');
     });
     voiceCommandBar?.querySelectorAll('[data-voice-command]').forEach((btn) => {
         btn.addEventListener('click', () => {

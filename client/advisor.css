@@ -622,6 +622,7 @@ html[data-theme="dark"] .avatar-stage-controls {
     opacity: .45;
     cursor: not-allowed;
 }
+.fullpage-answer-wrap,
 .fullpage-answer {
     display: none;
 }
@@ -1476,6 +1477,15 @@ body.advisor-full-view .chat-pane {
     gap: 0;
 }
 
+body.advisor-full-view .fullpage-answer-wrap {
+    display: block;
+    position: relative;
+}
+
+body.advisor-full-view .fullpage-answer-wrap.hidden {
+    display: none;
+}
+
 body.advisor-full-view .fullpage-answer {
     display: block;
     height: clamp(76px, 13vh, 118px);
@@ -1483,7 +1493,7 @@ body.advisor-full-view .fullpage-answer {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 10px 14px;
+    padding: 10px 48px 10px 14px;
     border: 1px solid var(--line);
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.92);
@@ -1494,8 +1504,25 @@ body.advisor-full-view .fullpage-answer {
     white-space: pre-wrap;
 }
 
-body.advisor-full-view .fullpage-answer.hidden {
-    display: none;
+body.advisor-full-view .fullpage-answer-clear {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(15, 61, 62, 0.16);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--muted);
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(15, 61, 62, 0.12);
+}
+
+body.advisor-full-view .fullpage-answer-clear:hover {
+    color: var(--danger);
+    border-color: rgba(169, 68, 66, 0.28);
 }
 
 body.advisor-full-view .fullpage-answer[data-state="thinking"] {
@@ -1507,6 +1534,11 @@ html[data-theme="dark"] body.advisor-full-view .fullpage-answer {
     background: rgba(7, 12, 14, 0.95);
     border-color: rgba(255, 255, 255, 0.16);
     color: var(--text);
+}
+
+html[data-theme="dark"] body.advisor-full-view .fullpage-answer-clear {
+    background: rgba(10, 18, 20, 0.9);
+    border-color: rgba(255, 255, 255, 0.18);
 }
 
 body.advisor-full-view .composer {
@@ -1565,7 +1597,14 @@ body.advisor-full-view #advisorViewToggleBtn {
         height: clamp(64px, 11vh, 94px);
         max-height: 94px;
         font-size: .84rem;
-        padding: 8px 10px;
+        padding: 8px 42px 8px 10px;
+    }
+
+    body.advisor-full-view .fullpage-answer-clear {
+        top: 6px;
+        right: 6px;
+        width: 26px;
+        height: 26px;
     }
 }
 

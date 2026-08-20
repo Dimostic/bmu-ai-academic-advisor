@@ -14,7 +14,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260820-wake-stop" />
+    <link rel="stylesheet" href="/advisor.css?v=20260820-answer-clear" />
     <link rel="stylesheet" href="/pages.css?v=20260815-thinking-label" />
 </head>
 <body>
@@ -145,7 +145,12 @@
                 <button type="button" data-demo-question="What programmes are offered at BMU?">BMU programmes</button>
             </div>
 
-            <div class="fullpage-answer hidden" id="fullPageAnswer" aria-live="polite"></div>
+            <div class="fullpage-answer-wrap hidden" id="fullPageAnswerWrap">
+                <div class="fullpage-answer" id="fullPageAnswer" aria-live="polite"></div>
+                <button type="button" class="fullpage-answer-clear" id="clearAnswerBtn" title="Clear answer" aria-label="Clear answer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
 
             <div class="voice-command-bar" id="voiceCommandBar" aria-label="Voice controls">
                 <button type="button" data-voice-command="stop" title="Stop speaking or listening">
@@ -262,7 +267,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260817-advisor-accuracy" defer></script>
-    <script src="/advisor.js?v=20260820-wake-stop" defer></script>
+    <script src="/advisor.js?v=20260820-answer-clear" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>
