@@ -2100,6 +2100,7 @@
     async function askNow() {
         const q = questionInput.value.trim();
         if (!q) return;
+        if (consumeLocalVoiceCommand(q)) return;
         const askInputMode = state.pendingAskInputMode === 'voice' ? 'voice' : 'text';
         state.pendingAskInputMode = 'text';
         state.lastAskInputMode = askInputMode;
@@ -2526,7 +2527,7 @@
         scheduleWakeWordListener(900);
     }
 
-    const WAKE_WORD_RE = /\b(?:dr\.?\s*tari|doctor\s*tari|dear\s+tari|diary|dairy\s+tari|tari)\b/i;
+    const WAKE_WORD_RE = /\b(?:dr\.?\s*(?:tari|tarry|terry)|doctor\s*(?:tari|tarry|terry)|dear\s+(?:tari|tarry|terry)|diary|dairy\s+(?:tari|tarry|terry)|tari)\b/i;
     function detectWakeCommand(text) {
         const raw = String(text || '').trim();
         if (!WAKE_WORD_RE.test(raw)) return null;
@@ -2546,6 +2547,16 @@
         if (/^(?:continue|resume|carry\s+on)\b/.test(remainder)) return { command: 'continue', remainder: '' };
         if (/^(?:stop|cancel|stop\s+stop)\b/.test(remainder)) return { command: 'stop', remainder: '' };
         return { command: null, remainder };
+    }
+
+    function consumeLocalVoiceCommand(text) {
+        const parsed = detectWakeCommand(text);
+        if (!parsed?.command || parsed.remainder) return false;
+        questionInput.value = '';
+        updateClearInputButton();
+        state.pendingAskInputMode = 'text';
+        runVoiceControl(parsed.command, 'voice');
+        return true;
     }
 
     function handleWakePhrase(text) {
