@@ -1478,8 +1478,11 @@ body.advisor-full-view .chat-pane {
 
 body.advisor-full-view .fullpage-answer {
     display: block;
-    max-height: min(18vh, 150px);
+    height: clamp(76px, 13vh, 118px);
+    max-height: 118px;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 10px 14px;
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -1556,6 +1559,13 @@ body.advisor-full-view #advisorViewToggleBtn {
 
     body.advisor-full-view .composer {
         position: static;
+    }
+
+    body.advisor-full-view .fullpage-answer {
+        height: clamp(64px, 11vh, 94px);
+        max-height: 94px;
+        font-size: .84rem;
+        padding: 8px 10px;
     }
 }
 

@@ -1069,10 +1069,15 @@
 
     function setFullPageAnswer(text = '', stateName = 'answer') {
         if (!fullPageAnswer) return;
-        const value = String(text || '').trim();
+        const value = stripAdvisorMetaBlock(formatAssistantDisplayText(text || ''));
         fullPageAnswer.dataset.state = stateName;
         fullPageAnswer.classList.toggle('hidden', !value);
         fullPageAnswer.textContent = value;
+        if (value) {
+            requestAnimationFrame(() => {
+                fullPageAnswer.scrollTop = fullPageAnswer.scrollHeight;
+            });
+        }
     }
 
     function delay(ms) {
@@ -3418,8 +3423,16 @@
     function scrollToBottom() { transcript.scrollTop = transcript.scrollHeight; }
     function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+    function stripAdvisorMetaBlock(text) {
+        let cleaned = String(text || '').replace(/\r/g, '');
+        cleaned = cleaned.replace(/\[\s*META\s*\][\s\S]*$/i, '');
+        cleaned = cleaned.replace(/^\s*\[\s*SPEECH\s*\][\s\S]*?\[\s*ANSWER\s*\]\s*/i, '');
+        cleaned = cleaned.replace(/^\s*\[\s*ANSWER\s*\]\s*/i, '');
+        return cleaned.trim();
+    }
+
     function formatAssistantDisplayText(text) {
-        const raw = String(text || '').replace(/\r/g, '').trim();
+        const raw = stripAdvisorMetaBlock(text);
         if (!raw) return '';
 
         // Trim common over-formal openings to keep text mode concise.
