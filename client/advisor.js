@@ -93,6 +93,7 @@
     const GUEST_DEMO_CLOSING_TEXT = 'You have exhausted your five guest questions. Please register or sign in to continue asking Dr. Tari.';
     const THINKING_MIN_VISIBLE_MS = 850;
     const TRANSCRIPT_PREVIEW_MS = 650;
+    const AUTO_FOLLOWUP_LISTEN_MS = 5000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
     // ---------- State ----------
@@ -118,6 +119,8 @@
         browserVoiceReady: false,
         browserVoiceWarmupPromise: null,
         selectedBrowserVoiceSignature: '',
+        pendingAskInputMode: 'text',
+        lastAskInputMode: 'text',
         currentLottie: null,
         activeResponseBubble: null,
         speakingFocusTimer: null,
@@ -384,6 +387,7 @@
 
     function askAfterTranscriptPreview(delay = TRANSCRIPT_PREVIEW_MS) {
         updateClearInputButton();
+        state.pendingAskInputMode = 'voice';
         setAvatarState('idle', 'Question captured');
         window.setTimeout(() => {
             if (questionInput?.value.trim()) askNow();
@@ -1397,6 +1401,7 @@
                         state.currentAudio = null;
                         resetPauseButtonUi();
                         setAvatarState('idle', 'Ready');
+                        maybeStartAutoFollowupListening();
                         const dur = audio.duration && isFinite(audio.duration) ? audio.duration * 1000 : 0;
                         resolve(dur);
                     });
@@ -1486,6 +1491,7 @@
                     cancelAnimationFrame(raf); setMouthOpenness(0); setAvatarState('idle', 'Ready');
                     state.ttsPaused = false;
                     resetPauseButtonUi();
+                    maybeStartAutoFollowupListening();
                     const dur = audio.duration && isFinite(audio.duration) ? audio.duration * 1000 : 0;
                     resolve(dur);
                 });
@@ -1528,6 +1534,19 @@
             avatarPauseBtn.title = 'Pause advisor speech';
             avatarPauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
         }
+    }
+
+    function maybeStartAutoFollowupListening() {
+        if (state.lastAskInputMode !== 'voice') return;
+        if (state.recording || document.hidden) return;
+        if (!questionInput || questionInput.value.trim()) return;
+        if (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable) return;
+        if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) return;
+        window.setTimeout(() => {
+            if (state.recording || document.hidden) return;
+            if (questionInput?.value.trim()) return;
+            startListening({ autoFollowup: true, noSpeechMs: AUTO_FOLLOWUP_LISTEN_MS });
+        }, 250);
     }
 
     function stopCurrentAudio() {
@@ -1836,6 +1855,7 @@
                     stopPulse();
                     state.ttsPaused = false;
                     setAvatarState('idle', 'Ready');
+                    maybeStartAutoFollowupListening();
                     resolve(Math.max(1500, cleaned.length * 70));
                 };
                 u.onerror = () => {
@@ -1899,6 +1919,9 @@
     async function askNow() {
         const q = questionInput.value.trim();
         if (!q) return;
+        const askInputMode = state.pendingAskInputMode === 'voice' ? 'voice' : 'text';
+        state.pendingAskInputMode = 'text';
+        state.lastAskInputMode = askInputMode;
         if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) {
             showGuestDemoLimit();
             updateGuestDemoUi();
@@ -1931,7 +1954,7 @@
                     sessionToken: state.sessionToken,
                     guestDemo: state.guestDemo.enabled,
                     voiceEnabled: isSpeechOutputEnabled(),
-                    inputMode: 'text',
+                    inputMode: askInputMode,
                     responseStyle: 'concise_conversational',
                     advisorGender: getAdvisorGender()
                 })
@@ -2349,6 +2372,7 @@
 
                 if (remainder.length >= 3) {
                     questionInput.value = remainder;
+                    state.pendingAskInputMode = 'voice';
                     askNow();
                     scheduleWakeWordListener(2400);
                     return;
@@ -2389,8 +2413,10 @@
         pendingVoiceSubmitTimer = null;
     }
 
-    function startListening() {
+    function startListening(options = {}) {
         if (state.recording) return;
+        const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : LISTENING_NO_SPEECH_MS;
+        const autoFollowup = Boolean(options.autoFollowup);
         clearPendingVoiceSubmit();
         wakeNeedsUserGesture = false;
         stopWakeWordListener();
@@ -2401,7 +2427,7 @@
             toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
             return;
         }
-        setAvatarState('listening', 'Listening');
+        setAvatarState('listening', autoFollowup ? 'Listening... 5s' : 'Listening');
         if (shouldUseBrowserSpeechRecognition()) {
             const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new Rec();
@@ -2495,7 +2521,16 @@
                 if (!heardSpeech && !submitting) {
                     cancelListening('Ready');
                 }
-            }, LISTENING_NO_SPEECH_MS);
+            }, noSpeechMs);
+            if (autoFollowup) {
+                const autoStartedAt = Date.now();
+                countdownTimer = setInterval(() => {
+                    if (heardSpeech || submitting) return;
+                    const remaining = Math.max(0, noSpeechMs - (Date.now() - autoStartedAt));
+                    const seconds = Math.max(1, Math.ceil(remaining / 1000));
+                    setAvatarState('listening', `Listening... ${seconds}s`);
+                }, 250);
+            }
             recognition.onresult = (ev) => {
                 let interim = '';
                 let finalText = '';
@@ -2576,11 +2611,13 @@
                 finishListeningUi('Ready');
             }
         } else {
-            startServerRecording();
+            startServerRecording({ noSpeechMs, autoFollowup });
         }
     }
 
-    async function startServerRecording() {
+    async function startServerRecording(options = {}) {
+        const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : LISTENING_NO_SPEECH_MS;
+        const autoFollowup = Boolean(options.autoFollowup);
         if (!serverSttAvailable) {
             updateMicAvailability();
             toast('Voice input is not available in this browser yet. Please type your question, or use Chrome / Edge with microphone access enabled.', 'error');
@@ -2676,7 +2713,7 @@
             state.mediaRecorder = recorder;
             state.recording = true;
             syncMicButtonsUi(true);
-            setAvatarState('listening', 'Listening');
+            setAvatarState('listening', autoFollowup ? 'Listening... 5s' : 'Listening');
             maxRecordingTimer = setTimeout(() => stopRecorder(false), 30000);
 
             try {
@@ -2707,7 +2744,7 @@
                         setAvatarState('listening', 'Listening');
                         return;
                     }
-                    if (!heardSpeech && now - startedAt >= LISTENING_NO_SPEECH_MS) {
+                    if (!heardSpeech && now - startedAt >= noSpeechMs) {
                         stopRecorder(true);
                         return;
                     }
@@ -2718,6 +2755,10 @@
                     }
                     if (heardSpeech) {
                         const remaining = Math.max(0, LISTENING_SILENCE_MS - (now - lastSpeechAt));
+                        const seconds = Math.max(1, Math.ceil(remaining / 1000));
+                        setAvatarState('listening', `Listening... ${seconds}s`);
+                    } else if (autoFollowup) {
+                        const remaining = Math.max(0, noSpeechMs - (now - startedAt));
                         const seconds = Math.max(1, Math.ceil(remaining / 1000));
                         setAvatarState('listening', `Listening... ${seconds}s`);
                     }
