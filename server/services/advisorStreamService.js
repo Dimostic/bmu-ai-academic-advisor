@@ -397,10 +397,30 @@ function _isDepartmentHeadIdentityQuestion(question) {
         && /(department|head\s+of\s+department|\bhod\b)/i.test(q);
 }
 
-function _buildDepartmentHeadSafeReply() {
+function _extractRequestedDepartment(question) {
+    const raw = String(question || '').trim();
+    const match = raw.match(/\b(?:department\s+of|hod\s+(?:of|for)|head\s+of\s+department\s+(?:of|for)?|head\s+of\s+the\s+department\s+(?:of|for)?)\s+(.+?)\s*[\?\.!]*$/i);
+    if (!match) return '';
+    return match[1]
+        .replace(/\b(?:at|in)\s+(?:bmu|bayelsa\s+medical\s+university)\b.*$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, ch => ch.toUpperCase());
+}
+
+function _buildDepartmentHeadSafeReply(question = '') {
+    const department = _extractRequestedDepartment(question);
+    const speechScope = department ? ` for the Department of ${department}` : ' for a specific BMU Head of Department';
+    const displayScope = department ? ` for the **Department of ${department}**` : ' for a specific **BMU Head of Department**';
+    const speechTail = department
+        ? 'Please confirm with the faculty or departmental office for the current appointment.'
+        : 'Please specify the department, and I can check the available BMU documents.';
+    const displayTail = department
+        ? 'Please confirm the current appointment with the relevant **faculty or departmental office**, because HOD appointments can change.'
+        : 'Please specify the department, and I can check the available BMU documents for that department.';
     return {
-        speech_text: 'I do not currently have a verified current name for a specific BMU Head of Department in the records available to me. Please specify the department, and I can check the available BMU documents.',
-        display_markdown: "I don't currently have a verified current name for a specific **Head of Department** in the records available to me.\n\nBMU departments are headed by **Heads of Department (HODs)**, but these appointments can change. Please specify the department, and I can check the available BMU documents for that department.",
+        speech_text: `I do not currently have a verified current name${speechScope} in the records available to me. ${speechTail}`,
+        display_markdown: `I don't currently have a verified current name${displayScope} in the records available to me.\n\nBMU departments are headed by **Heads of Department (HODs)**. ${displayTail}`,
         topic_slug: 'department_head_current_name_unavailable',
         citations: [],
         suggested_actions: [],
@@ -1246,7 +1266,7 @@ async function _buildFastIntentReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q) return null;
 
-    if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply();
+    if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply(q);
     const programmeFeeReply = _buildProgrammeFeeReply(q);
     if (programmeFeeReply) return programmeFeeReply;
     const courseCatalogReply = await courseCatalogService.buildCourseListReply(q);

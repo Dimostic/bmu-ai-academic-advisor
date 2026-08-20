@@ -79,6 +79,7 @@
     const guestDemoMiniCount = $('guestDemoMiniCount');
     const guestDemoMiniFill = $('guestDemoMiniFill');
     const guestDemoSuggestions = $('guestDemoSuggestions');
+    const fullPageAnswer = $('fullPageAnswer');
     const voiceCommandBar = $('voiceCommandBar');
 
     // Handbook (FAQ) browser
@@ -1064,6 +1065,14 @@
                 <span class="thinking-text">${escapeHtml(label)}</span>
                 <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
             </span>`;
+    }
+
+    function setFullPageAnswer(text = '', stateName = 'answer') {
+        if (!fullPageAnswer) return;
+        const value = String(text || '').trim();
+        fullPageAnswer.dataset.state = stateName;
+        fullPageAnswer.classList.toggle('hidden', !value);
+        fullPageAnswer.textContent = value;
     }
 
     function delay(ms) {
@@ -2100,6 +2109,7 @@
         addStudentBubble(q);
         setAvatarState('thinking', 'Thinking');
         setExpression('thinking');
+        setFullPageAnswer('Dr. Tari is thinking', 'thinking');
 
         const bubble = addAdvisorBubble();
         setAdvisorBubbleThinking(bubble, true);
@@ -2233,6 +2243,7 @@
                             setAdvisorBubbleThinking(bubble, false);
                         }
                         bubble.body.textContent += (data.text || '');
+                        setFullPageAnswer(formatAssistantDisplayText(bubble.body.textContent), 'answer');
                         scrollToBottom();
                     } else if (event === 'audio') {
                         if (!isSpeechOutputEnabled()) {
@@ -2273,6 +2284,7 @@
                 // tokens contained formatting characters.
                 if (final.reply?.display_markdown) {
                     bubble.body.textContent = formatAssistantDisplayText(final.reply.display_markdown);
+                    setFullPageAnswer(bubble.body.textContent, 'answer');
                 }
                 fillBubbleMeta(bubble, {
                     citations:         final.reply?.citations || [],
@@ -2310,6 +2322,7 @@
                 if (bubble.caret) bubble.caret.remove();
                 setAdvisorBubbleThinking(bubble, false);
                 if (!bubble.body.textContent) bubble.body.textContent = 'Stopped.';
+                setFullPageAnswer(bubble.body.textContent, state.voicePaused ? 'thinking' : 'answer');
                 setAvatarState('idle', state.voicePaused ? 'Waiting' : 'Ready');
                 return;
             }
@@ -2319,6 +2332,7 @@
             if (!bubble.body.textContent) {
                 bubble.body.textContent = "I couldn't reach the advisor service. Please try again in a moment.";
             }
+            setFullPageAnswer(bubble.body.textContent, 'answer');
             toast(err.message || 'Could not reach the advisor.', 'error');
             setAvatarState('idle', 'Ready');
         } finally {
