@@ -2507,7 +2507,7 @@
         scheduleWakeWordListener(900);
     }
 
-    const WAKE_WORD_RE = /\b(?:dr\.?\s*tari|doctor\s*tari)\b/i;
+    const WAKE_WORD_RE = /\b(?:dr\.?\s*tari|doctor\s*tari|dear\s+tari|diary|dairy\s+tari|tari)\b/i;
     function detectWakeCommand(text) {
         const raw = String(text || '').trim();
         if (!WAKE_WORD_RE.test(raw)) return null;
