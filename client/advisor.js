@@ -2316,6 +2316,7 @@
         if (officerIntent) {
             text = text
                 .replace(/\b(?:wise\s+chancellor|first\s+chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or))\b/ig, 'vice chancellor')
+                .replace(/\bdimi(?:e|an|en|yan)\s+og(?:oina|yna|ina|ena|oyna)\b/ig, 'Dimie Ogoina')
                 .replace(/\bv\s+c\b/ig, 'vc')
                 .replace(/\bwho\s+is\s+(?:the\s+)?(?:boss|bossa|bosa|bussa|bursah)\b/ig, 'who is the bursar')
                 .replace(/\bname\s+of\s+(?:the\s+)?(?:boss|bossa|bosa|bussa|bursah)\b/ig, 'name of the bursar')

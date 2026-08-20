@@ -190,7 +190,12 @@ async function triggerSloAlert({ status = 'warning', p95 = 0, errorRatePct = 0 }
 const OFFICE_HOLDER_DOC_TITLE_PATTERNS = ['%profile of bmu%', '%brief profile%', '%bmu brief profile%'];
 const BMU_PRINCIPAL_OFFICERS = [
     { position: 'Pro-Chancellor / Chairman of Governing Council', name: 'Prof. Tarila Tebepah', note: 'inaugurated July 2024' },
-    { position: 'Vice-Chancellor', name: 'Prof. Dimie Ogoina', note: 'appointed October 2024' },
+    {
+        position: 'Vice-Chancellor',
+        name: 'Prof. Dimie Ogoina',
+        note: 'appointed October 2024',
+        aliases: ['dimie ogoina', 'dimian ogyna', 'dimian ogoina', 'dimie ogyna', 'dimie ogina', 'dimian ogina']
+    },
     { position: 'Deputy Vice-Chancellor Administration', name: 'Prof. Ebi Aloysius Lihah', note: '' },
     { position: 'Deputy Vice-Chancellor Academic', name: 'Prof. Godwill Ziriki', note: 'in charge of Sampou campus' },
     { position: 'Registrar', name: 'Dr. (Mrs) Felicia Akusu', note: '' },
@@ -265,7 +270,7 @@ function _isPrincipalOfficersQuestion(question) {
 
 function _detectPrincipalOfficerRole(question) {
     const q = String(question || '').toLowerCase();
-    const isIdentityQuestion = /(who\s+is|who\s+heads|who\s+leads|name\s+of|what\s+is\s+the\s+name|current|currently|tell\s+me\s+about|which\s+person|who\s+serves\s+as|\bname\b)/i.test(q);
+    const isIdentityQuestion = /(who\s+is|who\s+heads|who\s+leads|name\s+of|what\s+is\s+the\s+name|current|currently|tell\s+me\s+about|talking\s+about|referr?ing\s+to|i\s+mean|which\s+person|who\s+serves\s+as|\bname\b)/i.test(q);
     if (!isIdentityQuestion) return null;
     if (/(who\s+heads|who\s+leads|leader\s+of|head\s+of)/i.test(q)
         && /\b(bmu|university|bayelsa\s+medical\s+university)\b/i.test(q)
@@ -295,6 +300,43 @@ function _normaliseOfficerName(value) {
         .trim();
 }
 
+function _levenshteinDistance(a, b) {
+    const left = String(a || '');
+    const right = String(b || '');
+    if (!left) return right.length;
+    if (!right) return left.length;
+    const dp = Array.from({ length: left.length + 1 }, () => Array(right.length + 1).fill(0));
+    for (let i = 0; i <= left.length; i++) dp[i][0] = i;
+    for (let j = 0; j <= right.length; j++) dp[0][j] = j;
+    for (let i = 1; i <= left.length; i++) {
+        for (let j = 1; j <= right.length; j++) {
+            const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(
+                dp[i - 1][j] + 1,
+                dp[i][j - 1] + 1,
+                dp[i - 1][j - 1] + cost
+            );
+        }
+    }
+    return dp[left.length][right.length];
+}
+
+function _containsFuzzyOfficerName(questionNormalised, officer) {
+    const names = [officer.name, ...(officer.aliases || [])].map(_normaliseOfficerName).filter(Boolean);
+    if (names.some(name => questionNormalised.includes(name))) return true;
+
+    const tokens = questionNormalised.split(' ').filter(part => part.length > 2);
+    return names.some(name => {
+        const parts = name.split(' ').filter(part => part.length > 2);
+        if (parts.length < 2) return false;
+        return parts.every(part => tokens.some(token => {
+            if (token === part || token.startsWith(part.slice(0, 3))) return true;
+            const maxDistance = part.length <= 5 ? 2 : 3;
+            return _levenshteinDistance(token, part) <= maxDistance;
+        }));
+    });
+}
+
 function _detectPrincipalOfficerByName(question) {
     const q = _normaliseOfficerName(question);
     if (!q) return null;
@@ -305,7 +347,8 @@ function _detectPrincipalOfficerByName(question) {
         if (!name) return false;
         if (q.includes(name)) return true;
         const parts = name.split(' ').filter(part => part.length > 2);
-        return parts.length >= 2 && parts.every(part => new RegExp(`\\b${part}\\b`, 'i').test(q));
+        return (parts.length >= 2 && parts.every(part => new RegExp(`\\b${part}\\b`, 'i').test(q)))
+            || _containsFuzzyOfficerName(q, officer);
     }) || null;
 }
 
@@ -1684,7 +1727,7 @@ async function askStream({
     // for a semantically equivalent question, serve it without paying the
     // LLM round-trip. Falls through silently on any error.
     // ------------------------------------------------------------------
-    if (faqService && !requestedPrincipalOfficerByName && !isOfficeHolderIdentity && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion) {
+    if (faqService && !requestedPrincipalOfficerByName && !requestedPrincipalOfficerRole && !isOfficeHolderIdentity && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion) {
         try {
             const cached = await faqService.getCachedResponse(trimmed, {
                 userId: student?.user_id || null,

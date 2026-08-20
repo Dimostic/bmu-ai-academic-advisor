@@ -67,7 +67,7 @@ async function transcribe(audioBuffer, opts = {}) {
     form.append('language', language);
     form.append('response_format', 'verbose_json');
     form.append('temperature', '0');
-    form.append('prompt', 'Transcribe the user as English or Nigerian English only. Do not translate. Expected BMU academic advisor questions may mention BMU, Bayelsa Medical University, courses, fees, admission, VC, bursar, registrar, or student handbook.');
+    form.append('prompt', 'Transcribe the user as English or Nigerian English only. Do not translate. Expected BMU academic advisor questions may mention BMU, Bayelsa Medical University, courses, fees, admission, VC, vice chancellor, Prof. Dimie Ogoina, bursar, Dr Ebipiado Ombu, registrar, or student handbook.');
 
     const { data } = await axios.post(
         `${GROQ_BASE}/audio/transcriptions`,
