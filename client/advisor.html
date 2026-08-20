@@ -14,7 +14,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260820-auth-redirect" />
+    <link rel="stylesheet" href="/advisor.css?v=20260820-voice-commands" />
     <link rel="stylesheet" href="/pages.css?v=20260815-thinking-label" />
 </head>
 <body>
@@ -145,6 +145,24 @@
                 <button type="button" data-demo-question="What programmes are offered at BMU?">BMU programmes</button>
             </div>
 
+            <div class="voice-command-bar" id="voiceCommandBar" aria-label="Voice controls">
+                <button type="button" data-voice-command="stop" title="Stop speaking or listening">
+                    <i class="fa-solid fa-stop"></i><span>Stop</span>
+                </button>
+                <button type="button" data-voice-command="clear" title="Clear the question">
+                    <i class="fa-solid fa-eraser"></i><span>Clear</span>
+                </button>
+                <button type="button" data-voice-command="restart" title="Clear and listen again">
+                    <i class="fa-solid fa-rotate-right"></i><span>Restart</span>
+                </button>
+                <button type="button" data-voice-command="wait" title="Pause voice activity">
+                    <i class="fa-solid fa-hourglass-half"></i><span>Wait</span>
+                </button>
+                <button type="button" data-voice-command="continue" title="Resume listening">
+                    <i class="fa-solid fa-play"></i><span>Continue</span>
+                </button>
+            </div>
+
             <!-- Composer -->
             <form class="composer" id="composer" autocomplete="off">
                 <button type="button" class="mic-btn" id="micBtn" aria-pressed="false" title="Hold to talk">
@@ -242,7 +260,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260817-advisor-accuracy" defer></script>
-    <script src="/advisor.js?v=20260820-auth-redirect" defer></script>
+    <script src="/advisor.js?v=20260820-voice-commands" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>

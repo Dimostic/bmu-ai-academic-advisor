@@ -581,9 +581,50 @@ html[data-theme="dark"] .avatar-stage-controls {
 }
 
 /* -------- Composer -------- */
+.voice-command-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px 0;
+    border-top: 1px solid var(--line);
+    background: #fcfdfd;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.voice-command-bar::-webkit-scrollbar { display: none; }
+.voice-command-bar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--muted);
+    font-size: .82rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+.voice-command-bar button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: #f4fbf9;
+}
+.voice-command-bar button[data-voice-command="stop"] {
+    color: var(--danger);
+}
+.voice-command-bar button[disabled] {
+    opacity: .45;
+    cursor: not-allowed;
+}
 .composer {
     display: flex; align-items: center; gap: 8px; padding: 12px 14px;
-    border-top: 1px solid var(--line); background: #fcfdfd;
+    border-top: 0; background: #fcfdfd;
     min-width: 0;
 }
 .composer input[type="text"] {
@@ -853,9 +894,14 @@ form.curate-edit input, form.curate-edit select, form.curate-edit textarea {
 html[data-theme="dark"] body { background: var(--page-gradient); }
 html[data-theme="dark"] .topic-pill,
 html[data-theme="dark"] .followup-chip,
+html[data-theme="dark"] .voice-command-bar button,
 html[data-theme="dark"] .handbook-search,
 html[data-theme="dark"] .handbook-categories .cat-chip {
     background: var(--bg-elev); color: var(--text); border-color: var(--line);
+}
+html[data-theme="dark"] .voice-command-bar,
+html[data-theme="dark"] .composer {
+    background: var(--bg-elev);
 }
 html[data-theme="dark"] .topic-pill--start,
 html[data-theme="dark"] .handbook-categories .cat-chip.active {
@@ -951,15 +997,32 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
     }
 
     .composer {
-        order: 2;
+        order: 3;
         position: sticky;
-        top: calc(var(--mobile-topbar-h, 64px) + var(--mobile-avatar-h, 160px) + 8px);
+        top: calc(var(--mobile-topbar-h, 64px) + var(--mobile-avatar-h, 160px) + 48px);
         z-index: 34;
         margin: 0 0 8px;
         border: 1px solid var(--line);
-        border-radius: 12px;
+        border-top: 0;
+        border-radius: 0 0 12px 12px;
         background: var(--bg-elev);
         box-shadow: var(--shadow);
+    }
+
+    .voice-command-bar {
+        order: 2;
+        position: sticky;
+        top: calc(var(--mobile-topbar-h, 64px) + var(--mobile-avatar-h, 160px) + 8px);
+        z-index: 35;
+        margin: 0;
+        border: 1px solid var(--line);
+        border-bottom: 0;
+        border-radius: 12px;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        background: var(--bg-elev);
+        box-shadow: var(--shadow);
+        padding: 8px 10px 0;
     }
 
     .followups {
@@ -1019,6 +1082,16 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
 
     .composer {
         padding: 10px;
+    }
+
+    .voice-command-bar {
+        padding: 8px 10px 0;
+    }
+
+    .voice-command-bar button {
+        min-height: 30px;
+        padding: 5px 9px;
+        font-size: .78rem;
     }
 
     #micWave {
@@ -1404,7 +1477,20 @@ body.advisor-full-view .composer {
     position: static;
     z-index: 24;
     border: 1px solid var(--line);
+    border-top: 0;
+    border-radius: 0 0 16px 16px;
+    background: var(--bg-elev);
+    box-shadow: var(--shadow);
+}
+
+body.advisor-full-view .voice-command-bar {
+    position: static;
+    z-index: 24;
+    border: 1px solid var(--line);
+    border-bottom: 0;
     border-radius: 16px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
     background: var(--bg-elev);
     box-shadow: var(--shadow);
 }

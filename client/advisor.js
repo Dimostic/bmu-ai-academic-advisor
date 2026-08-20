@@ -79,6 +79,7 @@
     const guestDemoMiniCount = $('guestDemoMiniCount');
     const guestDemoMiniFill = $('guestDemoMiniFill');
     const guestDemoSuggestions = $('guestDemoSuggestions');
+    const voiceCommandBar = $('voiceCommandBar');
 
     // Handbook (FAQ) browser
     const handbookBtn       = $('handbookBtn');
@@ -125,9 +126,20 @@
         lastAskInputMode: 'text',
         currentLottie: null,
         activeResponseBubble: null,
+        currentAskController: null,
+        askCancelled: false,
         speakingFocusTimer: null,
         lastSpeakingFocusAt: 0,
-        wakeWordEnabled: false,
+        wakeWordEnabled: (() => {
+            let saved = null;
+            try { saved = localStorage.getItem('bmu_advisor_wake_commands'); } catch (_) { saved = null; }
+            if (saved === '1') return true;
+            if (saved === '0') return false;
+            return !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        })(),
+        voicePaused: false,
+        cancelVoiceListening: false,
+        discardVoiceRecording: false,
         historyLoaded: false,
         loadingHistory: false,
         usageIntroShown: false,
@@ -431,6 +443,9 @@
         if (sendBtn) sendBtn.disabled = locked;
         if (micBtn) micBtn.disabled = locked || micBtn.classList.contains('mic-btn--disabled');
         if (avatarMicBtn) avatarMicBtn.disabled = locked || avatarMicBtn.classList.contains('is-disabled');
+        voiceCommandBar?.querySelectorAll('[data-voice-command]').forEach((btn) => {
+            btn.disabled = locked && btn.dataset.voiceCommand !== 'stop';
+        });
         updateClearInputButton();
         document.body.classList.toggle('guest-demo-mode', true);
         document.body.classList.toggle('guest-demo-locked', locked);
@@ -1598,12 +1613,14 @@
     }
 
     function maybeStartAutoFollowupListening() {
+        if (state.voicePaused) return;
         if (state.lastAskInputMode !== 'voice') return;
         if (state.recording || document.hidden) return;
         if (!questionInput || questionInput.value.trim()) return;
         if (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable) return;
         if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) return;
         window.setTimeout(() => {
+            if (state.voicePaused) return;
             if (state.recording || document.hidden) return;
             if (questionInput?.value.trim()) return;
             startListening({ autoFollowup: true, noSpeechMs: AUTO_FOLLOWUP_LISTEN_MS });
@@ -1623,6 +1640,95 @@
         try { window.speechSynthesis?.cancel(); } catch (_) {}
         resetPauseButtonUi();
         setMouthOpenness(0);
+    }
+
+    function cancelActiveAsk() {
+        state.askCancelled = true;
+        if (state.currentAskController) {
+            try { state.currentAskController.abort(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    function cancelActiveListening({ clearText = false, label = 'Ready' } = {}) {
+        state.cancelVoiceListening = true;
+        state.discardVoiceRecording = true;
+        clearPendingVoiceSubmit();
+        if (clearText && questionInput) {
+            questionInput.value = '';
+            updateClearInputButton();
+        }
+        if (recognition) {
+            try {
+                recognition.onresult = null;
+                recognition.onerror = null;
+                recognition.onend = null;
+                recognition.stop();
+            } catch (_) { /* ignore */ }
+            recognition = null;
+        }
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            try { state.mediaRecorder.stop(); } catch (_) { /* ignore */ }
+        }
+        state.recording = false;
+        syncMicButtonsUi(false);
+        setAvatarState('idle', label);
+    }
+
+    function stopAdvisorActivity({ clearText = false, label = 'Stopped', keepWake = true } = {}) {
+        cancelActiveAsk();
+        stopCurrentAudio();
+        if (state.recording || recognition || state.mediaRecorder) {
+            cancelActiveListening({ clearText, label });
+        } else if (clearText && questionInput) {
+            questionInput.value = '';
+            updateClearInputButton();
+        }
+        setAvatarState('idle', label);
+        if (keepWake && state.wakeWordEnabled) {
+            wakeSuspendedUntil = Date.now() + 900;
+            scheduleWakeWordListener(1100);
+        } else {
+            stopWakeWordListener();
+        }
+    }
+
+    function runVoiceControl(command, source = 'button') {
+        const action = String(command || '').toLowerCase();
+        wakeNeedsUserGesture = false;
+        if (action === 'listen' || action === 'continue') {
+            state.voicePaused = false;
+            enableSpeechOutput();
+            if (!state.recording) startListening();
+            toast(action === 'continue' ? 'Continuing voice listening' : 'Listening');
+            return true;
+        }
+        if (action === 'stop') {
+            state.voicePaused = false;
+            stopAdvisorActivity({ label: 'Stopped', keepWake: true });
+            toast('Stopped');
+            return true;
+        }
+        if (action === 'clear') {
+            state.voicePaused = false;
+            stopAdvisorActivity({ clearText: true, label: 'Cleared', keepWake: true });
+            toast('Cleared');
+            return true;
+        }
+        if (action === 'restart') {
+            state.voicePaused = false;
+            stopAdvisorActivity({ clearText: true, label: 'Restarting', keepWake: false });
+            enableSpeechOutput();
+            setTimeout(() => startListening(), source === 'voice' ? 250 : 80);
+            return true;
+        }
+        if (action === 'wait') {
+            state.voicePaused = true;
+            stopAdvisorActivity({ label: 'Waiting', keepWake: true });
+            setAvatarState('idle', 'Waiting');
+            toast('Waiting. Say “Dr. Tari, continue” when ready.');
+            return true;
+        }
+        return false;
     }
 
     function isSpeechOutputEnabled() {
@@ -2005,10 +2111,14 @@
         let speechDone = Promise.resolve(0);
         let final = null;
         let guestDemoUsageSynced = false;
+        const askController = new AbortController();
+        state.currentAskController = askController;
+        state.askCancelled = false;
 
         try {
             const res = await fetch('/api/advisor/ask/stream', {
                 method: 'POST',
+                signal: askController.signal,
                 headers: { 'Content-Type': 'application/json', ...authHeaders(), ...guestDemoHeaders() },
                 body: JSON.stringify({
                     question: q,
@@ -2196,6 +2306,13 @@
                 window._avMoodTimer = setTimeout(() => setExpression('neutral'), 6000);
             }
         } catch (err) {
+            if (askController.signal.aborted || state.askCancelled) {
+                if (bubble.caret) bubble.caret.remove();
+                setAdvisorBubbleThinking(bubble, false);
+                if (!bubble.body.textContent) bubble.body.textContent = 'Stopped.';
+                setAvatarState('idle', state.voicePaused ? 'Waiting' : 'Ready');
+                return;
+            }
             console.error('[advisor] stream error:', err);
             bubble.caret.remove();
             setAdvisorBubbleThinking(bubble, false);
@@ -2205,9 +2322,13 @@
             toast(err.message || 'Could not reach the advisor.', 'error');
             setAvatarState('idle', 'Ready');
         } finally {
+            if (state.currentAskController === askController) {
+                state.currentAskController = null;
+                state.askCancelled = false;
+            }
             sendBtn.disabled = state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit;
             updateClearInputButton();
-            if (!audioStarted) setAvatarState('idle', 'Ready');
+            if (!audioStarted) setAvatarState('idle', state.voicePaused ? 'Waiting' : 'Ready');
             if (state.token && state.historyLoaded) {
                 loadHistoryList(true).catch(() => {});
             }
@@ -2387,6 +2508,44 @@
     }
 
     const WAKE_WORD_RE = /\b(?:dr\.?\s*tari|doctor\s*tari)\b/i;
+    function detectWakeCommand(text) {
+        const raw = String(text || '').trim();
+        if (!WAKE_WORD_RE.test(raw)) return null;
+        const remainder = raw
+            .replace(WAKE_WORD_RE, ' ')
+            .replace(/[.,!?;:]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+        if (!remainder) return { command: 'listen', remainder: '' };
+        if (/^(?:please\s+)?(?:listen|start\s+listening|wake\s+up|hear\s+me)\b/.test(remainder)) {
+            return { command: 'listen', remainder: remainder.replace(/^(?:please\s+)?(?:listen|start\s+listening|wake\s+up|hear\s+me)\b/, '').trim() };
+        }
+        if (/^(?:stop\s+and\s+clear|clear|clear\s+text|erase|reset\s+text)\b/.test(remainder)) return { command: 'clear', remainder: '' };
+        if (/^(?:stop\s+and\s+restart|restart|start\s+over|try\s+again|listen\s+again)\b/.test(remainder)) return { command: 'restart', remainder: '' };
+        if (/^(?:stop\s+and\s+wait|wait|pause|hold\s+on)\b/.test(remainder)) return { command: 'wait', remainder: '' };
+        if (/^(?:continue|resume|carry\s+on)\b/.test(remainder)) return { command: 'continue', remainder: '' };
+        if (/^(?:stop|cancel|stop\s+stop)\b/.test(remainder)) return { command: 'stop', remainder: '' };
+        return { command: null, remainder };
+    }
+
+    function handleWakePhrase(text) {
+        const parsed = detectWakeCommand(text);
+        if (!parsed) return false;
+        if (parsed.command) return runVoiceControl(parsed.command, 'voice');
+        if (parsed.remainder.length >= 3) {
+            stopWakeWordListener();
+            wakeSuspendedUntil = Date.now() + 1700;
+            questionInput.value = parsed.remainder;
+            updateClearInputButton();
+            state.pendingAskInputMode = 'voice';
+            askNow();
+            scheduleWakeWordListener(2400);
+            return true;
+        }
+        return false;
+    }
+
     let wakeRecognition = null;
     let wakeRestartTimer = null;
     let wakeSuspendedUntil = 0;
@@ -2458,18 +2617,9 @@
                 const text = heard.trim();
                 if (!text || !WAKE_WORD_RE.test(text)) return;
 
-                const remainder = text.replace(WAKE_WORD_RE, ' ').replace(/\s+/g, ' ').trim();
                 stopWakeWordListener();
                 wakeSuspendedUntil = Date.now() + 1700;
-
-                if (remainder.length >= 3) {
-                    questionInput.value = remainder;
-                    state.pendingAskInputMode = 'voice';
-                    askNow();
-                    scheduleWakeWordListener(2400);
-                    return;
-                }
-                startListening();
+                handleWakePhrase(text);
             };
 
             wakeRecognition.onerror = (e) => {
@@ -2507,6 +2657,9 @@
 
     function startListening(options = {}) {
         if (state.recording) return;
+        state.voicePaused = false;
+        state.cancelVoiceListening = false;
+        state.discardVoiceRecording = false;
         const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : LISTENING_NO_SPEECH_MS;
         const autoFollowup = Boolean(options.autoFollowup);
         clearPendingVoiceSubmit();
@@ -2651,6 +2804,19 @@
                     mobileRestartCount = 0;
                     clearNoSpeechTimer();
                 }
+                if (WAKE_WORD_RE.test(heard) && handleWakePhrase(heard)) {
+                    submitting = true;
+                    clearSilenceTimer();
+                    clearNoSpeechTimer();
+                    try {
+                        recognition.onend = null;
+                        recognition.stop();
+                    } catch (_) { /* ignore */ }
+                    recognition = null;
+                    state.recording = false;
+                    syncMicButtonsUi(false);
+                    return;
+                }
                 if (VOICE_CANCEL_RE.test(heard)) {
                     cancelListening('Cancelled');
                     return;
@@ -2743,7 +2909,7 @@
                 ? new MediaRecorder(stream, { mimeType: preferredMime })
                 : new MediaRecorder(stream);
             const chunks = [];
-            let discardRecording = false;
+            let discardRecording = Boolean(state.discardVoiceRecording);
             let monitorTimer = null;
             let maxRecordingTimer = null;
             let captureCtx = null;
@@ -2777,6 +2943,8 @@
                 stream.getTracks().forEach(t => t.stop());
                 state.recording = false; syncMicButtonsUi(false);
                 state.mediaRecorder = null;
+                discardRecording = discardRecording || Boolean(state.discardVoiceRecording);
+                state.discardVoiceRecording = false;
                 if (discardRecording || !chunks.length) {
                     setAvatarState('idle', 'Ready');
                     scheduleWakeWordListener(900);
@@ -3064,6 +3232,12 @@
         questionInput.value = '';
         updateClearInputButton();
         questionInput.focus();
+    });
+    voiceCommandBar?.querySelectorAll('[data-voice-command]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (questionInput?.disabled && btn.dataset.voiceCommand !== 'stop') return;
+            runVoiceControl(btn.dataset.voiceCommand, 'button');
+        });
     });
     updateClearInputButton();
 
