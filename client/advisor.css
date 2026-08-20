@@ -1625,6 +1625,106 @@ body.advisor-full-view #advisorViewToggleBtn {
 }
 
 @media (max-width: 1024px) and (orientation: landscape) {
+    body.advisor-full-view {
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    body.advisor-full-view .top-bar {
+        padding: 4px 10px;
+        min-height: 44px;
+    }
+
+    body.advisor-full-view .brand img {
+        width: 32px;
+        height: 32px;
+    }
+
+    body.advisor-full-view .brand strong {
+        font-size: .9rem;
+    }
+
+    body.advisor-full-view .top-actions {
+        gap: 6px;
+    }
+
+    body.advisor-full-view .top-actions .btn {
+        padding: 6px 10px;
+        font-size: .82rem;
+    }
+
+    body.advisor-full-view .top-actions .icon-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    body.advisor-full-view .advisor-grid {
+        height: calc(100dvh - var(--mobile-topbar-h, 44px));
+        padding: 4px 8px 2px;
+        gap: 4px;
+        grid-template-rows: minmax(0, 1fr) auto;
+    }
+
+    body.advisor-full-view .avatar-pane {
+        padding: 2px 8px;
+        gap: 0;
+        grid-template-rows: minmax(0, 1fr);
+    }
+
+    body.advisor-full-view .avatar-stage-controls {
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        z-index: 26;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin: 0;
+        padding: 5px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.76);
+    }
+
+    body.advisor-full-view .avatar-stage-controls .icon-btn {
+        width: 30px;
+        height: 30px;
+        font-size: .8rem;
+    }
+
+    body.advisor-full-view .avatar-stage-controls .icon-btn--wide {
+        width: 30px;
+        min-width: 30px;
+        padding: 0;
+    }
+
+    body.advisor-full-view .avatar-stage {
+        height: 100%;
+    }
+
+    body.advisor-full-view .avatar-stage .avatar-svg-host svg {
+        transform: translateY(-5%) scale(1.22);
+    }
+
+    body.advisor-full-view .avatar-meta {
+        bottom: 4px;
+        padding: 5px 10px;
+        min-width: min(220px, 72vw);
+    }
+
+    body.advisor-full-view .avatar-meta strong {
+        font-size: .94rem;
+    }
+
+    body.advisor-full-view .avatar-meta > span {
+        font-size: .74rem;
+    }
+
+    body.advisor-full-view .chat-pane {
+        flex: 0 0 auto;
+        min-height: 0;
+    }
+
     body.advisor-full-view .fullpage-answer {
         height: 36px;
         max-height: 36px;
@@ -1635,6 +1735,42 @@ body.advisor-full-view #advisorViewToggleBtn {
     body.advisor-full-view .fullpage-answer-clear {
         width: 24px;
         height: 24px;
+    }
+
+    body.advisor-full-view .voice-command-bar {
+        min-height: 30px;
+        padding: 4px 8px 0;
+        overflow-x: auto;
+    }
+
+    body.advisor-full-view .voice-command-bar button {
+        min-height: 26px;
+        padding: 4px 8px;
+        font-size: .72rem;
+    }
+
+    body.advisor-full-view .composer {
+        min-height: 40px;
+        padding: 5px 8px;
+        margin: 0;
+    }
+
+    body.advisor-full-view .composer input[type="text"] {
+        height: 30px;
+        padding: 5px 10px;
+        font-size: .86rem;
+    }
+
+    body.advisor-full-view .mic-btn,
+    body.advisor-full-view .send-btn,
+    body.advisor-full-view .clear-input-btn {
+        width: 30px;
+        height: 30px;
+    }
+
+    body.advisor-full-view #micWave {
+        display: none;
+        width: 0 !important;
     }
 }
 
