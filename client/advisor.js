@@ -30,7 +30,7 @@
     if (!_existingToken && !_isGuestDemo) {
         const here = location.pathname + location.search;
         const params = new URLSearchParams();
-        params.set('next', '/advisor');
+        params.set('next', here || '/advisor');
         const presetQ = new URLSearchParams(location.search).get('q');
         if (presetQ) params.set('q', presetQ);
         location.replace('/login?' + params.toString());
@@ -336,6 +336,33 @@
         try { localStorage.removeItem('bmu_token'); } catch (_) {}
         try { sessionStorage.removeItem('bmu_token'); } catch (_) {}
         try { localStorage.removeItem('bmu_user'); } catch (_) {}
+    }
+
+    function redirectToLogin(reason = 'expired') {
+        if (state.guestDemo?.enabled || state.redirectingToLogin) return;
+        state.redirectingToLogin = true;
+        clearStoredAuth();
+        try { stopCurrentAudio(); } catch (_) { /* stop helper may not be initialized yet */ }
+        if (state.recording) {
+            try { stopListening(); } catch (_) { /* ignore */ }
+        }
+        const params = new URLSearchParams();
+        const next = `${location.pathname}${location.search || ''}${location.hash || ''}`;
+        params.set('next', next || '/advisor');
+        params.set('reason', reason);
+        const presetQ = new URLSearchParams(location.search).get('q');
+        if (presetQ) params.set('q', presetQ);
+        location.replace('/login?' + params.toString());
+    }
+
+    function handleAuthFailure(status, data = null) {
+        if ((status === 401 || status === 403) && !state.guestDemo?.enabled) {
+            const code = String(data?.code || '').toUpperCase();
+            const reason = code.includes('EXPIRED') ? 'expired' : 'login_required';
+            redirectToLogin(reason);
+            return true;
+        }
+        return false;
     }
 
     function authHeaders() {
@@ -915,6 +942,9 @@
         };
         const res = await fetch(path, init);
         const data = await res.json().catch(() => ({}));
+        if (handleAuthFailure(res.status, data)) {
+            throw new Error(data.error || `HTTP ${res.status}`);
+        }
         if (!res.ok || data.success === false) {
             throw new Error(data.error || `HTTP ${res.status}`);
         }
@@ -2026,11 +2056,13 @@
                 }
                 if (res.status === 401 || res.status === 403) {
                     let msg = 'Please sign in or start the guest demo to ask Dr. Tari.';
+                    let authPayload = null;
                     try {
                         const j = await res.json();
+                        authPayload = j;
                         if (j?.error) msg = j.error;
                     } catch (_) { /* ignore */ }
-                    if (!state.guestDemo.enabled) clearStoredAuth();
+                    if (handleAuthFailure(res.status, authPayload)) return;
                     bubble.body.textContent = msg;
                     if (bubble.caret) bubble.caret.remove();
                     setAvatarState('idle', 'Sign in needed');
@@ -2760,6 +2792,7 @@
                 try {
                     const res = await fetch('/api/advisor/stt', { method: 'POST', headers: { ...authHeaders(), ...guestDemoHeaders() }, body: form });
                     const data = await res.json();
+                    if (handleAuthFailure(res.status, data)) return;
                     if (data?.success && data.text) {
                         const normalized = normalizeVoiceTranscript(data.text);
                         if (data.transcriptOk === false || looksLikeBadVoiceTranscript(normalized)) {
