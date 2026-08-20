@@ -92,6 +92,7 @@
     const advisorFullView = advisorViewMode === 'normal' ? false : true;
     const GUEST_DEMO_CLOSING_TEXT = 'You have exhausted your five guest questions. Please register or sign in to continue asking Dr. Tari.';
     const THINKING_MIN_VISIBLE_MS = 850;
+    const TRANSCRIPT_PREVIEW_MS = 650;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
     // ---------- State ----------
@@ -379,6 +380,14 @@
         const hasText = !!questionInput.value.trim();
         clearInputBtn.hidden = !hasText;
         clearInputBtn.disabled = questionInput.disabled;
+    }
+
+    function askAfterTranscriptPreview(delay = TRANSCRIPT_PREVIEW_MS) {
+        updateClearInputButton();
+        setAvatarState('idle', 'Question captured');
+        window.setTimeout(() => {
+            if (questionInput?.value.trim()) askNow();
+        }, Math.max(0, delay));
     }
 
     function incrementGuestDemoUsage(serverUsed) {
@@ -1358,7 +1367,70 @@
                 audio.volume = isSpeechOutputEnabled() ? 1 : 0;
                 state.currentAudio = audio;
 
+                if (isMobileSpeechDevice()) {
+                    let raf;
+                    let visemeAtTime = () => 0;
+                    let smoothLevel = 0;
+                    const tick = () => {
+                        const target = visemeAtTime(audio.currentTime || 0);
+                        smoothLevel = smoothLevel + (target - smoothLevel) * 0.42;
+                        setMouthOpenness(smoothLevel);
+                        raf = requestAnimationFrame(tick);
+                    };
+                    audio.addEventListener('loadedmetadata', () => {
+                        const dur = Number(audio.duration);
+                        if (Number.isFinite(dur) && dur > 0) {
+                            visemeAtTime = createVisemeTimeline(spokenText, dur);
+                        }
+                    });
+                    audio.addEventListener('play', () => {
+                        clearComposerWhenAdvisorSpeaks();
+                        setAvatarState('speaking', 'Speaking');
+                        tick();
+                    });
+                    audio.addEventListener('pause', () => {
+                        if (!audio.ended) setAvatarState('idle', 'Paused');
+                    });
+                    audio.addEventListener('ended', () => {
+                        cancelAnimationFrame(raf);
+                        setMouthOpenness(0);
+                        state.currentAudio = null;
+                        resetPauseButtonUi();
+                        setAvatarState('idle', 'Ready');
+                        const dur = audio.duration && isFinite(audio.duration) ? audio.duration * 1000 : 0;
+                        resolve(dur);
+                    });
+                    audio.addEventListener('error', () => {
+                        cancelAnimationFrame(raf);
+                        setMouthOpenness(0);
+                        state.currentAudio = null;
+                        resetPauseButtonUi();
+                        setAvatarState('idle', 'Ready');
+                        resolve(0);
+                    });
+                    const playPromise = audio.play();
+                    if (playPromise && typeof playPromise.catch === 'function') {
+                        playPromise.catch((err) => {
+                            console.warn('[advisor] mobile audio play blocked:', err?.message || err);
+                            cancelAnimationFrame(raf);
+                            setMouthOpenness(0);
+                            state.currentAudio = null;
+                            resetPauseButtonUi();
+                            setAvatarState('idle', 'Ready');
+                            if (spokenText) {
+                                speakWithBrowser(spokenText, bubbleEl).then(resolve).catch(() => resolve(0));
+                            } else {
+                                resolve(0);
+                            }
+                        });
+                    }
+                    return;
+                }
+
                 if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (state.audioCtx.state === 'suspended') {
+                    state.audioCtx.resume().catch(() => {});
+                }
                 const src = state.audioCtx.createMediaElementSource(audio);
                 const analyser = state.audioCtx.createAnalyser();
                 analyser.fftSize = 256;
@@ -1413,16 +1485,49 @@
                 audio.addEventListener('ended', () => {
                     cancelAnimationFrame(raf); setMouthOpenness(0); setAvatarState('idle', 'Ready');
                     state.ttsPaused = false;
+                    resetPauseButtonUi();
                     const dur = audio.duration && isFinite(audio.duration) ? audio.duration * 1000 : 0;
                     resolve(dur);
                 });
-                audio.addEventListener('error', () => { cancelAnimationFrame(raf); setMouthOpenness(0); resolve(0); });
-                audio.play().catch(() => resolve(0));
+                audio.addEventListener('error', () => {
+                    cancelAnimationFrame(raf);
+                    setMouthOpenness(0);
+                    state.currentAudio = null;
+                    resetPauseButtonUi();
+                    setAvatarState('idle', 'Ready');
+                    resolve(0);
+                });
+                const playPromise = audio.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch((err) => {
+                        console.warn('[advisor] audio play blocked:', err?.message || err);
+                        cancelAnimationFrame(raf);
+                        setMouthOpenness(0);
+                        state.currentAudio = null;
+                        resetPauseButtonUi();
+                        setAvatarState('idle', 'Ready');
+                        if (spokenText) {
+                            speakWithBrowser(spokenText, bubbleEl).then(resolve).catch(() => resolve(0));
+                        } else {
+                            resolve(0);
+                        }
+                    });
+                }
             } catch (err) {
                 console.warn('[advisor] audio playback failed:', err.message);
                 resolve(0);
             }
         });
+    }
+
+    function resetPauseButtonUi() {
+        state.ttsPaused = false;
+        if (avatarPauseBtn) {
+            avatarPauseBtn.setAttribute('aria-pressed', 'false');
+            avatarPauseBtn.classList.remove('is-active');
+            avatarPauseBtn.title = 'Pause advisor speech';
+            avatarPauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+        }
     }
 
     function stopCurrentAudio() {
@@ -1436,14 +1541,8 @@
             state.activeUtterance = null;
         }
         try { window.speechSynthesis?.cancel(); } catch (_) {}
-        state.ttsPaused = false;
+        resetPauseButtonUi();
         setMouthOpenness(0);
-        if (avatarPauseBtn) {
-            avatarPauseBtn.setAttribute('aria-pressed', 'false');
-            avatarPauseBtn.classList.remove('is-active');
-            avatarPauseBtn.title = 'Pause advisor speech';
-            avatarPauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
-        }
     }
 
     function isSpeechOutputEnabled() {
@@ -2365,13 +2464,12 @@
                 updateClearInputButton();
                 state.recording = false;
                 syncMicButtonsUi(false);
-                setAvatarState('thinking', 'Thinking');
                 try {
                     recognition.onend = null;
                     recognition.stop();
                 } catch (_) { /* ignore */ }
                 recognition = null;
-                askNow();
+                askAfterTranscriptPreview(280);
                 scheduleWakeWordListener(1400);
             };
             const queueVoiceSubmit = (delay = LISTENING_SILENCE_MS) => {
@@ -2555,7 +2653,7 @@
                     if (data?.success && data.text) {
                         questionInput.value = data.text;
                         updateClearInputButton();
-                        askNow();
+                        askAfterTranscriptPreview();
                     } else if (res.status === 503 || /not configured/i.test(data?.error || '')) {
                         // The server told us its Whisper credential is
                         // missing. Translate into a human message and
@@ -2648,8 +2746,7 @@
                 updateClearInputButton();
                 state.recording = false;
                 syncMicButtonsUi(false);
-                setAvatarState('thinking', 'Thinking');
-                askNow();
+                askAfterTranscriptPreview(280);
                 scheduleWakeWordListener(1400);
                 return;
             }
