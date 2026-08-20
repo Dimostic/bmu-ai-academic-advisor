@@ -129,6 +129,10 @@
         lastAskInputMode: 'text',
         currentLottie: null,
         activeResponseBubble: null,
+        fullPageAnswerText: '',
+        fullPageAnswerSentences: [],
+        lastCaptionSyncAt: 0,
+        lastCaptionSentenceIndex: -1,
         currentAskController: null,
         askCancelled: false,
         speakingFocusTimer: null,
@@ -1075,13 +1079,83 @@
         fullPageAnswer.dataset.state = stateName;
         fullPageAnswer.classList.toggle('hidden', !value);
         fullPageAnswerWrap?.classList.toggle('hidden', !value);
-        fullPageAnswer.textContent = value;
+        renderFullPageAnswer(value);
         if (clearAnswerBtn) clearAnswerBtn.hidden = !value;
         if (value) {
             requestAnimationFrame(() => {
                 fullPageAnswer.scrollTop = fullPageAnswer.scrollHeight;
             });
         }
+    }
+
+    function splitAnswerSentences(text) {
+        const value = String(text || '');
+        if (!value.trim()) return [];
+        const ranges = [];
+        const re = /[^.!?\n]+(?:[.!?]+|\n+|$)/g;
+        let m;
+        while ((m = re.exec(value)) !== null) {
+            const raw = m[0] || '';
+            const leading = raw.match(/^\s*/)?.[0].length || 0;
+            const trailing = raw.match(/\s*$/)?.[0].length || 0;
+            const start = m.index + leading;
+            const end = m.index + Math.max(leading, raw.length - trailing);
+            if (end > start) ranges.push({ start, end, text: value.slice(start, end) });
+        }
+        if (!ranges.length) ranges.push({ start: 0, end: value.length, text: value });
+        return ranges;
+    }
+
+    function renderFullPageAnswer(value) {
+        const text = String(value || '');
+        state.fullPageAnswerText = text;
+        state.fullPageAnswerSentences = splitAnswerSentences(text);
+        state.lastCaptionSentenceIndex = -1;
+        if (!text) {
+            fullPageAnswer.textContent = '';
+            return;
+        }
+        let html = '';
+        let cursor = 0;
+        state.fullPageAnswerSentences.forEach((s, idx) => {
+            if (s.start > cursor) html += escapeHtml(text.slice(cursor, s.start));
+            html += `<span class="caption-sentence" data-caption-index="${idx}">${escapeHtml(text.slice(s.start, s.end))}</span>`;
+            cursor = s.end;
+        });
+        if (cursor < text.length) html += escapeHtml(text.slice(cursor));
+        fullPageAnswer.innerHTML = html;
+    }
+
+    function syncFullPageCaption(charIndex = 0, { force = false } = {}) {
+        if (!fullPageAnswer || !state.fullPageAnswerText || !state.fullPageAnswerSentences.length) return;
+        const now = Date.now();
+        if (!force && now - state.lastCaptionSyncAt < 180) return;
+        state.lastCaptionSyncAt = now;
+        const safeIndex = Math.max(0, Math.min(state.fullPageAnswerText.length - 1, Number(charIndex) || 0));
+        let idx = state.fullPageAnswerSentences.findIndex(s => safeIndex >= s.start && safeIndex <= s.end);
+        if (idx < 0) idx = state.fullPageAnswerSentences.findIndex(s => safeIndex < s.end);
+        if (idx < 0) idx = state.fullPageAnswerSentences.length - 1;
+        if (!force && idx === state.lastCaptionSentenceIndex) return;
+        state.lastCaptionSentenceIndex = idx;
+        fullPageAnswer.querySelectorAll('.caption-sentence.is-current').forEach(el => el.classList.remove('is-current'));
+        const el = fullPageAnswer.querySelector(`[data-caption-index="${idx}"]`);
+        if (!el) return;
+        el.classList.add('is-current');
+        el.scrollIntoView({ behavior: force ? 'smooth' : 'auto', block: 'center', inline: 'nearest' });
+    }
+
+    function syncCaptionForAudioPlayback(spokenText, currentTime, duration, force = false) {
+        const text = stripAdvisorMetaBlock(formatAssistantDisplayText(spokenText || ''));
+        if (!text) return;
+        if (state.fullPageAnswerText !== text) {
+            setFullPageAnswer(text, 'speaking');
+        } else if (fullPageAnswer) {
+            fullPageAnswer.dataset.state = 'speaking';
+        }
+        const dur = Number(duration);
+        const t = Number(currentTime);
+        const ratio = Number.isFinite(dur) && dur > 0 ? Math.max(0, Math.min(1, t / dur)) : 0;
+        syncFullPageCaption(Math.floor(ratio * Math.max(0, text.length - 1)), { force });
     }
 
     function delay(ms) {
@@ -1473,6 +1547,7 @@
                         const target = visemeAtTime(audio.currentTime || 0);
                         smoothLevel = smoothLevel + (target - smoothLevel) * 0.42;
                         setMouthOpenness(smoothLevel);
+                        syncCaptionForAudioPlayback(spokenText, audio.currentTime || 0, audio.duration || 0);
                         raf = requestAnimationFrame(tick);
                     };
                     audio.addEventListener('loadedmetadata', () => {
@@ -1484,6 +1559,7 @@
                     audio.addEventListener('play', () => {
                         clearComposerWhenAdvisorSpeaks();
                         setAvatarState('speaking', 'Speaking');
+                        syncCaptionForAudioPlayback(spokenText, 0, audio.duration || 0, true);
                         tick();
                     });
                     audio.addEventListener('pause', () => {
@@ -1563,6 +1639,7 @@
 
                     // Text-driven viseme at current playback time.
                     const visemeLevel = visemeAtTime(audio.currentTime || 0);
+                    syncCaptionForAudioPlayback(spokenText, audio.currentTime || 0, audio.duration || 0);
 
                     // Blend: audio keeps rhythm honest, viseme gives clear
                     // articulation shape so the mouth reads as real speech.
@@ -1576,6 +1653,7 @@
                 audio.addEventListener('play', () => {
                     clearComposerWhenAdvisorSpeaks();
                     setAvatarState('speaking', 'Speaking');
+                    syncCaptionForAudioPlayback(spokenText, 0, audio.duration || 0, true);
                     tick();
                 });
                 audio.addEventListener('pause', () => {
@@ -2026,6 +2104,8 @@
                 u.onstart = () => {
                     clearComposerWhenAdvisorSpeaks();
                     setAvatarState('speaking', 'Speaking');
+                    setFullPageAnswer(cleaned, 'speaking');
+                    syncFullPageCaption(0, { force: true });
                     animate();
                 };
                 // Each word boundary briefly opens the mouth wider so the
@@ -2033,7 +2113,9 @@
                 // running on a metronome.
                 u.onboundary = (ev) => {
                     if (stopped) return;
-                    const ch = cleaned[(ev && Number.isFinite(ev.charIndex)) ? ev.charIndex : 0] || '';
+                    const charIndex = (ev && Number.isFinite(ev.charIndex)) ? ev.charIndex : 0;
+                    syncFullPageCaption(charIndex);
+                    const ch = cleaned[charIndex] || '';
                     boundaryBoost = Math.max(boundaryBoost, 0.22 + visemeFromChar(ch) * 0.58);
                 };
                 u.onend = () => {

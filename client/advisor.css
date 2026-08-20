@@ -1530,6 +1530,16 @@ body.advisor-full-view .fullpage-answer[data-state="thinking"] {
     font-weight: 700;
 }
 
+body.advisor-full-view .caption-sentence {
+    border-radius: 6px;
+    transition: background-color .16s ease, color .16s ease;
+}
+
+body.advisor-full-view .caption-sentence.is-current {
+    background: rgba(15, 61, 62, 0.12);
+    color: var(--bg-deep);
+}
+
 html[data-theme="dark"] body.advisor-full-view .fullpage-answer {
     background: rgba(7, 12, 14, 0.95);
     border-color: rgba(255, 255, 255, 0.16);
@@ -1539,6 +1549,11 @@ html[data-theme="dark"] body.advisor-full-view .fullpage-answer {
 html[data-theme="dark"] body.advisor-full-view .fullpage-answer-clear {
     background: rgba(10, 18, 20, 0.9);
     border-color: rgba(255, 255, 255, 0.18);
+}
+
+html[data-theme="dark"] body.advisor-full-view .caption-sentence.is-current {
+    background: rgba(255, 255, 255, 0.16);
+    color: var(--text);
 }
 
 body.advisor-full-view .composer {
@@ -1594,9 +1609,10 @@ body.advisor-full-view #advisorViewToggleBtn {
     }
 
     body.advisor-full-view .fullpage-answer {
-        height: clamp(64px, 11vh, 94px);
-        max-height: 94px;
+        height: 40px;
+        max-height: 40px;
         font-size: .84rem;
+        line-height: 1.35;
         padding: 8px 42px 8px 10px;
     }
 
@@ -1605,6 +1621,20 @@ body.advisor-full-view #advisorViewToggleBtn {
         right: 6px;
         width: 26px;
         height: 26px;
+    }
+}
+
+@media (max-width: 1024px) and (orientation: landscape) {
+    body.advisor-full-view .fullpage-answer {
+        height: 36px;
+        max-height: 36px;
+        padding-top: 7px;
+        padding-bottom: 7px;
+    }
+
+    body.advisor-full-view .fullpage-answer-clear {
+        width: 24px;
+        height: 24px;
     }
 }
 
