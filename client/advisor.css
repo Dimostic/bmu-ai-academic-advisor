@@ -1703,7 +1703,7 @@ body.advisor-full-view #advisorViewToggleBtn {
     }
 
     body.advisor-full-view .avatar-stage .avatar-svg-host svg {
-        transform: translateY(-5%) scale(1.22);
+        transform: translateY(-1.5%) scale(1.06);
     }
 
     body.advisor-full-view .avatar-meta {
@@ -1771,6 +1771,21 @@ body.advisor-full-view #advisorViewToggleBtn {
     body.advisor-full-view #micWave {
         display: none;
         width: 0 !important;
+    }
+}
+
+@media (max-width: 1024px) and (orientation: landscape) and (max-height: 460px) {
+    body.advisor-full-view .avatar-stage .avatar-svg-host svg {
+        transform: translateY(0) scale(.96);
+    }
+
+    body.advisor-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+        transform: translateY(0) scale(.94);
+    }
+
+    body.advisor-full-view .avatar-meta {
+        bottom: 2px;
+        padding: 4px 8px;
     }
 }
 
