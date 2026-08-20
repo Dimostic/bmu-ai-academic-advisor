@@ -59,6 +59,8 @@
     const avatarMicBtn  = $('avatarMicBtn');
     const avatarMuteBtn = $('avatarMuteBtn');
     const avatarPauseBtn= $('avatarPauseBtn');
+    const hardRefreshBtn = $('hardRefreshBtn');
+    const avatarHardRefreshBtn = $('avatarHardRefreshBtn');
     // The SVG element is rendered inside #avatarSvgHost by applyAvatar().
     // We re-resolve advisorSvg / mouthShape / brow / hand handles every
     // time we render so they always point at the live nodes.
@@ -266,6 +268,35 @@
     syncAdvisorViewToggle();
     advisorViewToggleBtn?.addEventListener('click', () => {
         setAdvisorViewMode(!advisorFullView);
+    });
+
+    async function hardRefreshAdvisorApp() {
+        stopCurrentAudio();
+        if (state.recording) {
+            try { stopListening(); } catch (_) { /* ignore */ }
+        }
+        try {
+            if (window.caches?.keys) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(key => caches.delete(key)));
+            }
+        } catch (_) { /* cache API may be blocked/unavailable */ }
+        try {
+            const registrations = await navigator.serviceWorker?.getRegistrations?.();
+            await Promise.all((registrations || []).map(reg => reg.update().catch(() => {})));
+        } catch (_) { /* service workers may be unavailable */ }
+        const params = new URLSearchParams(location.search);
+        params.set('_bmu_refresh', String(Date.now()));
+        const query = params.toString();
+        location.replace(`${location.pathname}${query ? `?${query}` : ''}${location.hash || ''}`);
+    }
+
+    [hardRefreshBtn, avatarHardRefreshBtn].forEach(btn => {
+        btn?.addEventListener('click', () => {
+            btn.disabled = true;
+            btn.classList.add('is-active');
+            hardRefreshAdvisorApp();
+        });
     });
 
     function syncMobileLayoutVars() {

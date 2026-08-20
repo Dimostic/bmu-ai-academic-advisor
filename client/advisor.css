@@ -1041,6 +1041,134 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
     }
 }
 
+@media (max-width: 1024px) and (orientation: landscape) and (max-height: 620px) {
+    body:not(.advisor-full-view) {
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    body:not(.advisor-full-view) .top-bar {
+        position: sticky;
+        padding: 6px 10px !important;
+        gap: 8px;
+    }
+
+    body:not(.advisor-full-view) .brand img {
+        width: 32px;
+        height: 32px;
+    }
+
+    body:not(.advisor-full-view) .brand small,
+    body:not(.advisor-full-view) .top-actions .link-muted {
+        display: none;
+    }
+
+    body:not(.advisor-full-view) .top-actions {
+        width: auto;
+        margin-left: auto;
+        gap: 6px;
+    }
+
+    body:not(.advisor-full-view) .advisor-grid {
+        display: grid;
+        grid-template-columns: minmax(150px, 30vw) minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+        height: calc(100dvh - var(--mobile-topbar-h, 56px));
+        padding: 8px;
+        gap: 8px;
+        overflow: hidden;
+    }
+
+    body:not(.advisor-full-view) .guest-demo-banner {
+        grid-column: 1 / -1;
+        min-height: 0;
+        padding: 8px 10px;
+    }
+
+    body:not(.advisor-full-view) .avatar-pane {
+        position: static;
+        grid-column: 1;
+        height: 100%;
+        min-height: 0;
+        margin: 0;
+        padding: 8px;
+        gap: 7px;
+        overflow: hidden;
+    }
+
+    body:not(.advisor-full-view) .avatar-stage-controls {
+        margin: 0;
+        gap: 6px;
+    }
+
+    body:not(.advisor-full-view) .avatar-stage-controls .icon-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    body:not(.advisor-full-view) .avatar-stage {
+        width: min(100%, 190px);
+        height: min(42vh, 170px);
+    }
+
+    body:not(.advisor-full-view) .avatar-meta {
+        gap: 3px;
+    }
+
+    body:not(.advisor-full-view) .guest-demo-mini {
+        display: none;
+    }
+
+    body:not(.advisor-full-view) .chat-pane {
+        grid-column: 2;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    body:not(.advisor-full-view) .topics-bar {
+        order: 1;
+        flex: 0 0 auto;
+        margin: 0;
+    }
+
+    body:not(.advisor-full-view) .transcript {
+        order: 2;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        padding: 4px 2px 10px;
+    }
+
+    body:not(.advisor-full-view) .followups {
+        order: 3;
+        flex: 0 0 auto;
+        padding: 0;
+        max-height: 46px;
+        overflow-y: auto;
+    }
+
+    body:not(.advisor-full-view) .composer {
+        order: 4;
+        position: static;
+        flex: 0 0 auto;
+        margin: 0;
+        padding: 8px;
+    }
+
+    body:not(.advisor-full-view) .composer input[type="text"] {
+        min-width: 0;
+        font-size: .95rem;
+        padding: 8px 10px;
+    }
+}
+
 /* Short mobile screens: dial avatar size down slightly so sticky avatar +
    sticky composer still leave enough response-reading area. */
 @media (max-width: 1024px) and (max-height: 760px) {
@@ -1094,7 +1222,7 @@ body.advisor-full-view .brand small {
     display: none;
 }
 
-body.advisor-full-view .top-actions > *:not(#advisorViewToggleBtn) {
+body.advisor-full-view .top-actions > *:not(#advisorViewToggleBtn):not(#hardRefreshBtn) {
     display: none !important;
 }
 

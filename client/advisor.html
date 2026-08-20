@@ -14,7 +14,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260820-followup-mic" />
+    <link rel="stylesheet" href="/advisor.css?v=20260820-refresh-landscape" />
     <link rel="stylesheet" href="/pages.css?v=20260815-thinking-label" />
 </head>
 <body>
@@ -29,6 +29,9 @@
         <nav class="top-actions">
             <button id="advisorViewToggleBtn" class="btn btn-ghost" type="button" title="Open full page advisor view">
                 <i class="fa-solid fa-expand"></i> Full page
+            </button>
+            <button id="hardRefreshBtn" class="icon-btn" type="button" title="Hard refresh app" aria-label="Hard refresh app">
+                <i class="fa-solid fa-rotate-right"></i>
             </button>
             <button id="themeToggleBtn" class="icon-btn" type="button" title="Switch to dark theme" aria-label="Switch theme">
                 <i class="fa-solid fa-moon"></i>
@@ -77,6 +80,9 @@
                 </button>
                 <button type="button" id="avatarPauseBtn" class="icon-btn" title="Pause advisor speech" aria-pressed="false">
                     <i class="fa-solid fa-pause"></i>
+                </button>
+                <button type="button" id="avatarHardRefreshBtn" class="icon-btn" title="Hard refresh app" aria-label="Hard refresh app">
+                    <i class="fa-solid fa-rotate-right"></i>
                 </button>
                 <button type="button" id="avatarGenderToggleBtn" class="icon-btn icon-btn--wide" title="Switch avatar gender">
                     <i class="fa-solid fa-venus-mars"></i>
@@ -236,7 +242,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260817-advisor-accuracy" defer></script>
-    <script src="/advisor.js?v=20260820-followup-mic" defer></script>
+    <script src="/advisor.js?v=20260820-refresh-landscape" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>
