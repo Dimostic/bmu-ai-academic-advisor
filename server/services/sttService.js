@@ -16,6 +16,28 @@ function isConfigured() {
     return Boolean(process.env.GROQ_API_KEY);
 }
 
+function assessTranscriptQuality(text) {
+    const value = String(text || '').trim();
+    if (!value) {
+        return { ok: false, reason: 'empty' };
+    }
+    const letters = value.match(/\p{L}/gu) || [];
+    if (!letters.length) {
+        return { ok: false, reason: 'no_letters' };
+    }
+    const latinLetters = value.match(/\p{Script=Latin}/gu) || [];
+    const combiningMarks = value.match(/\p{M}/gu) || [];
+    const asciiLetters = value.match(/[A-Za-z]/g) || [];
+    const latinRatio = latinLetters.length / Math.max(1, letters.length);
+    const asciiRatio = asciiLetters.length / Math.max(1, letters.length);
+    const markRatio = combiningMarks.length / Math.max(1, letters.length);
+
+    if (latinRatio < 0.92) return { ok: false, reason: 'non_latin_script', latinRatio, asciiRatio, markRatio };
+    if (markRatio > 0.02) return { ok: false, reason: 'too_many_tone_marks', latinRatio, asciiRatio, markRatio };
+    if (asciiRatio < 0.82) return { ok: false, reason: 'low_ascii_ratio', latinRatio, asciiRatio, markRatio };
+    return { ok: true, reason: null, latinRatio, asciiRatio, markRatio };
+}
+
 /**
  * Transcribe an audio buffer with Groq Whisper.
  * @param {Buffer} audioBuffer
@@ -45,6 +67,7 @@ async function transcribe(audioBuffer, opts = {}) {
     form.append('language', language);
     form.append('response_format', 'verbose_json');
     form.append('temperature', '0');
+    form.append('prompt', 'Transcribe the user as English or Nigerian English only. Do not translate. Expected BMU academic advisor questions may mention BMU, Bayelsa Medical University, courses, fees, admission, VC, bursar, registrar, or student handbook.');
 
     const { data } = await axios.post(
         `${GROQ_BASE}/audio/transcriptions`,
@@ -59,11 +82,15 @@ async function transcribe(audioBuffer, opts = {}) {
         }
     );
 
+    const text = (data?.text || '').trim();
+    const quality = assessTranscriptQuality(text);
     return {
         provider: 'groq',
-        text: (data?.text || '').trim(),
-        durationSeconds: data?.duration || null
+        text,
+        durationSeconds: data?.duration || null,
+        transcriptOk: quality.ok,
+        transcriptQuality: quality
     };
 }
 
-module.exports = { transcribe, isConfigured };
+module.exports = { transcribe, isConfigured, assessTranscriptQuality };

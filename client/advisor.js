@@ -2325,6 +2325,34 @@
         return text.replace(/\s+/g, ' ').trim();
     }
 
+    function looksLikeBadVoiceTranscript(text) {
+        const value = String(text || '').trim();
+        if (!value) return true;
+        const letters = value.match(/\p{L}/gu) || [];
+        if (!letters.length) return true;
+        const latinLetters = value.match(/\p{Script=Latin}/gu) || [];
+        const combiningMarks = value.match(/\p{M}/gu) || [];
+        const asciiLetters = value.match(/[A-Za-z]/g) || [];
+        const latinRatio = latinLetters.length / Math.max(1, letters.length);
+        const asciiRatio = asciiLetters.length / Math.max(1, letters.length);
+        const markRatio = combiningMarks.length / Math.max(1, letters.length);
+        if (latinRatio < 0.92) return true;
+        if (markRatio > 0.02) return true;
+        if (asciiRatio < 0.82) return true;
+        if (value.length > 24 && !/\b(?:bmu|bayelsa|medical|university|course|courses|programme|program|fees?|admission|student|handbook|who|what|when|where|how|tell|name|about|is|are|the|of|for|in)\b/i.test(value)) {
+            return true;
+        }
+        return false;
+    }
+
+    function rejectBadVoiceTranscript() {
+        questionInput.value = '';
+        updateClearInputButton();
+        setAvatarState('idle', 'Ready');
+        toast("I couldn't hear that clearly. Please try again in English or type the question.", 'error');
+        scheduleWakeWordListener(900);
+    }
+
     const WAKE_WORD_RE = /\b(?:dr\.?\s*tari|doctor\s*tari)\b/i;
     let wakeRecognition = null;
     let wakeRestartTimer = null;
@@ -2512,6 +2540,19 @@
                 if (!normalized) {
                     finishListeningUi('Ready');
                     recognition = null;
+                    return;
+                }
+                if (looksLikeBadVoiceTranscript(normalized)) {
+                    submitting = true;
+                    clearSilenceTimer();
+                    clearNoSpeechTimer();
+                    try {
+                        recognition.onend = null;
+                        recognition.stop();
+                    } catch (_) { /* ignore */ }
+                    recognition = null;
+                    finishListeningUi('Ready');
+                    rejectBadVoiceTranscript();
                     return;
                 }
                 submitting = true;
@@ -2719,7 +2760,12 @@
                     const res = await fetch('/api/advisor/stt', { method: 'POST', headers: { ...authHeaders(), ...guestDemoHeaders() }, body: form });
                     const data = await res.json();
                     if (data?.success && data.text) {
-                        questionInput.value = data.text;
+                        const normalized = normalizeVoiceTranscript(data.text);
+                        if (data.transcriptOk === false || looksLikeBadVoiceTranscript(normalized)) {
+                            rejectBadVoiceTranscript();
+                            return;
+                        }
+                        questionInput.value = normalized;
                         updateClearInputButton();
                         askAfterTranscriptPreview();
                     } else if (res.status === 503 || /not configured/i.test(data?.error || '')) {
