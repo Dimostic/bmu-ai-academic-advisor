@@ -1700,10 +1700,29 @@ body.advisor-full-view #advisorViewToggleBtn {
 
     body.advisor-full-view .avatar-stage {
         height: 100%;
+        overflow: visible;
+    }
+
+    body.advisor-full-view .avatar-stage .avatar-svg-host {
+        overflow: visible;
     }
 
     body.advisor-full-view .avatar-stage .avatar-svg-host svg {
-        transform: translateY(-1.5%) scale(1.06);
+        width: auto;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        transform: none;
+        transform-origin: center center;
+    }
+
+    body.advisor-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+        width: auto;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        transform: none;
+        transform-origin: center center;
     }
 
     body.advisor-full-view .avatar-meta {
@@ -1776,11 +1795,19 @@ body.advisor-full-view #advisorViewToggleBtn {
 
 @media (max-width: 1024px) and (orientation: landscape) and (max-height: 460px) {
     body.advisor-full-view .avatar-stage .avatar-svg-host svg {
-        transform: translateY(0) scale(.96);
+        width: auto;
+        height: 94%;
+        max-width: 100%;
+        max-height: 94%;
+        transform: none;
     }
 
     body.advisor-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
-        transform: translateY(0) scale(.94);
+        width: auto;
+        height: 92%;
+        max-width: 100%;
+        max-height: 92%;
+        transform: none;
     }
 
     body.advisor-full-view .avatar-meta {
