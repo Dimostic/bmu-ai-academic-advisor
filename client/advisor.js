@@ -193,6 +193,14 @@
             : '<i class="fa-solid fa-compress"></i>';
     }
 
+    function syncViewportModeClasses() {
+        const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+        const landscape = viewportW > viewportH || window.matchMedia('(orientation: landscape)').matches;
+        const touchCapable = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+        document.body.classList.toggle('touch-landscape-full-view', Boolean(advisorFullView && landscape && touchCapable));
+    }
+
     function syncAdvisorViewToggle() {
         if (!advisorViewToggleBtn) return;
         if (advisorFullView) {
@@ -203,6 +211,7 @@
             advisorViewToggleBtn.innerHTML = '<i class="fa-solid fa-expand"></i> Full page';
         }
         document.body.classList.toggle('advisor-full-view', advisorFullView);
+        syncViewportModeClasses();
     }
 
     function syncAvatarGenderToggle() {
@@ -324,6 +333,7 @@
         const avatarH = avatarPane ? Math.ceil(avatarPane.getBoundingClientRect().height) : 160;
         document.documentElement.style.setProperty('--mobile-topbar-h', `${topH}px`);
         document.documentElement.style.setProperty('--mobile-avatar-h', `${avatarH}px`);
+        syncViewportModeClasses();
     }
 
     function setActiveResponseBubble(el) {
@@ -3792,6 +3802,10 @@
         syncMobileLayoutVars();
         setTimeout(syncMobileLayoutVars, 200);
         window.addEventListener('resize', syncMobileLayoutVars, { passive: true });
+        window.addEventListener('orientationchange', () => {
+            syncMobileLayoutVars();
+            setTimeout(syncMobileLayoutVars, 120);
+        }, { passive: true });
 
         async function refreshQuotaBadge() {
             const badge = document.getElementById('quotaBadge');

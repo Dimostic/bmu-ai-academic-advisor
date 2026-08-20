@@ -1912,6 +1912,131 @@ body.advisor-full-view #advisorViewToggleBtn {
     }
 }
 
+body.advisor-full-view.touch-landscape-full-view {
+    height: 100dvh !important;
+    overflow: hidden !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .advisor-grid {
+    height: calc(100dvh - var(--mobile-topbar-h, 64px)) !important;
+    padding: 4px 10px 112px !important;
+    gap: 4px !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    overflow: hidden !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-pane {
+    min-height: 0 !important;
+    padding: 2px 8px 0 !important;
+    gap: 0 !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-stage {
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-stage .avatar-svg-host {
+    align-items: flex-start !important;
+    overflow: visible !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-stage .avatar-svg-host svg,
+body.advisor-full-view.touch-landscape-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+    width: auto !important;
+    height: min(92%, 78vh) !important;
+    max-width: 100% !important;
+    max-height: 92% !important;
+    transform: translateY(-10%) !important;
+    transform-origin: center top !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-stage-controls {
+    position: fixed !important;
+    left: 8px !important;
+    top: 50% !important;
+    bottom: auto !important;
+    z-index: 61 !important;
+    transform: translateY(-50%) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 5px !important;
+    margin: 0 !important;
+    padding: 5px !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, .82) !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-stage-controls .icon-btn,
+body.advisor-full-view.touch-landscape-full-view .avatar-stage-controls .icon-btn--wide {
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    padding: 0 !important;
+    font-size: .8rem !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .chat-pane {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 6px !important;
+    z-index: 60 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .fullpage-answer {
+    height: 32px !important;
+    max-height: 32px !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    font-size: .8rem !important;
+    line-height: 1.25 !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .voice-command-bar {
+    min-height: 28px !important;
+    padding: 3px 8px 0 !important;
+    overflow-x: auto !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .voice-command-bar button {
+    min-height: 24px !important;
+    padding: 3px 8px !important;
+    font-size: .7rem !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .composer {
+    min-height: 38px !important;
+    padding: 4px 8px !important;
+    margin: 0 !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .composer input[type="text"] {
+    height: 30px !important;
+    padding: 5px 10px !important;
+    font-size: .86rem !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .mic-btn,
+body.advisor-full-view.touch-landscape-full-view .send-btn,
+body.advisor-full-view.touch-landscape-full-view .clear-input-btn {
+    width: 30px !important;
+    height: 30px !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view #micWave {
+    display: none !important;
+    width: 0 !important;
+}
+
 @media (max-width: 560px) {
     body.advisor-full-view .avatar-stage-controls {
         position: static;
