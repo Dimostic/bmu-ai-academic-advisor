@@ -101,6 +101,7 @@
     const TRANSCRIPT_PREVIEW_MS = 650;
     const SERVER_STT_TRANSCRIPT_PREVIEW_MS = 1800;
     const AUTO_FOLLOWUP_LISTEN_MS = 5000;
+    const ANDROID_AUTO_FOLLOWUP_LISTEN_MS = 8000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
     // ---------- State ----------
@@ -1730,7 +1731,10 @@
             if (state.voicePaused) return;
             if (state.recording || document.hidden) return;
             if (questionInput?.value.trim()) return;
-            startListening({ autoFollowup: true, noSpeechMs: AUTO_FOLLOWUP_LISTEN_MS });
+            startListening({
+                autoFollowup: true,
+                noSpeechMs: isAndroidSpeechDevice() ? ANDROID_AUTO_FOLLOWUP_LISTEN_MS : AUTO_FOLLOWUP_LISTEN_MS
+            });
         }, 250);
     }
 
@@ -2804,7 +2808,7 @@
             toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
             return;
         }
-        setAvatarState('listening', autoFollowup ? 'Listening... 5s' : 'Listening');
+        setAvatarState('listening', autoFollowup ? `Listening... ${Math.ceil(noSpeechMs / 1000)}s` : 'Listening');
         if (shouldUseBrowserSpeechRecognition()) {
             const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new Rec();
@@ -2930,7 +2934,7 @@
             };
             noSpeechTimer = setTimeout(() => {
                 if (!heardSpeech && !submitting) {
-                    cancelListening('Ready');
+                    cancelListening(isAndroidSpeechDevice() ? 'Tap mic or Continue' : 'Ready');
                 }
             }, noSpeechMs);
             if (autoFollowup) {
@@ -3087,7 +3091,9 @@
             let heardSpeech = false;
             let lastSpeechAt = 0;
             let noiseFloor = 0.008;
+            let discardReason = '';
             const stopRecorder = (discard = false) => {
+                if (discard) discardReason = 'no-speech';
                 discardRecording = discardRecording || discard;
                 if (monitorTimer) clearInterval(monitorTimer);
                 monitorTimer = null;
@@ -3113,7 +3119,10 @@
                 discardRecording = discardRecording || Boolean(state.discardVoiceRecording);
                 state.discardVoiceRecording = false;
                 if (discardRecording || !chunks.length) {
-                    setAvatarState('idle', 'Ready');
+                    const idleLabel = isAndroidSpeechDevice() && discardReason === 'no-speech'
+                        ? 'Tap mic or Continue'
+                        : 'Ready';
+                    setAvatarState('idle', idleLabel);
                     scheduleWakeWordListener(900);
                     return;
                 }
@@ -3132,6 +3141,10 @@
                         const normalized = normalizeVoiceTranscript(data.text);
                         if (data.transcriptOk === false || looksLikeBadVoiceTranscript(normalized)) {
                             rejectBadVoiceTranscript();
+                            return;
+                        }
+                        if (consumeLocalVoiceCommand(normalized)) {
+                            scheduleWakeWordListener(900);
                             return;
                         }
                         questionInput.value = normalized;
@@ -3159,7 +3172,7 @@
             state.mediaRecorder = recorder;
             state.recording = true;
             syncMicButtonsUi(true);
-            setAvatarState('listening', autoFollowup ? 'Listening... 5s' : 'Listening');
+            setAvatarState('listening', autoFollowup ? `Listening... ${Math.ceil(noSpeechMs / 1000)}s` : 'Listening');
             maxRecordingTimer = setTimeout(() => stopRecorder(false), 30000);
 
             try {
