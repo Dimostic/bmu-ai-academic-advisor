@@ -100,17 +100,30 @@ function programmeMatchesDocument(programme, title) {
 
 function findProgrammeAnchors(text, documentTitle) {
     const source = compactText(text);
+    const lower = source.toLowerCase();
     const anchors = [];
     for (const programme of PROGRAMME_CATALOG) {
         if (!programmeMatchesDocument(programme, documentTitle)) continue;
         for (const alias of programme.aliases || []) {
-            const aliasPattern = escapeRegExp(alias).replace(/\s+/g, '\\s+');
-            const re = new RegExp(`(?:^|\\b|New\\s+)(${aliasPattern})(?=\\s+(?:Overview|Philosophy|Objectives|Admission|Global Course Structure|Course Contents|Minimum Academic Standards)|\\b)`, 'ig');
-            let match;
-            while ((match = re.exec(source)) !== null) {
+            const needle = String(alias || '').toLowerCase();
+            if (!needle || needle.length < 4) continue;
+            let from = 0;
+            while (from < lower.length) {
+                const index = lower.indexOf(needle, from);
+                if (index < 0) break;
+                from = index + Math.max(needle.length, 1);
+
+                const before = lower[index - 1] || ' ';
+                const after = lower[index + needle.length] || ' ';
+                if (/[a-z0-9]/i.test(before) || /[a-z0-9]/i.test(after)) continue;
+
+                const nearby = lower.slice(index + needle.length, index + needle.length + 220);
+                const looksLikeProgrammeHeading = /\b(overview|philosophy|objectives?|admissions?\s+and\s+graduation|global course structure|course contents?|minimum academic standards?)\b/i.test(nearby);
+                if (!looksLikeProgrammeHeading) continue;
+
                 anchors.push({
-                    index: match.index + (match[0].length - match[1].length),
-                    heading: match[1],
+                    index,
+                    heading: source.slice(index, index + alias.length),
                     programme
                 });
             }
@@ -212,7 +225,10 @@ class CcmasProgrammeExtractorService {
         const results = [];
         for (const doc of documents || []) {
             if (!isCcmasDocument(doc.title)) continue;
-            results.push(await this.extractDocument(doc.id));
+            console.log(`[CCMAS extractor] Extracting document ${doc.id}: ${doc.title}`);
+            const result = await this.extractDocument(doc.id);
+            console.log(`[CCMAS extractor] Result ${doc.id}: ${JSON.stringify(result)}`);
+            results.push(result);
         }
         return results;
     }
