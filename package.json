@@ -14,6 +14,7 @@
     "ingest:status": "node server/scripts/ingestSources.js --status",
     "ingest:normalise": "node server/scripts/ingestSources.js --normalise",
     "extract:ccmas": "node server/scripts/extractCcmasProgrammeSections.js",
+    "extract:ccmas:structured": "node server/scripts/extractCcmasStructuredRecords.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js"
