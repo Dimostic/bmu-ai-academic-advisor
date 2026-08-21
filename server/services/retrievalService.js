@@ -396,7 +396,7 @@ class RetrievalService {
             keys.add('admission_graduation_requirements');
             keys.add('admission_requirements');
         }
-        if (/\b(graduat|duration|pass mark|core course|credit unit|award|degree|classifi|professional exam)\b/i.test(q)) {
+        if (/\b(graduat\w*|duration|pass mark|core course|credit unit|award|degree|classifi\w*|professional exam)\b/i.test(q)) {
             keys.add('admission_graduation_requirements');
             keys.add('graduation_requirements');
         }
