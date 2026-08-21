@@ -554,7 +554,8 @@ class RetrievalService {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || processedQuery?.original || '').toLowerCase();
         const levelMatch = q.match(/\b([1-6]00)\s*(?:level|lvl|year)\b/) || q.match(/\b(?:level|year)\s*([1-6]00)\b/);
         const rawCourseCodeMatch = q.match(/\b((?:bmu[-\s]?)?[a-z]{2,4})[-\s]?(\d{3})\b/i);
-        const courseCodeMatch = rawCourseCodeMatch && !['in', 'on', 'for', 'the', 'and', 'level', 'year'].includes(String(rawCourseCodeMatch[1]).toLowerCase())
+        const blockedCoursePrefixes = ['in', 'on', 'for', 'the', 'and', 'are', 'is', 'what', 'which', 'show', 'list', 'give', 'level', 'year'];
+        const courseCodeMatch = rawCourseCodeMatch && !blockedCoursePrefixes.includes(String(rawCourseCodeMatch[1]).toLowerCase())
             ? rawCourseCodeMatch
             : null;
         const titlePhrase = this._detectCourseTitlePhrase(q);
@@ -608,6 +609,7 @@ class RetrievalService {
         const terms = this._queryLookupTerms(processedQuery, 8);
         const records = [];
         const exactCourseRecords = await this._lookupNormalizedCourseRecords(processedQuery, Math.max(limit, 16));
+        const courseFilter = this._detectStructuredTableRowFilter(processedQuery);
         records.push(...exactCourseRecords);
         if (!terms.length) return records.slice(0, limit);
 
@@ -652,6 +654,9 @@ class RetrievalService {
 
         for (const search of searches) {
             try {
+                if (search.type === 'course' && courseFilter.courseCode && !exactCourseRecords.length) {
+                    continue;
+                }
                 const matchExpr = this._likeMatchExpression(search.fields);
                 const likeConditions = terms.map(() => matchExpr).join(' OR ');
                 const scoreExpr = terms.map(() => matchExpr).join(' + ');
