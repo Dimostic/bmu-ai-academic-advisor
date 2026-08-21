@@ -553,16 +553,30 @@ class RetrievalService {
     _detectStructuredTableRowFilter(processedQuery) {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || processedQuery?.original || '').toLowerCase();
         const levelMatch = q.match(/\b([1-6]00)\s*(?:level|lvl|year)\b/) || q.match(/\b(?:level|year)\s*([1-6]00)\b/);
+        const courseCodeMatch = q.match(/\b((?:bmu[-\s]?)?[a-z]{2,4})[-\s]?(\d{3})\b/i);
+        const titlePhrase = this._detectCourseTitlePhrase(q);
         const semester = /\bfirst\s+semester\b|\b1st\s+semester\b/.test(q)
             ? 'first'
             : /\bsecond\s+semester\b|\b2nd\s+semester\b/.test(q)
                 ? 'second'
                 : null;
         return {
-            active: Boolean(levelMatch || semester),
+            active: Boolean(levelMatch || semester || courseCodeMatch || titlePhrase),
             level: levelMatch ? `${levelMatch[1]} Level` : null,
-            semester
+            semester,
+            courseCode: courseCodeMatch ? `${courseCodeMatch[1].replace(/\s+/g, '-').toUpperCase()}-${courseCodeMatch[2]}`.replace(/^BMU-?/, 'BMU-') : null,
+            courseTitlePhrase: titlePhrase
         };
+    }
+
+    _detectCourseTitlePhrase(queryText) {
+        let q = String(queryText || '').toLowerCase();
+        q = q.replace(/\b(what is|tell me about|how many units is|unit[s]? for|course|courses|in|for|the|a|an|of)\b/g, ' ');
+        q = q.replace(/\b(?:bmu[-\s]?)?[a-z]{2,4}[-\s]?\d{3}\b/ig, ' ');
+        q = q.replace(/\b([1-6]00)\s*(?:level|lvl|year)\b/g, ' ');
+        q = q.replace(/\b(?:medical laboratory science|medicine and surgery|mbbs|bmls|nursing|pharmacy|dentistry|programme|program)\b/g, ' ');
+        q = q.replace(/[^a-z0-9\s&-]/g, ' ').replace(/\s+/g, ' ').trim();
+        return q.length >= 6 ? q : null;
     }
 
     _filterStructuredRows(rows, filter) {
@@ -572,6 +586,15 @@ class RetrievalService {
             if (filter.semester) {
                 const sem = String(row.semester || '').toLowerCase();
                 if (!sem.includes(filter.semester)) return false;
+            }
+            if (filter.courseCode) {
+                const code = String(row.course_code || '').replace(/\s+/g, '-').toUpperCase();
+                if (code !== filter.courseCode) return false;
+            }
+            if (filter.courseTitlePhrase) {
+                const title = String(row.course_title || '').toLowerCase();
+                const terms = filter.courseTitlePhrase.split(/\s+/).filter(term => term.length > 2);
+                if (terms.length && !terms.every(term => title.includes(term))) return false;
             }
             return true;
         });
