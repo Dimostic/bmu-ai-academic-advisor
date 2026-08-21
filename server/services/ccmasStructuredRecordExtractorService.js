@@ -116,6 +116,7 @@ function detectRuleFacts(section) {
 function extractCourseRows(section) {
     const text = clean(section.content);
     const rows = [];
+    const levelMarkers = collectLevelMarkers(text);
     const courseRe = /\b((?:BMU[-\s])?[A-Z]{2,4}[-\s]?\d{3})\s+([A-Z][A-Za-z0-9&,.:'()\/\-\s]{3,120}?)\s+(\d{1,2})\s+([CE])\b/g;
     let match;
     while ((match = courseRe.exec(text)) !== null) {
@@ -128,7 +129,7 @@ function extractCourseRows(section) {
             course_title: title,
             units: Number(match[3]),
             status: match[4] === 'C' ? 'Compulsory' : 'Elective',
-            level: inferNearbyLevel(text, match.index),
+            level: inferLevelFromMarkers(levelMarkers, match.index) || inferNearbyLevel(text, match.index),
             semester: inferNearbySemester(text, match.index),
             scope: section.scope_label || 'NUC CCMAS national minimum'
         });
@@ -141,6 +142,25 @@ function extractCourseRows(section) {
         seen.add(key);
         return true;
     }).slice(0, 450);
+}
+
+function collectLevelMarkers(text) {
+    const markers = [];
+    const re = /\b([1-6]00)\s+Level\b/ig;
+    let match;
+    while ((match = re.exec(text)) !== null) {
+        markers.push({ index: match.index, level: `${match[1]} Level` });
+    }
+    return markers;
+}
+
+function inferLevelFromMarkers(markers, index) {
+    let current = null;
+    for (const marker of markers) {
+        if (marker.index > index) break;
+        current = marker.level;
+    }
+    return current;
 }
 
 function inferNearbyLevel(text, index) {
