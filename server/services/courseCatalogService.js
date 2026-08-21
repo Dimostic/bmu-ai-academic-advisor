@@ -186,6 +186,58 @@ function formatCourseRowsTable(rows) {
     ].join('\n');
 }
 
+function normalizeCourseTitle(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/&/g, 'and')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\b(i|ii|iii|iv|v)\b/g, match => match.toUpperCase())
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function mergeCourseRowsForDisplay(rows) {
+    const grouped = new Map();
+    for (const row of rows) {
+        const key = `${row.semester || ''}|${normalizeCourseCode(row.courseCode)}|${normalizeCourseTitle(row.courseTitle)}`;
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                ...row,
+                categories: new Set(row.category ? [row.category] : []),
+                sourceCount: 1
+            });
+            continue;
+        }
+
+        const existing = grouped.get(key);
+        if (row.category) existing.categories.add(row.category);
+        existing.sourceCount++;
+    }
+
+    return [...grouped.values()].map(row => {
+        const categories = [...row.categories].filter(Boolean).sort();
+        return {
+            ...row,
+            category: categories.join('/'),
+            duplicateCount: row.sourceCount
+        };
+    });
+}
+
+function formatCourseListTable(rows) {
+    const tableRows = rows.map(row => {
+        const note = row.duplicateCount > 1 && row.category
+            ? `${row.category}; repeated ${row.duplicateCount}x`
+            : row.category || '';
+        return `| ${formatSemester(row.semester)} | ${row.courseCode} | ${row.courseTitle} | ${note} |`;
+    });
+    return [
+        '| Semester | Course code | Course title | Note |',
+        '| --- | --- | --- | --- |',
+        ...tableRows
+    ].join('\n');
+}
+
 function nearbyCourseSuggestions(rows, normalizedCode, programme) {
     const prefix = String(normalizedCode || '').replace(/\d+$/, '');
     return rows
@@ -314,17 +366,16 @@ async function buildCourseListReply(question) {
 
     if (!rows.length) return null;
 
-    const tableRows = rows.map(row => `| ${formatSemester(row.semester)} | ${row.courseCode} | ${row.courseTitle} | ${row.category || ''} |`);
-    const table = [
-        '| Semester | Course code | Course title | Category |',
-        '| --- | --- | --- | --- |',
-        ...tableRows
-    ].join('\n');
-    const codes = rows.map(row => row.courseCode).join(', ');
+    const displayRows = mergeCourseRowsForDisplay(rows);
+    const table = formatCourseListTable(displayRows);
+    const codes = displayRows.map(row => row.courseCode).join(', ');
+    const groupedNote = displayRows.length < rows.length
+        ? ` I grouped ${rows.length} source rows into ${displayRows.length} displayed course entries where BMAS/CCMAS rows repeated the same course code and title.`
+        : '';
 
     return {
-        speech_text: `According to the BMU student courses document, ${level} level ${displayProgramme}${semesterScope} has ${rows.length} listed courses: ${codes}.`,
-        display_markdown: `According to **${SOURCE_TITLE}**, **${level} level ${displayProgramme}**${semesterScope} has **${rows.length} listed courses**:\n\n${table}\n\nThis is the BMU-specific student course list. Credit units are not shown in this source table.`,
+        speech_text: `According to the BMU student courses document, ${level} level ${displayProgramme}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}`,
+        display_markdown: `According to **${SOURCE_TITLE}**, **${level} level ${displayProgramme}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}\n\nThis is the BMU-specific student course list. Credit units are not shown in this source table.`,
         topic_slug: 'bmu_student_courses',
         citations: [{ title: SOURCE_TITLE, source: `${displayProgramme} ${level} level course list` }],
         suggested_actions: [],
