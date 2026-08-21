@@ -553,7 +553,10 @@ class RetrievalService {
     _detectStructuredTableRowFilter(processedQuery) {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || processedQuery?.original || '').toLowerCase();
         const levelMatch = q.match(/\b([1-6]00)\s*(?:level|lvl|year)\b/) || q.match(/\b(?:level|year)\s*([1-6]00)\b/);
-        const courseCodeMatch = q.match(/\b((?:bmu[-\s]?)?[a-z]{2,4})[-\s]?(\d{3})\b/i);
+        const rawCourseCodeMatch = q.match(/\b((?:bmu[-\s]?)?[a-z]{2,4})[-\s]?(\d{3})\b/i);
+        const courseCodeMatch = rawCourseCodeMatch && !['in', 'on', 'for', 'the', 'and', 'level', 'year'].includes(String(rawCourseCodeMatch[1]).toLowerCase())
+            ? rawCourseCodeMatch
+            : null;
         const titlePhrase = this._detectCourseTitlePhrase(q);
         const semester = /\bfirst\s+semester\b|\b1st\s+semester\b/.test(q)
             ? 'first'
