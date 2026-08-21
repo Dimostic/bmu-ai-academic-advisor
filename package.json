@@ -13,6 +13,7 @@
     "ingest:embed": "node server/scripts/ingestSources.js --embed-only",
     "ingest:status": "node server/scripts/ingestSources.js --status",
     "ingest:normalise": "node server/scripts/ingestSources.js --normalise",
+    "extract:ccmas": "node server/scripts/extractCcmasProgrammeSections.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js"

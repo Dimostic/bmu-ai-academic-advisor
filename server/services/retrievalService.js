@@ -16,6 +16,7 @@
 const { query } = require('../../config/db');
 const vectorStore = require('./vectorStore');
 const faqService = require('./faqService');
+const ccmasExtractor = require('./ccmasProgrammeExtractorService');
 
 // Lazy-load aiService to avoid circular dependency
 let _aiService = null;
@@ -104,7 +105,8 @@ class RetrievalService {
             crossSourceOccurrenceMaxBoost: parseFloat(process.env.ADVISOR_OCCURRENCE_MAX_BOOST || '0.18'),
             enableStructuredFactLookup: process.env.ADVISOR_STRUCTURED_FACT_LOOKUP !== 'false',
             enableNormalizedAcademicLookup: process.env.ADVISOR_NORMALIZED_ACADEMIC_LOOKUP !== 'false',
-            enableHighRiskFactPolicy: process.env.ADVISOR_HIGH_RISK_FACT_POLICY !== 'false'
+            enableHighRiskFactPolicy: process.env.ADVISOR_HIGH_RISK_FACT_POLICY !== 'false',
+            enableCcmasProgrammeSectionLookup: process.env.ADVISOR_CCMAS_SECTION_LOOKUP !== 'false'
         };
         
         // Multi-level caches
@@ -166,8 +168,11 @@ class RetrievalService {
             const normalizedAcademicRecords = this.config.enableNormalizedAcademicLookup
                 ? await this._lookupNormalizedAcademicRecords(processedQuery)
                 : [];
+            const ccmasProgrammeSections = this.config.enableCcmasProgrammeSectionLookup
+                ? await this._lookupCcmasProgrammeSections(processedQuery)
+                : [];
             const highRiskPolicy = this.config.enableHighRiskFactPolicy
-                ? this._buildHighRiskFactPolicy(processedQuery, structuredFacts, structuredTables, normalizedAcademicRecords)
+                ? this._buildHighRiskFactPolicy(processedQuery, structuredFacts, structuredTables, normalizedAcademicRecords, ccmasProgrammeSections)
                 : null;
             
             // 3. FAQ check REMOVED - FAQ is now a separate feature
@@ -207,12 +212,13 @@ class RetrievalService {
             const normalizedAcademicContext = this._formatNormalizedAcademicContext(normalizedAcademicRecords);
             const structuredContext = this._formatStructuredFactsContext(structuredFacts);
             const tableContext = this._formatStructuredTablesContext(structuredTables);
+            const ccmasSectionContext = this._formatCcmasProgrammeSectionsContext(ccmasProgrammeSections);
             const policyContext = highRiskPolicy?.context || '';
             
             // 7. Build final result
             const result = {
                 type: 'document_retrieval',
-                context: [policyContext, normalizedAcademicContext, structuredContext, tableContext, compressedContext.text].filter(Boolean).join('\n\n---\n\n'),
+                context: [policyContext, normalizedAcademicContext, structuredContext, tableContext, ccmasSectionContext, compressedContext.text].filter(Boolean).join('\n\n---\n\n'),
                 chunks: topResults.map(r => ({
                     content: r.content,
                     documentId: r.documentId,
@@ -236,6 +242,7 @@ class RetrievalService {
                     normalizedAcademicRecords: normalizedAcademicRecords.length,
                     structuredFacts: structuredFacts.length,
                     structuredTables: structuredTables.length,
+                    ccmasProgrammeSections: ccmasProgrammeSections.length,
                     highRiskPolicy
                 } : undefined
             };
@@ -349,6 +356,117 @@ class RetrievalService {
             authorityRank: 90,
             score: 99
         }];
+    }
+
+    _detectProgrammeForCcmasSections(queryText) {
+        const q = String(queryText || '').toLowerCase();
+        const catalog = ccmasExtractor.PROGRAMME_CATALOG || [];
+        const aliases = [
+            ['BMLS', /\b(bmls|b\.?\s*mls|medical laboratory sciences?|medical lab)\b/i],
+            ['BNSC', /\b(bnsc|b\.?\s*n\.?\s*sc|nursing sciences?|nursing)\b/i],
+            ['MBBS', /\b(mbbs|medicine and surgery|medical doctor)\b/i],
+            ['BDS', /\b(bds|dentistry|dental surgery)\b/i],
+            ['PHARMD', /\b(pharmd|pharm\.?\s*d|doctor of pharmacy)\b/i],
+            ['BPHARM', /\b(b\.?\s*pharm|bachelor of pharmacy)\b/i],
+            ['DPT', /\b(dpt|physiotherapy)\b/i],
+            ['OD', /\b(optometry|doctor of optometry)\b/i],
+            ['PH', /\bpublic health\b/i],
+            ['HIM', /\bhealth information management\b/i],
+            ['HAM', /\bhealth care administration|hospital management\b/i],
+            ['ANA', /\banatomy|human anatomy\b/i],
+            ['PIO', /\bphysiology|human physiology\b/i],
+            ['BCH', /\bbiochemistry\b/i],
+            ['MCB', /\bmicrobiology\b/i],
+            ['COS', /\bcomputer science|computing science\b/i]
+        ];
+        for (const [code, pattern] of aliases) {
+            if (pattern.test(q)) return catalog.find(item => item.code === code) || { code };
+        }
+        for (const programme of catalog) {
+            const values = [programme.name, programme.degree, programme.code, ...(programme.aliases || [])].filter(Boolean);
+            if (values.some(value => q.includes(String(value).toLowerCase()))) return programme;
+        }
+        return null;
+    }
+
+    _detectCcmasSectionKeys(queryText) {
+        const q = String(queryText || '').toLowerCase();
+        const keys = new Set();
+        if (/\b(admission|entry|utme|direct entry|o.?level|waec|neco|jamb)\b/i.test(q)) {
+            keys.add('admission_graduation_requirements');
+            keys.add('admission_requirements');
+        }
+        if (/\b(graduat|duration|pass mark|core course|credit unit|award|degree|classifi|professional exam)\b/i.test(q)) {
+            keys.add('admission_graduation_requirements');
+            keys.add('graduation_requirements');
+        }
+        if (/\b(course|courses|curriculum|level|semester|unit|global course structure|course structure)\b/i.test(q)) {
+            keys.add('global_course_structure');
+            keys.add('course_contents_learning_outcomes');
+        }
+        if (/\b(minimum academic standard|staffing|laborator|facilit|library|equipment|resource)\b/i.test(q)) {
+            keys.add('minimum_academic_standards');
+        }
+        if (/\b(overview|about|describe|what is)\b/i.test(q)) keys.add('overview');
+        if (/\b(philosophy)\b/i.test(q)) keys.add('philosophy');
+        if (/\b(objective|aim)\b/i.test(q)) keys.add('objectives');
+        if (/\b(unique feature)\b/i.test(q)) keys.add('unique_features');
+        if (/\b(employability|skill)\b/i.test(q)) keys.add('employability_skills');
+        if (/\b(21st|twenty first|century skill)\b/i.test(q)) keys.add('twenty_first_century_skills');
+        if (!keys.size && /\bccmas\b/i.test(q)) {
+            keys.add('admission_graduation_requirements');
+            keys.add('global_course_structure');
+            keys.add('overview');
+        }
+        return Array.from(keys);
+    }
+
+    async _lookupCcmasProgrammeSections(processedQuery, limit = 6) {
+        const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+        const programme = this._detectProgrammeForCcmasSections(q);
+        const sectionKeys = this._detectCcmasSectionKeys(q);
+        if (!programme || !sectionKeys.length) return [];
+
+        try {
+            await ccmasExtractor.ensureSchema();
+            const placeholders = sectionKeys.map(() => '?').join(', ');
+            const rows = await query(`
+                SELECT id, document_id AS documentId, document_title AS documentTitle,
+                       discipline, programme_code AS programmeCode, programme_name AS programmeName,
+                       degree, section_key AS sectionKey, section_title AS sectionTitle,
+                       content, source_path AS sourcePath, authority_type AS authorityType,
+                       scope_label AS scope, chunk_start AS chunkStart, chunk_end AS chunkEnd
+                FROM ccmas_programme_sections
+                WHERE status = 'active'
+                  AND (programme_code = ? OR LOWER(programme_name) LIKE ?)
+                  AND section_key IN (${placeholders})
+                ORDER BY
+                    CASE
+                        WHEN section_key = 'admission_graduation_requirements' THEN 0
+                        WHEN section_key = 'graduation_requirements' THEN 1
+                        WHEN section_key = 'admission_requirements' THEN 2
+                        WHEN section_key = 'global_course_structure' THEN 3
+                        ELSE 4
+                    END,
+                    document_id ASC
+                LIMIT ?
+            `, [
+                programme.code || '',
+                `%${String(programme.name || '').toLowerCase()}%`,
+                ...sectionKeys,
+                limit
+            ]);
+
+            return (rows || []).map(row => ({
+                ...row,
+                score: 95,
+                sourcePath: row.sourcePath || `${row.documentTitle} > ${row.programmeName} > ${row.sectionTitle}`
+            }));
+        } catch (error) {
+            if (/ccmas_programme_sections/i.test(error.message || '')) return [];
+            console.warn('[RetrievalService] CCMAS programme-section lookup skipped:', error.message);
+            return [];
+        }
     }
 
     async _lookupStructuredTables(processedQuery, limit = 5) {
@@ -567,7 +685,24 @@ class RetrievalService {
         return lines.join('\n');
     }
 
-    _buildHighRiskFactPolicy(processedQuery, structuredFacts = [], structuredTables = [], normalizedAcademicRecords = []) {
+    _formatCcmasProgrammeSectionsContext(sections) {
+        if (!Array.isArray(sections) || !sections.length) return '';
+        const lines = [
+            '[CCMAS Programme Sections - structured extraction]',
+            'Use these programme-specific sections before broad vector snippets for admission, graduation, course-structure, duration, professional-exam, and minimum-standard questions. State that CCMAS is the NUC national minimum unless BMU-specific policy is also present.'
+        ];
+        for (const section of sections) {
+            const content = String(section.content || '').replace(/\s+/g, ' ').trim();
+            lines.push(`\nProgramme: ${section.programmeName}${section.degree ? ` (${section.degree})` : ''}`);
+            lines.push(`Section: ${section.sectionTitle}`);
+            lines.push(`Source: ${section.sourcePath || section.documentTitle || 'CCMAS'}`);
+            lines.push(`Scope: ${section.scope || 'NUC CCMAS national minimum'}`);
+            lines.push(content.slice(0, 2200));
+        }
+        return lines.join('\n');
+    }
+
+    _buildHighRiskFactPolicy(processedQuery, structuredFacts = [], structuredTables = [], normalizedAcademicRecords = [], ccmasProgrammeSections = []) {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
         const patterns = [
             ['admission eligibility', /\b(admission|entry requirement|eligibility|utme|direct entry|o'?level|waec|neco)\b/],
@@ -580,7 +715,7 @@ class RetrievalService {
         const matched = patterns.filter(([, re]) => re.test(q)).map(([label]) => label);
         if (!matched.length) return null;
 
-        const hasExactRecord = (structuredFacts.length + structuredTables.length + normalizedAcademicRecords.length) > 0;
+        const hasExactRecord = (structuredFacts.length + structuredTables.length + normalizedAcademicRecords.length + ccmasProgrammeSections.length) > 0;
         return {
             isHighRisk: true,
             topics: matched,
