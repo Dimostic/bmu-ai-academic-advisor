@@ -519,25 +519,63 @@ class RetrievalService {
                 LIMIT ?
             `, [...scoreParams, ...params, ...programmeParams, limit]);
 
-            return (rows || []).filter(row => Number(row.match_count || 0) > 0).map(row => ({
-                id: row.id,
-                title: row.title,
-                tableType: row.table_type,
-                programme: row.programme,
-                section: row.section_label,
-                sourcePath: row.source_path,
-                markdown: row.markdown,
-                rows: (() => { try { return JSON.parse(row.rows_json || '[]'); } catch (_) { return []; } })(),
-                metadata: (() => { try { return JSON.parse(row.metadata_json || '{}'); } catch (_) { return {}; } })(),
-                authorityRank: row.authority_rank,
-                score: Number(row.match_count || 0)
-            }));
+            const rowFilter = this._detectStructuredTableRowFilter(processedQuery);
+            return (rows || []).filter(row => Number(row.match_count || 0) > 0).map(row => {
+                const parsedRows = (() => { try { return JSON.parse(row.rows_json || '[]'); } catch (_) { return []; } })();
+                const filteredRows = this._filterStructuredRows(parsedRows, rowFilter);
+                return {
+                    id: row.id,
+                    title: row.title,
+                    tableType: row.table_type,
+                    programme: row.programme,
+                    section: row.section_label,
+                    sourcePath: row.source_path,
+                    markdown: row.markdown,
+                    rows: filteredRows.rows,
+                    metadata: {
+                        ...(() => { try { return JSON.parse(row.metadata_json || '{}'); } catch (_) { return {}; } })(),
+                        rowFilter: filteredRows.filterApplied ? rowFilter : null,
+                        originalRowCount: parsedRows.length,
+                        filteredRowCount: filteredRows.rows.length
+                    },
+                    authorityRank: row.authority_rank,
+                    score: Number(row.match_count || 0)
+                };
+            }).filter(table => !rowFilter.active || table.rows.length > 0);
         } catch (error) {
             if (!/structured_tables/i.test(error.message || '')) {
                 console.warn('[RetrievalService] Structured table lookup skipped:', error.message);
             }
             return [];
         }
+    }
+
+    _detectStructuredTableRowFilter(processedQuery) {
+        const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || processedQuery?.original || '').toLowerCase();
+        const levelMatch = q.match(/\b([1-6]00)\s*(?:level|lvl|year)\b/) || q.match(/\b(?:level|year)\s*([1-6]00)\b/);
+        const semester = /\bfirst\s+semester\b|\b1st\s+semester\b/.test(q)
+            ? 'first'
+            : /\bsecond\s+semester\b|\b2nd\s+semester\b/.test(q)
+                ? 'second'
+                : null;
+        return {
+            active: Boolean(levelMatch || semester),
+            level: levelMatch ? `${levelMatch[1]} Level` : null,
+            semester
+        };
+    }
+
+    _filterStructuredRows(rows, filter) {
+        if (!filter?.active || !Array.isArray(rows)) return { rows: Array.isArray(rows) ? rows : [], filterApplied: false };
+        const filtered = rows.filter(row => {
+            if (filter.level && String(row.level || '').toLowerCase() !== filter.level.toLowerCase()) return false;
+            if (filter.semester) {
+                const sem = String(row.semester || '').toLowerCase();
+                if (!sem.includes(filter.semester)) return false;
+            }
+            return true;
+        });
+        return { rows: filtered, filterApplied: true };
     }
 
     async _lookupNormalizedAcademicRecords(processedQuery, limit = 12) {
@@ -691,12 +729,33 @@ class RetrievalService {
         ];
         for (const table of tables) {
             lines.push(`\nTable: ${table.title}${table.programme ? ` | Programme: ${table.programme}` : ''}${table.section ? ` | Section: ${table.section}` : ''}${table.sourcePath ? ` | Source path: ${table.sourcePath}` : ''}`);
+            if (table.metadata?.rowFilter) {
+                lines.push(`Filtered rows: ${table.metadata.filteredRowCount} of ${table.metadata.originalRowCount} (${[table.metadata.rowFilter.level, table.metadata.rowFilter.semester && `${table.metadata.rowFilter.semester} semester`].filter(Boolean).join(', ')})`);
+            }
             lines.push('Human-readable table:');
-            lines.push(String(table.markdown || '').split(/\r?\n/).slice(0, 12).join('\n'));
+            lines.push(this._structuredRowsToMarkdown(table.rows || [], table.markdown));
             const rows = Array.isArray(table.rows) ? table.rows.slice(0, 8) : [];
             if (rows.length) {
                 lines.push(`Machine rows JSON: ${JSON.stringify(rows)}`);
             }
+        }
+        return lines.join('\n');
+    }
+
+    _structuredRowsToMarkdown(rows, fallbackMarkdown = '') {
+        if (!Array.isArray(rows) || !rows.length) {
+            return String(fallbackMarkdown || '').split(/\r?\n/).slice(0, 12).join('\n');
+        }
+        const keys = ['level', 'semester', 'course_code', 'course_title', 'units', 'status']
+            .filter(key => rows.some(row => row[key] !== undefined && row[key] !== null && row[key] !== ''));
+        const displayKeys = keys.length ? keys : Object.keys(rows[0] || {}).slice(0, 6);
+        const labels = displayKeys.map(key => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+        const lines = [
+            `| ${labels.join(' | ')} |`,
+            `| ${displayKeys.map(() => '---').join(' | ')} |`
+        ];
+        for (const row of rows.slice(0, 16)) {
+            lines.push(`| ${displayKeys.map(key => String(row[key] ?? '').replace(/\|/g, '/')).join(' | ')} |`);
         }
         return lines.join('\n');
     }
