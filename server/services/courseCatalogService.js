@@ -238,6 +238,59 @@ function formatCourseListTable(rows) {
     ].join('\n');
 }
 
+function summarizeCourseCodes(rows) {
+    const grouped = new Map();
+    for (const row of rows) {
+        const key = `${row.semester || ''}|${normalizeCourseCode(row.courseCode)}`;
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                courseCode: row.courseCode,
+                titles: new Set(),
+                semester: row.semester
+            });
+        }
+        grouped.get(key).titles.add(normalizeCourseTitle(row.courseTitle));
+    }
+
+    return [...grouped.values()]
+        .map(item => item.titles.size > 1 ? `${item.courseCode} (${item.titles.size} title variants)` : item.courseCode)
+        .join(', ');
+}
+
+function findCourseCodeTitleConflicts(rows) {
+    const grouped = new Map();
+    for (const row of rows) {
+        const key = `${row.semester || ''}|${normalizeCourseCode(row.courseCode)}`;
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                courseCode: row.courseCode,
+                semester: row.semester,
+                titles: new Map()
+            });
+        }
+        const titleKey = normalizeCourseTitle(row.courseTitle);
+        if (titleKey) grouped.get(key).titles.set(titleKey, row.courseTitle);
+    }
+
+    return [...grouped.values()]
+        .filter(item => item.titles.size > 1)
+        .map(item => ({
+            courseCode: item.courseCode,
+            semester: item.semester,
+            titles: [...item.titles.values()]
+        }));
+}
+
+function formatConflictNote(conflicts) {
+    if (!conflicts.length) return '';
+    const items = conflicts.slice(0, 8).map(item => {
+        const semester = item.semester ? `${formatSemester(item.semester)} semester ` : '';
+        return `- ${semester}${item.courseCode}: ${item.titles.join(' / ')}`;
+    }).join('\n');
+    const more = conflicts.length > 8 ? `\n- ${conflicts.length - 8} more code(s) with title variants` : '';
+    return `\n\n**Source data note:** Some course codes have different titles in ${SOURCE_TITLE}. I have kept those variants visible rather than merging them:\n\n${items}${more}`;
+}
+
 function nearbyCourseSuggestions(rows, normalizedCode, programme) {
     const prefix = String(normalizedCode || '').replace(/\d+$/, '');
     return rows
@@ -368,14 +421,19 @@ async function buildCourseListReply(question) {
 
     const displayRows = mergeCourseRowsForDisplay(rows);
     const table = formatCourseListTable(displayRows);
-    const codes = displayRows.map(row => row.courseCode).join(', ');
+    const codes = summarizeCourseCodes(displayRows);
+    const conflicts = findCourseCodeTitleConflicts(displayRows);
+    const conflictSpeech = conflicts.length
+        ? ` ${conflicts.length} course code${conflicts.length === 1 ? ' has' : 's have'} different title variants in the source, so I kept those variants visible.`
+        : '';
+    const conflictNote = formatConflictNote(conflicts);
     const groupedNote = displayRows.length < rows.length
         ? ` I grouped ${rows.length} source rows into ${displayRows.length} displayed course entries where BMAS/CCMAS rows repeated the same course code and title.`
         : '';
 
     return {
-        speech_text: `According to the BMU student courses document, ${level} level ${displayProgramme}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}`,
-        display_markdown: `According to **${SOURCE_TITLE}**, **${level} level ${displayProgramme}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}\n\nThis is the BMU-specific student course list. Credit units are not shown in this source table.`,
+        speech_text: `According to the BMU student courses document, ${level} level ${displayProgramme}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}${conflictSpeech}`,
+        display_markdown: `According to **${SOURCE_TITLE}**, **${level} level ${displayProgramme}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}${conflictNote}\n\nThis is the BMU-specific student course list. Credit units are not shown in this source table.`,
         topic_slug: 'bmu_student_courses',
         citations: [{ title: SOURCE_TITLE, source: `${displayProgramme} ${level} level course list` }],
         suggested_actions: [],
