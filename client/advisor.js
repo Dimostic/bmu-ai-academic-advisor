@@ -2811,6 +2811,7 @@
             let submitting = false;
             let heardSpeech = false;
             let lastHeardTranscript = '';
+            let restartBaseTranscript = '';
             let noSpeechTimer = null;
             let mobileRestartCount = 0;
             const clearSilenceTimer = () => {
@@ -2822,6 +2823,24 @@
             const clearNoSpeechTimer = () => {
                 if (noSpeechTimer) clearTimeout(noSpeechTimer);
                 noSpeechTimer = null;
+            };
+            const hasCapturedTranscript = () => Boolean(
+                questionInput.value.trim() || lastHeardTranscript.trim() || buffer.trim() || restartBaseTranscript.trim()
+            );
+            const joinVoiceSegments = (left, right) => {
+                const a = normalizeVoiceTranscript(left);
+                const b = normalizeVoiceTranscript(right);
+                if (!a) return b;
+                if (!b) return a;
+                const aw = a.split(/\s+/);
+                const bw = b.split(/\s+/);
+                const max = Math.min(8, aw.length, bw.length);
+                for (let n = max; n > 0; n -= 1) {
+                    if (aw.slice(-n).join(' ').toLowerCase() === bw.slice(0, n).join(' ').toLowerCase()) {
+                        return normalizeVoiceTranscript(`${aw.join(' ')} ${bw.slice(n).join(' ')}`);
+                    }
+                }
+                return normalizeVoiceTranscript(`${a} ${b}`);
             };
             const finishListeningUi = (label = 'Ready') => {
                 clearSilenceTimer();
@@ -2884,12 +2903,14 @@
             };
             const queueVoiceSubmit = (delay = LISTENING_SILENCE_MS) => {
                 clearPendingVoiceSubmit();
+                clearSilenceTimer();
                 pendingVoiceSubmitTimer = setTimeout(() => {
                     pendingVoiceSubmitTimer = null;
                     submitTranscript();
                 }, delay);
             };
             const scheduleSilenceSubmit = () => {
+                clearPendingVoiceSubmit();
                 clearSilenceTimer();
                 const startedAt = Date.now();
                 const updateCountdown = () => {
@@ -2923,11 +2944,13 @@
                     if (ev.results[i].isFinal) finalText += ` ${t}`; else interim += ` ${t}`;
                 }
                 buffer = normalizeVoiceTranscript(finalText);
-                const heard = normalizeVoiceTranscript(`${buffer} ${interim}`);
+                const currentSegment = normalizeVoiceTranscript(`${buffer} ${interim}`);
+                const heard = restartBaseTranscript
+                    ? joinVoiceSegments(restartBaseTranscript, currentSegment)
+                    : currentSegment;
                 if (heard) {
                     heardSpeech = true;
                     lastHeardTranscript = heard;
-                    mobileRestartCount = 0;
                     clearNoSpeechTimer();
                 }
                 if (WAKE_WORD_RE.test(heard) && handleWakePhrase(heard)) {
@@ -2968,6 +2991,11 @@
                 const code = String(e?.error || '').toLowerCase();
                 console.warn('[advisor] speech error:', code);
                 if (code === 'no-speech' || code === 'aborted') {
+                    if (hasCapturedTranscript()) {
+                        setAvatarState('listening', 'Listening... 3s');
+                        queueVoiceSubmit();
+                        return;
+                    }
                     cancelListening('Ready');
                     return;
                 }
@@ -2985,7 +3013,10 @@
             };
             recognition.onend = () => {
                 if (submitting) return;
-                if (state.recording && (questionInput.value.trim() || lastHeardTranscript.trim() || buffer.trim())) {
+                if (state.recording && hasCapturedTranscript()) {
+                    restartBaseTranscript = normalizeVoiceTranscript(questionInput.value || lastHeardTranscript || buffer || restartBaseTranscript);
+                    setAvatarState('listening', 'Listening... 3s');
+                    queueVoiceSubmit();
                     if (isMobileSpeechDevice() && shouldUseBrowserSpeechRecognition() && mobileRestartCount < 3) {
                         mobileRestartCount += 1;
                         try {
