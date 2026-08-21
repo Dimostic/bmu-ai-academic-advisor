@@ -688,9 +688,9 @@ class RetrievalService {
             
             // Check for matching terms and add expansions
             for (const [term, synonyms] of Object.entries(expansions)) {
-                if (normalized.includes(term)) {
+                if (canonicalQuery.includes(term)) {
                     // Only add unique terms not already in the query
-                    const newTerms = synonyms.split(' ').filter(s => !normalized.includes(s));
+                    const newTerms = synonyms.split(' ').filter(s => !canonicalQuery.includes(s));
                     expanded = `${expanded} ${newTerms.join(' ')}`;
                 }
             }
@@ -717,6 +717,8 @@ class RetrievalService {
         if (!q) return q;
 
         const replacements = [
+            [/\b(?:c\s*c\s*m\s*a\s*s|c\s*c\s*mas|cc\s*mas|ccmas|c\s*c\s*mass|cc\s*mass|c\s*c\s*max|cc\s*max|c\s*c\s*marks|cc\s*marks|see\s+see\s+(?:mas|mass|max|marks)|sea\s+sea\s+(?:mas|mass|max|marks))\b/g, 'ccmas'],
+            [/\b(?:aspaya|aspyre|aspaia|aspaira|as\s+paya|as\s+pyre|a\s+spire)\b/g, 'aspire'],
             [/\bprogrammes?\b/g, 'programme'],
             [/\bcourses?\b/g, 'course'],
             [/\bfees?\b/g, 'fee'],

@@ -2591,6 +2591,10 @@
             .replace(/\s+/g, ' ')
             .trim();
 
+        text = text
+            .replace(/\b(?:c\s*c\s*m\s*a\s*s|c\s*c\s*mas|cc\s*mas|ccmas|c\s*c\s*mass|cc\s*mass|c\s*c\s*max|cc\s*max|c\s*c\s*marks|cc\s*marks|see\s+see\s+(?:mas|mass|max|marks)|sea\s+sea\s+(?:mas|mass|max|marks))\b/ig, 'CCMAS')
+            .replace(/\b(?:aspaya|aspyre|aspaia|aspaira|as\s+paya|as\s+pyre|a\s+spire)\b/ig, 'ASPIRE');
+
         const officerIntent = /\b(who|name|current|tell me|which person|serves as|officer)\b/i.test(text);
         if (officerIntent) {
             text = text
