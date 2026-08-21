@@ -703,7 +703,7 @@ class RetrievalService {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
         if (!/\b(course|courses|curriculum|unit|units|credit|level|semester|subject|what is|tell me about)\b/i.test(q)) return [];
 
-        const filter = this._detectStructuredTableRowFilter(q);
+        const filter = this._detectStructuredTableRowFilter({ canonicalQuery: q });
         const programme = this._detectProgrammeForCcmasSections(q);
         const asksCourseList = /\b(course|courses|curriculum|subjects?)\b/i.test(q) && Boolean(filter.level || filter.semester);
         if (!filter.courseCode && !asksCourseList) return [];
