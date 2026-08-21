@@ -1967,6 +1967,52 @@ body.advisor-full-view.touch-landscape-full-view .avatar-stage[data-avatar-mode=
     transform-origin: center top !important;
 }
 
+body.advisor-full-view.touch-landscape-full-view .avatar-meta {
+    position: fixed !important;
+    top: calc(env(safe-area-inset-top, 0px) + 7px) !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 72 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: min(74vw, 340px) !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    transform: translateX(-50%) !important;
+    pointer-events: none !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-meta > .avatar-status,
+body.advisor-full-view.touch-landscape-full-view.is-thinking .avatar-meta::before {
+    margin: 0 auto !important;
+    max-width: min(74vw, 340px) !important;
+    font-size: .76rem !important;
+    line-height: 1.1 !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-meta > .avatar-status {
+    padding: 5px 10px !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view.is-thinking .avatar-meta::before {
+    padding: 5px 10px 5px 26px !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-meta strong,
+body.advisor-full-view.touch-landscape-full-view .avatar-meta > span {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+}
+
 body.advisor-full-view.touch-landscape-full-view .avatar-stage-controls {
     position: fixed !important;
     left: 8px !important;
