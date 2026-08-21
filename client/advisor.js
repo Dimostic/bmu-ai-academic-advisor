@@ -99,6 +99,7 @@
     const GUEST_DEMO_CLOSING_TEXT = 'You have exhausted your five guest questions. Please register or sign in to continue asking Dr. Tari.';
     const THINKING_MIN_VISIBLE_MS = 850;
     const TRANSCRIPT_PREVIEW_MS = 650;
+    const SERVER_STT_TRANSCRIPT_PREVIEW_MS = 1800;
     const AUTO_FOLLOWUP_LISTEN_MS = 5000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
@@ -2482,11 +2483,10 @@
     }
 
     function shouldUseBrowserSpeechRecognition() {
-        // Mobile Web Speech often fires `end` before the user has actually
-        // finished speaking, even with `continuous = true`. On touch devices
-        // prefer our MediaRecorder + server STT path so the 3-second silence
-        // timer is controlled by the app.
-        return hasWebSpeech() && !(isMobileSpeechDevice() && serverSttAvailable);
+        // Prefer browser recognition wherever available because it gives
+        // live interim text in the input while the user is still speaking.
+        // Server STT remains the fallback for browsers without Web Speech.
+        return hasWebSpeech();
     }
 
     // Server-side STT capability is only known after /api/advisor/health
@@ -2977,6 +2977,10 @@
                     recognition.stop();
                 } catch (_) { /* ignore */ }
                 recognition = null;
+                if (serverSttAvailable && code !== 'not-allowed') {
+                    startServerRecording({ noSpeechMs, autoFollowup });
+                    return;
+                }
                 toast('Microphone could not hear clearly. Please tap the mic and try again.', 'error');
             };
             recognition.onend = () => {
@@ -3095,7 +3099,7 @@
                         }
                         questionInput.value = normalized;
                         updateClearInputButton();
-                        askAfterTranscriptPreview();
+                        askAfterTranscriptPreview(SERVER_STT_TRANSCRIPT_PREVIEW_MS);
                     } else if (res.status === 503 || /not configured/i.test(data?.error || '')) {
                         // The server told us its Whisper credential is
                         // missing. Translate into a human message and
