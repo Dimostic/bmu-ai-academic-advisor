@@ -88,13 +88,13 @@ function isCcmasDocument(title) {
 function programmeMatchesDocument(programme, title) {
     const t = String(title || '').toLowerCase();
     const discipline = String(programme.discipline || '').toLowerCase();
-    if (discipline && t.includes(discipline)) return true;
     if (discipline === 'allied health sciences' && t.includes('allied health')) return true;
     if (discipline === 'medicine and dentistry' && t.includes('medicine and dentistry')) return true;
     if (discipline === 'pharmacy and pharmaceutical sciences' && t.includes('pharmacy')) return true;
     if (discipline === 'basic medical sciences' && t.includes('basic medical')) return true;
     if (discipline === 'social sciences' && t.includes('social sciences')) return true;
     if (discipline === 'sciences' && /\bsciences\b/i.test(t) && !/allied|basic medical|social/i.test(t)) return true;
+    if (discipline && discipline !== 'sciences' && t.includes(discipline)) return true;
     return false;
 }
 
@@ -252,6 +252,11 @@ class CcmasProgrammeExtractorService {
         const programmeAnchors = findProgrammeAnchors(fullText, doc.title);
         let sectionsUpserted = 0;
         const programmes = new Set();
+
+        await query(
+            'UPDATE ccmas_programme_sections SET status = ? WHERE document_id = ? AND extraction_version = ?',
+            ['inactive', documentId, EXTRACTION_VERSION]
+        );
 
         for (let i = 0; i < programmeAnchors.length; i++) {
             const anchor = programmeAnchors[i];
