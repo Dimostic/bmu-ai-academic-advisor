@@ -146,12 +146,16 @@ function extractCourseRows(section) {
 
 function collectLevelMarkers(text) {
     const markers = [];
-    const re = /\b([1-6]00)\s+Level\b/ig;
+    const re = /(^|[^0-9])([1-6]00)\s+Level\b/ig;
     let match;
     while ((match = re.exec(text)) !== null) {
-        markers.push({ index: match.index, level: `${match[1]} Level` });
+        markers.push({ index: match.index + match[1].length, level: `${match[2]} Level` });
     }
-    return markers;
+    const gluedRe = /\b\d{1,2}([1-6]00)\s+Level\b/ig;
+    while ((match = gluedRe.exec(text)) !== null) {
+        markers.push({ index: match.index + match[0].indexOf(match[1]), level: `${match[1]} Level` });
+    }
+    return markers.sort((a, b) => a.index - b.index);
 }
 
 function inferLevelFromMarkers(markers, index) {
