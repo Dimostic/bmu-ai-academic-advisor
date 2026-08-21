@@ -1367,7 +1367,21 @@ body.advisor-full-view .avatar-meta {
 }
 
 body.advisor-full-view .avatar-meta > .avatar-status {
-    display: none;
+    display: inline-flex;
+    margin: 0 auto 6px;
+    max-width: min(78vw, 320px);
+    justify-content: center;
+    white-space: nowrap;
+    background: rgba(11,37,40,.94);
+    color: #ffffff;
+    border: 1px solid rgba(109,238,200,.32);
+    box-shadow: 0 10px 24px rgba(0,0,0,.16);
+    font-weight: 800;
+}
+
+body.advisor-full-view .avatar-status .label {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 body.advisor-full-view.is-thinking .avatar-meta::before {

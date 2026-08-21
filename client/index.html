@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="BMU AI Assistant - Intelligent Policy Assistant for Bayelsa Medical University">
+    <meta name="description" content="BMU AI Academic Advisor - Interactive academic advisor for Bayelsa Medical University">
     <meta name="theme-color" content="#1a5f7a">
     <!-- CSP: meta aligned with server/app.js Helmet CSP.
          Note: some directives (e.g., frame-ancestors) are ignored in meta CSP; header CSP still takes precedence.
@@ -11,16 +11,17 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; form-action 'self'; upgrade-insecure-requests;">
     
     <!-- PWA -->
-    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="manifest" href="/advisor-manifest.webmanifest?v=20260821-advisor-icon">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="BMU AI Assistant">
-    <link rel="apple-touch-icon" href="bmulogo.png">
+    <meta name="apple-mobile-web-app-title" content="BMU Advisor">
+    <link rel="apple-touch-icon" href="/advisor-icon-192.png?v=20260821">
 
-    <title>BMU AI Assistant - Bayelsa Medical University</title>
+    <title>BMU AI Academic Advisor - Bayelsa Medical University</title>
     <script src="theme.js"></script>
-    <link rel="icon" type="image/png" href="bmulogo.png">
+    <link rel="icon" type="image/svg+xml" href="/advisor-icon.svg?v=20260821">
+    <link rel="icon" type="image/png" sizes="192x192" href="/advisor-icon-192.png?v=20260821">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
@@ -33,7 +34,7 @@
             <div class="nav-container">
                 <div class="nav-brand">
                     <img src="bmulogo.png" alt="BMU Logo" class="nav-logo" id="navLogo">
-                    <span class="nav-title">BMU AI Assistant</span>
+                    <span class="nav-title">BMU AI Academic Advisor</span>
                 </div>
                 <div class="nav-links" id="navLinks">
                     <a href="#" class="nav-link active" data-page="home">Home</a>
@@ -92,10 +93,10 @@
                         </div>
                         <div class="preview-copy">
                             <span class="preview-kicker">Public preview</span>
-                            <h1>Welcome to BMU AI Assistant</h1>
+                            <h1>Welcome to BMU AI Academic Advisor</h1>
                             <p class="preview-lead">
                                 Ask up to five questions about Bayelsa Medical University before you log in.
-                                Use this preview to test the assistant, then continue to the normal view or register for a full account.
+                                Use this preview to test the advisor, then continue to the normal view or register for a full account.
                             </p>
                             <div class="preview-actions">
                                 <button class="btn btn-primary btn-lg" id="previewAskBtn">
@@ -131,13 +132,13 @@
                                 <button type="button" class="preview-suggestion-btn" data-preview-question="Who is the Visitor to BMU?">Who is the Visitor to BMU?</button>
                                 <button type="button" class="preview-suggestion-btn" data-preview-question="Who are the principal officers of BMU?">Who are the principal officers of BMU?</button>
                                 <button type="button" class="preview-suggestion-btn" data-preview-question="Who is the bursar of BMU?">Who is the bursar of BMU?</button>
-                                <button type="button" class="preview-suggestion-btn" data-preview-question="What can the assistant help me with?">What can the assistant help me with?</button>
+                                <button type="button" class="preview-suggestion-btn" data-preview-question="What can the academic advisor help me with?">What can the advisor help me with?</button>
                             </div>
                             <div id="previewMessages" class="preview-messages">
                                 <div class="preview-message preview-message-assistant">
                                     <div class="preview-message-avatar"><i class="fas fa-robot"></i></div>
                                     <div class="preview-message-bubble">
-                                        <p>Hi, I am the BMU AI preview assistant. Ask anything about the university and I will answer with public information before you sign in.</p>
+                                        <p>Hi, I am the BMU AI Academic Advisor preview. Ask anything about the university and I will answer with public information before you sign in.</p>
                                     </div>
                                 </div>
                             </div>
@@ -161,11 +162,11 @@
                 <div class="hero">
                     <div class="hero-content">
                         <img src="bmulogo.png" alt="BMU Logo" class="hero-logo" id="heroLogo">
-                        <h1>Welcome to BMU AI Assistant</h1>
-                        <p class="hero-subtitle">Your Intelligent Policy & Regulations Assistant</p>
+                        <h1>Welcome to BMU AI Academic Advisor</h1>
+                        <p class="hero-subtitle">Your Intelligent Academic Advisor</p>
                         <p class="hero-description">
-                            Get instant answers to questions about Bayelsa Medical University's policies, 
-                            regulations, academic standards, and administrative procedures. 
+                            Get instant answers to questions about Bayelsa Medical University's programmes,
+                            student handbook, fees, academic standards, and administrative procedures.
                             Powered by advanced AI technology.
                         </p>
                         <div class="hero-buttons">
@@ -195,7 +196,7 @@
                         <div class="feature-card">
                             <div class="feature-icon"><i class="fab fa-whatsapp"></i></div>
                             <h3>WhatsApp Integration</h3>
-                            <p>Access the AI assistant directly through WhatsApp for convenience.</p>
+                            <p>Access academic guidance directly through supported channels for convenience.</p>
                         </div>
                         <div class="feature-card">
                             <div class="feature-icon"><i class="fas fa-file-alt"></i></div>
@@ -210,7 +211,7 @@
                         <div class="feature-card">
                             <div class="feature-icon"><i class="fas fa-clock"></i></div>
                             <h3>24/7 Availability</h3>
-                            <p>Get assistance anytime, anywhere - the AI assistant never sleeps.</p>
+                            <p>Get academic guidance anytime, anywhere.</p>
                         </div>
                     </div>
                 </div>
@@ -233,8 +234,8 @@
                 <footer class="footer">
                     <div class="footer-content">
                         <div class="footer-section">
-                            <h4>BMU AI Assistant</h4>
-                            <p>Intelligent Policy Assistant for Bayelsa Medical University</p>
+                            <h4>BMU AI Academic Advisor</h4>
+                            <p>Interactive academic advisor for Bayelsa Medical University</p>
                         </div>
                         <div class="footer-section">
                             <h4>Quick Links</h4>
@@ -261,7 +262,7 @@
                         <div class="auth-header">
                             <img src="bmulogo.png" alt="BMU Logo" class="auth-logo" id="loginLogo">
                             <h2>Welcome Back</h2>
-                            <p>Sign in to access BMU AI Assistant</p>
+                            <p>Sign in to access BMU AI Academic Advisor</p>
                         </div>
                         <form id="loginForm">
                             <div class="form-group">
@@ -309,7 +310,7 @@
                         <div class="auth-header">
                             <img src="bmulogo.png" alt="BMU Logo" class="auth-logo" id="registerLogo">
                             <h2>Create Account</h2>
-                            <p>Register to use BMU AI Assistant</p>
+                            <p>Register to use BMU AI Academic Advisor</p>
                         </div>
                         <form id="registerForm">
                             <div class="form-row">
@@ -552,7 +553,7 @@
                     <div class="chat-main">
                         <div class="chat-header">
                             <div class="chat-header-info">
-                                <h3><i class="fas fa-robot"></i> BMU AI Assistant</h3>
+                                <h3><i class="fas fa-robot"></i> BMU AI Academic Advisor</h3>
                                 <span class="status-indicator online"></span>
                                 <span>Online</span>
                             </div>
@@ -587,8 +588,8 @@
                         <div id="chatMessages" class="chat-messages">
                             <div class="chat-welcome">
                                 <div class="welcome-icon"><i class="fas fa-robot"></i></div>
-                                <h3>Welcome to BMU AI Assistant</h3>
-                                <p>Ask me anything about Bayelsa Medical University's policies, regulations, and procedures.</p>
+                                <h3>Welcome to BMU AI Academic Advisor</h3>
+                                <p>Ask me anything about Bayelsa Medical University's programmes, student handbook, fees, academic rules, and procedures.</p>
                                 <div class="suggested-questions" id="suggestedQuestions">
                                     <p>Try asking:</p>
                                     <button class="suggested-question-btn">What are the admission requirements?</button>
