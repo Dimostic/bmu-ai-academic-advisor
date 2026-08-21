@@ -273,6 +273,7 @@ class RetrievalService {
         try {
             const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
             const staticFacts = this._staticStructuredFacts(processedQuery);
+            const programme = this._detectProgrammeForCcmasSections(q);
             const terms = q
                 .replace(/[^a-z0-9\s-]/g, ' ')
                 .split(/\s+/)
@@ -293,6 +294,12 @@ class RetrievalService {
                 const like = `%${term}%`;
                 scoreParams.push(like, like, like);
             }
+            const subjectFilter = programme?.name
+                ? ' AND (LOWER(COALESCE(subject, \'\')) = ? OR LOWER(COALESCE(subject, \'\')) LIKE ?)'
+                : '';
+            const subjectParams = programme?.name
+                ? [String(programme.name).toLowerCase(), `%${String(programme.name).toLowerCase()}%`]
+                : [];
 
             const rows = await query(`
                 SELECT id, fact_type, subject, predicate_name, value_json, human_text,
@@ -301,9 +308,10 @@ class RetrievalService {
                 FROM structured_facts
                 WHERE status = 'active'
                   AND (${likeConditions})
+                  ${subjectFilter}
                 ORDER BY match_count DESC, authority_rank DESC, updated_at DESC
                 LIMIT ?
-            `, [...scoreParams, ...params, limit]);
+            `, [...scoreParams, ...params, ...subjectParams, limit]);
 
             const dbFacts = (rows || []).filter(row => Number(row.match_count || 0) > 0).map(row => ({
                 id: row.id,
@@ -472,6 +480,7 @@ class RetrievalService {
     async _lookupStructuredTables(processedQuery, limit = 5) {
         try {
             const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+            const programme = this._detectProgrammeForCcmasSections(q);
             const terms = q
                 .replace(/[^a-z0-9\s-]/g, ' ')
                 .split(/\s+/)
@@ -492,6 +501,12 @@ class RetrievalService {
                 const like = `%${term}%`;
                 scoreParams.push(like, like, like, like, like);
             }
+            const programmeFilter = programme?.name
+                ? ' AND (LOWER(COALESCE(programme, \'\')) = ? OR LOWER(COALESCE(programme, \'\')) LIKE ?)'
+                : '';
+            const programmeParams = programme?.name
+                ? [String(programme.name).toLowerCase(), `%${String(programme.name).toLowerCase()}%`]
+                : [];
 
             const rows = await query(`
                 SELECT id, title, table_type, programme, section_label, source_path, markdown,
@@ -499,9 +514,10 @@ class RetrievalService {
                 FROM structured_tables
                 WHERE status = 'active'
                   AND (${likeConditions})
+                  ${programmeFilter}
                 ORDER BY match_count DESC, authority_rank DESC, updated_at DESC
                 LIMIT ?
-            `, [...scoreParams, ...params, limit]);
+            `, [...scoreParams, ...params, ...programmeParams, limit]);
 
             return (rows || []).filter(row => Number(row.match_count || 0) > 0).map(row => ({
                 id: row.id,
