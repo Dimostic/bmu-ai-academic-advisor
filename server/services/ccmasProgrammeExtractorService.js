@@ -147,6 +147,11 @@ function findSectionAnchors(programmeText) {
         const re = new RegExp(pattern.source, 'ig');
         let match;
         while ((match = re.exec(programmeText)) !== null) {
+            const before = programmeText.slice(Math.max(0, match.index - 28), match.index);
+            const after = programmeText.slice(match.index, match.index + 220);
+            const isInsideCourseRow = /\b(?:[A-Z]{2,4}|BMU[-\s]?[A-Z]{2,4})[-\s]?\d{3}\s*$/i.test(before);
+            const isCourseLikeHeading = /\b\d+\s+Units?\b|\b(?:C|E):\s*(?:LH|PH)\b/i.test(after);
+            if (isInsideCourseRow || isCourseLikeHeading) continue;
             anchors.push({ key, title, index: match.index, heading: match[0] });
         }
     }
