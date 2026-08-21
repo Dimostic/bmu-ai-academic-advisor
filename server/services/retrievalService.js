@@ -606,7 +606,10 @@ class RetrievalService {
 
     async _lookupNormalizedAcademicRecords(processedQuery, limit = 12) {
         const terms = this._queryLookupTerms(processedQuery, 8);
-        if (!terms.length) return [];
+        const records = [];
+        const exactCourseRecords = await this._lookupNormalizedCourseRecords(processedQuery, Math.max(limit, 16));
+        records.push(...exactCourseRecords);
+        if (!terms.length) return records.slice(0, limit);
 
         const searches = [
             {
@@ -647,7 +650,6 @@ class RetrievalService {
             }
         ];
 
-        const records = [];
         for (const search of searches) {
             try {
                 const matchExpr = this._likeMatchExpression(search.fields);
@@ -671,7 +673,7 @@ class RetrievalService {
 
                 for (const row of rows || []) {
                     if (Number(row.match_count || 0) <= 0) continue;
-                    records.push({
+                    const record = {
                         type: search.type,
                         id: row.id,
                         score: Number(row.match_count || 0),
@@ -680,7 +682,10 @@ class RetrievalService {
                         sourcePath: row.source_path,
                         rawText: row.raw_text,
                         data: row
-                    });
+                    };
+                    if (!records.some(item => item.type === record.type && Number(item.id) === Number(record.id))) {
+                        records.push(record);
+                    }
                 }
             } catch (error) {
                 if (!/academic_/i.test(error.message || '')) {
@@ -692,6 +697,83 @@ class RetrievalService {
         return records
             .sort((a, b) => b.score - a.score)
             .slice(0, limit);
+    }
+
+    async _lookupNormalizedCourseRecords(processedQuery, limit = 16) {
+        const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+        if (!/\b(course|courses|curriculum|unit|units|credit|level|semester|subject|what is|tell me about)\b/i.test(q)) return [];
+
+        const filter = this._detectStructuredTableRowFilter(q);
+        const programme = this._detectProgrammeForCcmasSections(q);
+        const asksCourseList = /\b(course|courses|curriculum|subjects?)\b/i.test(q) && Boolean(filter.level || filter.semester);
+        if (!filter.courseCode && !asksCourseList) return [];
+
+        const where = [`status = 'active'`];
+        const params = [];
+
+        if (filter.courseCode) {
+            where.push(`REPLACE(REPLACE(UPPER(COALESCE(course_code, '')), '-', ''), ' ', '') = ?`);
+            params.push(String(filter.courseCode).replace(/[-\s]/g, '').toUpperCase());
+        }
+        if (filter.level) {
+            where.push(`LOWER(COALESCE(level_label, '')) = ?`);
+            params.push(String(filter.level).toLowerCase());
+        }
+        if (filter.semester) {
+            where.push(`LOWER(COALESCE(semester_label, '')) LIKE ?`);
+            params.push(`%${String(filter.semester).toLowerCase()}%`);
+        }
+        if (programme?.name) {
+            const names = this._programmeNameVariants(programme.name);
+            where.push(`(${names.map(() => `LOWER(COALESCE(programme, '')) LIKE ?`).join(' OR ')})`);
+            params.push(...names.map(name => `%${name.toLowerCase()}%`));
+        }
+
+        try {
+            const rows = await query(`
+                SELECT id, programme, level_label, semester_label, course_code, course_title,
+                       credit_units, authority_type, scope_label, source_path, raw_text,
+                       50 AS match_count
+                FROM academic_courses
+                WHERE ${where.join(' AND ')}
+                ORDER BY
+                    CASE WHEN source_path = 'student courses.docx' THEN 0 ELSE 1 END,
+                    programme ASC,
+                    level_label ASC,
+                    semester_label ASC,
+                    course_code ASC
+                LIMIT ?
+            `, [...params, limit]);
+
+            return (rows || []).map(row => ({
+                type: 'course',
+                id: row.id,
+                score: Number(row.match_count || 50),
+                authorityType: row.authority_type,
+                scope: row.scope_label,
+                sourcePath: row.source_path,
+                rawText: row.raw_text,
+                data: row,
+                exactCourseLookup: true
+            }));
+        } catch (error) {
+            if (!/academic_courses/i.test(error.message || '')) {
+                console.warn('[RetrievalService] Exact normalized course lookup skipped:', error.message);
+            }
+            return [];
+        }
+    }
+
+    _programmeNameVariants(name) {
+        const value = String(name || '').trim();
+        const variants = new Set([value]);
+        if (/medical laboratory science$/i.test(value)) variants.add(`${value}s`);
+        if (/community health$/i.test(value)) variants.add('Community Health Sciences');
+        if (/pharmacy$/i.test(value)) variants.add('Doctor of Pharmacy');
+        if (/radiography$/i.test(value)) variants.add('Radiography & Radiation Science');
+        if (/physics$/i.test(value)) variants.add('Physics with Electronics');
+        if (/nutrition/i.test(value)) variants.add('Nutrition & Dietetics');
+        return [...variants].filter(Boolean);
     }
 
     _queryLookupTerms(processedQuery, limit = 8) {
