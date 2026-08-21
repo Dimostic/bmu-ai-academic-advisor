@@ -574,7 +574,7 @@ class RetrievalService {
 
     _detectCourseTitlePhrase(queryText) {
         let q = String(queryText || '').toLowerCase();
-        q = q.replace(/\b(what is|tell me about|how many units is|unit[s]? for|course|courses|in|for|the|a|an|of)\b/g, ' ');
+        q = q.replace(/\b(what is|tell me about|how many units is|unit[s]? for|what|which|list|show|give|are|is|course|courses|in|for|the|a|an|of)\b/g, ' ');
         q = q.replace(/\b(?:bmu[-\s]?)?[a-z]{2,4}[-\s]?\d{3}\b/ig, ' ');
         q = q.replace(/\b([1-6]00)\s*(?:level|lvl|year)\b/g, ' ');
         q = q.replace(/\b(?:medical laboratory science|medicine and surgery|mbbs|bmls|nursing|pharmacy|dentistry|programme|program)\b/g, ' ');
