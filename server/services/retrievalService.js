@@ -488,18 +488,18 @@ class RetrievalService {
                 .slice(0, 8);
             if (!terms.length) return [];
 
-            const tableMatchExpr = "(LOWER(COALESCE(title, '')) LIKE ? OR LOWER(COALESCE(programme, '')) LIKE ? OR LOWER(COALESCE(section_label, '')) LIKE ? OR LOWER(COALESCE(source_path, '')) LIKE ? OR LOWER(COALESCE(markdown, '')) LIKE ?)";
+            const tableMatchExpr = "(LOWER(COALESCE(title, '')) LIKE ? OR LOWER(COALESCE(programme, '')) LIKE ? OR LOWER(COALESCE(section_label, '')) LIKE ? OR LOWER(COALESCE(source_path, '')) LIKE ? OR LOWER(COALESCE(markdown, '')) LIKE ? OR LOWER(COALESCE(rows_json, '')) LIKE ?)";
             const likeConditions = terms.map(() => tableMatchExpr).join(' OR ');
             const params = [];
             for (const term of terms) {
                 const like = `%${term}%`;
-                params.push(like, like, like, like, like);
+                params.push(like, like, like, like, like, like);
             }
             const scoreExpr = terms.map(() => tableMatchExpr).join(' + ');
             const scoreParams = [];
             for (const term of terms) {
                 const like = `%${term}%`;
-                scoreParams.push(like, like, like, like, like);
+                scoreParams.push(like, like, like, like, like, like);
             }
             const programmeFilter = programme?.name
                 ? ' AND (LOWER(COALESCE(programme, \'\')) = ? OR LOWER(COALESCE(programme, \'\')) LIKE ?)'
