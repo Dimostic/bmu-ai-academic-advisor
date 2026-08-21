@@ -242,7 +242,7 @@ const PROGRAMME_FEE_ALIASES = [
     ['HEALTH INFORMATION MANAGEMENT', /\bhealth\s+information\s+management\b|\bhim\b/i],
     ['DENTAL TECHNOLOGY', /\bdental\s+(?:technology|tech)\b/i],
     ['NURSING SCIENCE', /\bnursing(?:\s+science)?\b|\bbnsc\b/i],
-    ['COMMUNITY HEALTH', /\bcommunity\s+health\b/i],
+    ['COMMUNITY HEALTH', /\bcommunity\s+health(?:\s+sciences?)?\b/i],
     ['PUBLIC HEALTH', /\bpublic\s+health\b/i],
     ['HUMAN PHYSIOLOGY', /\bhuman\s+physiology\b|\bphysiology\b/i],
     ['HUMAN ANATOMY', /\bhuman\s+anatomy\b|\banatomy\b/i],

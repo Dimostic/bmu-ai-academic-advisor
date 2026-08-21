@@ -47,6 +47,7 @@ const PROGRAMMES = [
     'Physiotherapy',
     'Radiography',
     'Community Health',
+    'Community Health Science',
     'Public Health',
     'Health Information Management',
     'Health Care Administration and Hospital Management',
