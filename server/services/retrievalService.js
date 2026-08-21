@@ -631,8 +631,9 @@ class RetrievalService {
                 'nursing':    'nursing bnsc',
                 'pharmacy':   'pharmacy pharmaceutical sciences pharm',
                 'bnsc':       'bnsc nursing science',
-                'bmls':       'bmls medical laboratory science',
-                'medical lab':'medical lab laboratory science bmls',
+                'bmls':       'bmls b.mls bachelor medical laboratory science allied health ccmas graduation requirement duration pass mark unclassified degree',
+                'medical laboratory science': 'medical laboratory science bmls b.mls allied health ccmas graduation requirement duration pass mark unclassified degree',
+                'medical lab':'medical lab laboratory science bmls b.mls allied health ccmas',
                 'optometry':  'optometry vision sciences',
                 'physiotherapy':'physiotherapy physical therapy',
                 'radiography':'radiography radiology imaging',
@@ -890,7 +891,7 @@ class RetrievalService {
         const hasDocFilter = documentIds && Array.isArray(documentIds) && documentIds.length > 0;
         
         // Parallel execution of semantic, keyword, title-based, AND exact phrase search
-        const [semanticResults, keywordResults, titleMatchResults, exactPhraseResults] = await Promise.all([
+        const [semanticResults, keywordResults, titleMatchResults, exactPhraseResults, programmeSectionResults] = await Promise.all([
             this._semanticSearch(processedQuery.expanded, topK * 2, documentIds),
             this.config.enableHybridSearch 
                 ? this._keywordSearch(processedQuery.normalized, topK * 2, documentIds)
@@ -901,7 +902,8 @@ class RetrievalService {
             // structure, MBBS -> medicine) can match dedicated documents.
             this._titleMatchSearch(processedQuery.expanded || processedQuery.original, topK, documentIds),
             // Exact phrase match in content - high priority for specific queries
-            this._exactPhraseSearch(processedQuery.normalized, topK, documentIds)
+            this._exactPhraseSearch(processedQuery.normalized, topK, documentIds),
+            this._programmeSectionSearch(processedQuery, topK, documentIds)
         ]);
         
         // Merge and score results
@@ -926,6 +928,26 @@ class RetrievalService {
                     score: 0.65 + (result.score * 0.20)
                 });
                 console.log(`[RetrievalService] Exact phrase match: "${result.documentTitle}" score=${result.score.toFixed(3)}`);
+            }
+        }
+
+        // PRIORITY 0b: Programme-section anchors. These are targeted section
+        // lookups for curriculum documents where the exact answer spans
+        // neighbouring chunks after a programme heading.
+        for (const result of programmeSectionResults) {
+            const key = `${result.documentId}-${result.chunkIndex}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                mergedResults.push({
+                    ...result,
+                    semanticScore: 0,
+                    keywordScore: 0,
+                    titleMatchScore: 0,
+                    exactPhraseScore: 0,
+                    programmeSectionScore: result.score,
+                    score: result.score
+                });
+                console.log(`[RetrievalService] Programme-section match: "${result.documentTitle}" chunk=${result.chunkIndex} score=${result.score.toFixed(3)}`);
             }
         }
         
@@ -1104,6 +1126,91 @@ class RetrievalService {
             console.log(`[RetrievalService] Primary-source boost x${boost} applied to ${boosted} chunk(s) matching "${pattern}"`);
         }
         return results;
+    }
+
+    async _programmeSectionSearch(processedQuery, topK, documentIds = null) {
+        try {
+            if (!this._isProgrammePolicyQuery(processedQuery) && !this._isProgrammeDetailQuery(processedQuery)) return [];
+
+            const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
+            const asksMedLab = /\b(bmls|b\.?\s*mls|medical laboratory science|medical lab)\b/i.test(q);
+            const asksGraduation = /\b(graduat|requirement|duration|pass mark|core course|unclassified|credit unit|ccmas)\b/i.test(q);
+            if (!asksMedLab || !asksGraduation) return [];
+
+            const hasDocFilter = documentIds && Array.isArray(documentIds) && documentIds.length > 0;
+            const docFilter = hasDocFilter ? `AND d.id IN (${documentIds.map(() => '?').join(', ')})` : '';
+            const params = [];
+            if (hasDocFilter) params.push(...documentIds);
+
+            const rows = await query(`
+                SELECT
+                    dc.document_id AS documentId,
+                    dc.chunk_index AS chunkIndex,
+                    dc.content,
+                    d.title AS documentTitle,
+                    d.category AS documentCategory,
+                    d.authority_rank AS authorityRank,
+                    d.authority_label AS authorityLabel,
+                    anchors.anchor_index AS anchorIndex
+                FROM (
+                    SELECT dc0.document_id, dc0.chunk_index AS anchor_index
+                    FROM document_chunks dc0
+                    JOIN documents d0 ON d0.id = dc0.document_id
+                    WHERE LOWER(d0.title) LIKE '%allied health%'
+                      AND (
+                            LOWER(dc0.content) LIKE '%b.mls%'
+                         OR LOWER(dc0.content) LIKE '%bmls%'
+                         OR LOWER(dc0.content) LIKE '%medical laboratory science%'
+                      )
+                      AND (
+                            LOWER(dc0.content) LIKE '%admission and graduation requirements%'
+                         OR LOWER(dc0.content) LIKE '%graduation requirements%'
+                         OR LOWER(dc0.content) LIKE '%b.mls. medical laboratory science%'
+                      )
+                    ORDER BY
+                        CASE
+                            WHEN LOWER(dc0.content) LIKE '%admission and graduation requirements%' THEN 0
+                            WHEN LOWER(dc0.content) LIKE '%b.mls. medical laboratory science%' THEN 1
+                            ELSE 2
+                        END,
+                        dc0.chunk_index ASC
+                    LIMIT 3
+                ) anchors
+                JOIN document_chunks dc
+                    ON dc.document_id = anchors.document_id
+                   AND dc.chunk_index BETWEEN anchors.anchor_index AND anchors.anchor_index + 3
+                JOIN documents d ON d.id = dc.document_id
+                WHERE LOWER(d.title) LIKE '%allied health%' ${docFilter}
+                ORDER BY anchors.anchor_index ASC, dc.chunk_index ASC
+                LIMIT ?
+            `, [...params, Math.max(topK, 8)]);
+
+            const seen = new Set();
+            return (rows || [])
+                .filter(row => {
+                    const key = `${row.documentId}-${row.chunkIndex}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                })
+                .map(row => {
+                    const distance = Math.max(0, Number(row.chunkIndex) - Number(row.anchorIndex || row.chunkIndex));
+                    return {
+                        documentId: row.documentId,
+                        chunkIndex: row.chunkIndex,
+                        content: row.content,
+                        documentTitle: row.documentTitle,
+                        documentCategory: row.documentCategory,
+                        authorityRank: row.authorityRank,
+                        authorityLabel: row.authorityLabel,
+                        score: 0.92 - Math.min(distance, 3) * 0.04,
+                        programmeSectionMatched: 'bmls_graduation'
+                    };
+                });
+        } catch (error) {
+            console.error('[RetrievalService] Programme-section search error:', error);
+            return [];
+        }
     }
     
     /**
