@@ -2482,11 +2482,17 @@
             || (window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(hover: none)').matches);
     }
 
+    function isAndroidSpeechDevice() {
+        return /Android/i.test(navigator.userAgent || '');
+    }
+
     function shouldUseBrowserSpeechRecognition() {
         // Prefer browser recognition wherever available because it gives
         // live interim text in the input while the user is still speaking.
-        // Server STT remains the fallback for browsers without Web Speech.
-        return hasWebSpeech();
+        // Android Chrome repeatedly ends/restarts Web Speech mid-utterance
+        // and plays OS mic activation sounds that web apps cannot suppress.
+        // Use the app-controlled server STT recorder there for stable audio.
+        return hasWebSpeech() && !isAndroidSpeechDevice();
     }
 
     // Server-side STT capability is only known after /api/advisor/health
