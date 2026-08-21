@@ -15,6 +15,7 @@
     "ingest:normalise": "node server/scripts/ingestSources.js --normalise",
     "extract:ccmas": "node server/scripts/extractCcmasProgrammeSections.js",
     "extract:ccmas:structured": "node server/scripts/extractCcmasStructuredRecords.js",
+    "extract:student-courses": "node server/scripts/extractStudentCoursesStructured.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js"
