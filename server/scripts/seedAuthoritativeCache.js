@@ -10,6 +10,8 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 
 const crypto = require('crypto');
+const path = require('path');
+const mammoth = require('mammoth');
 const advisorStreamService = require('../services/advisorStreamService');
 const courseCatalogService = require('../services/courseCatalogService');
 const bmuLawService = require('../services/bmuLawService');
@@ -18,6 +20,7 @@ const documentLabService = require('../services/documentLabService');
 const EMBEDDINGS_ENABLED = process.env.SEED_AUTHORITATIVE_EMBEDDINGS !== 'false';
 const QA_TYPE = 'authoritative_seed';
 const DRY_RUN = process.argv.includes('--dry-run');
+const STRUCTURED_ONLY = process.argv.includes('--structured-only');
 
 let db = null;
 let aiService = null;
@@ -154,6 +157,18 @@ function amountValue(label) {
     const numeric = String(label || '').replace(/[^\d.]/g, '');
     const value = Number(numeric);
     return Number.isFinite(value) ? value : null;
+}
+
+function normaliseLevelLabel(value) {
+    const raw = String(value || '').trim();
+    return /^\d+$/.test(raw) ? `${raw} level` : raw;
+}
+
+function normaliseSemesterLabel(value) {
+    const raw = String(value || '').trim();
+    if (/^first$/i.test(raw)) return 'First semester';
+    if (/^second$/i.test(raw)) return 'Second semester';
+    return raw;
 }
 
 function isFeeSeedQuestion(question) {
@@ -341,6 +356,192 @@ async function upsertAcademicFee({ programme, levelKey, studentCategory, amount,
     );
 }
 
+async function upsertAcademicProgramme({ programme, faculty = '', department = '', degree = '', durationYears = null, entryMode = '', sourcePath = 'BMU structured seed', rawText = '' }) {
+    const { query } = getDb();
+    const row = { programme, faculty, department, degree, durationYears, entryMode };
+    const hash = recordHash(['academic_programmes', programme, faculty, department, degree, durationYears, entryMode, sourcePath]);
+    await query(
+        `INSERT INTO academic_programmes
+            (record_hash, programme, faculty, department, degree, duration_years, entry_mode,
+             authority_type, scope_label, source_path, raw_text, row_json, status)
+         VALUES
+            (?, ?, ?, ?, ?, ?, ?, 'institution', 'BMU programme catalogue', ?, ?, ?, 'active')
+         ON DUPLICATE KEY UPDATE
+            programme = VALUES(programme),
+            faculty = VALUES(faculty),
+            department = VALUES(department),
+            degree = VALUES(degree),
+            duration_years = VALUES(duration_years),
+            entry_mode = VALUES(entry_mode),
+            authority_type = VALUES(authority_type),
+            scope_label = VALUES(scope_label),
+            source_path = VALUES(source_path),
+            raw_text = VALUES(raw_text),
+            row_json = VALUES(row_json),
+            status = 'active',
+            updated_at = NOW()`,
+        [hash, programme, faculty || null, department || null, degree || null, durationYears, entryMode || null, sourcePath, rawText || `${programme} is listed in the BMU programme/course sources.`, JSON.stringify(row)]
+    );
+}
+
+async function upsertAcademicCourse(row) {
+    const { query } = getDb();
+    const programme = row.programmeDisplay || row.programme || '';
+    const levelLabel = normaliseLevelLabel(row.level);
+    const semesterLabel = normaliseSemesterLabel(row.semester);
+    const courseCode = row.courseCode || '';
+    const courseTitle = row.courseTitle || '';
+    const sourcePath = row.sourceTitle || 'BMU course catalogue';
+    const rawText = `${courseCode ? `${courseCode}: ` : ''}${courseTitle}${programme ? ` (${programme}` : ''}${levelLabel ? `, ${levelLabel}` : ''}${semesterLabel ? `, ${semesterLabel}` : ''}${programme ? ')' : ''}.`;
+    const payload = {
+        programme,
+        level_label: levelLabel,
+        semester_label: semesterLabel,
+        course_code: courseCode,
+        course_title: courseTitle,
+        credit_units: row.creditUnits ?? null,
+        source_path: sourcePath
+    };
+    const hash = recordHash(['academic_courses', programme, levelLabel, semesterLabel, courseCode, courseTitle, row.creditUnits, sourcePath]);
+    await query(
+        `INSERT INTO academic_courses
+            (record_hash, programme, level_label, semester_label, course_code, course_title, credit_units,
+             authority_type, scope_label, source_path, raw_text, row_json, status)
+         VALUES
+            (?, ?, ?, ?, ?, ?, ?, 'institution', 'BMU course catalogue', ?, ?, ?, 'active')
+         ON DUPLICATE KEY UPDATE
+            programme = VALUES(programme),
+            level_label = VALUES(level_label),
+            semester_label = VALUES(semester_label),
+            course_code = VALUES(course_code),
+            course_title = VALUES(course_title),
+            credit_units = VALUES(credit_units),
+            authority_type = VALUES(authority_type),
+            scope_label = VALUES(scope_label),
+            source_path = VALUES(source_path),
+            raw_text = VALUES(raw_text),
+            row_json = VALUES(row_json),
+            status = 'active',
+            updated_at = NOW()`,
+        [hash, programme || null, levelLabel || null, semesterLabel || null, courseCode || null, courseTitle || null, row.creditUnits ?? null, sourcePath, rawText, JSON.stringify(payload)]
+    );
+}
+
+async function upsertCalendarEvent({ title, dateLabel, semesterLabel, sessionLabel = '2025/2026', sourcePath = 'ACADEMIC CALENDAR 2025_2026.docx' }) {
+    const { query } = getDb();
+    const rawText = `${semesterLabel ? `${semesterLabel}: ` : ''}${title}${dateLabel ? ` - ${dateLabel}` : ''}.`;
+    const payload = { event_title: title, event_date_label: dateLabel, semester_label: semesterLabel, session_label: sessionLabel };
+    const hash = recordHash(['academic_calendar_events', title, dateLabel, semesterLabel, sessionLabel, sourcePath]);
+    await query(
+        `INSERT INTO academic_calendar_events
+            (record_hash, event_title, event_date_label, session_label, authority_type,
+             scope_label, source_path, raw_text, row_json, status)
+         VALUES
+            (?, ?, ?, ?, 'institution', 'BMU academic calendar', ?, ?, ?, 'active')
+         ON DUPLICATE KEY UPDATE
+            event_title = VALUES(event_title),
+            event_date_label = VALUES(event_date_label),
+            session_label = VALUES(session_label),
+            authority_type = VALUES(authority_type),
+            scope_label = VALUES(scope_label),
+            source_path = VALUES(source_path),
+            raw_text = VALUES(raw_text),
+            row_json = VALUES(row_json),
+            status = 'active',
+            updated_at = NOW()`,
+        [hash, title, dateLabel || null, sessionLabel, sourcePath, rawText, JSON.stringify(payload)]
+    );
+}
+
+async function seedAcademicCoursesAndProgrammes() {
+    const rows = await courseCatalogService.loadCatalog();
+    let courses = 0;
+    let programmes = 0;
+    const programmeMap = new Map();
+
+    for (const row of rows) {
+        await upsertAcademicCourse(row);
+        courses += 1;
+        const programme = row.programmeDisplay || row.programme;
+        if (programme && !programmeMap.has(String(programme).toLowerCase())) {
+            programmeMap.set(String(programme).toLowerCase(), {
+                programme,
+                sourcePath: row.sourceTitle || 'BMU course catalogue',
+                rawText: `${programme} appears in ${row.sourceTitle || 'the BMU course catalogue'}.`
+            });
+        }
+    }
+
+    const staticFacts = advisorStreamService._staticFacts || {};
+    for (const fee of Object.values(staticFacts.PROGRAMME_FEES || {})) {
+        const programme = fee.display;
+        if (programme && !programmeMap.has(String(programme).toLowerCase())) {
+            programmeMap.set(String(programme).toLowerCase(), {
+                programme,
+                sourcePath: 'bmu fee structures new.docx',
+                rawText: `${programme} appears in the BMU fee structure.`
+            });
+        }
+    }
+
+    for (const programme of programmeMap.values()) {
+        await upsertAcademicProgramme(programme);
+        programmes += 1;
+    }
+
+    return { courses, programmes };
+}
+
+async function seedAcademicCalendar() {
+    const filePath = path.join(__dirname, '../../sources/ACADEMIC CALENDAR 2025_2026.docx');
+    let text = '';
+    try {
+        const result = await mammoth.extractRawText({ path: filePath });
+        text = String(result.value || '');
+    } catch (err) {
+        console.warn('[seedAuthoritativeCache] calendar extraction skipped:', err.message);
+        return { calendarEvents: 0 };
+    }
+
+    const relevant = text.split(/First Semester highlights/i)[0] || text;
+    const lines = relevant
+        .split(/\r?\n/)
+        .map(line => line.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .filter(line => !/^(bayelsa medical university|imgbi road|academic calendar|s\/n|activities|dates)$/i.test(line));
+
+    let semester = '';
+    let pendingTitle = '';
+    let calendarEvents = 0;
+    const dateStart = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+
+    for (const line of lines) {
+        if (/^first semester$/i.test(line)) {
+            semester = 'First semester';
+            pendingTitle = '';
+            continue;
+        }
+        if (/^second semester$/i.test(line)) {
+            semester = 'Second semester';
+            pendingTitle = '';
+            continue;
+        }
+        if (!semester) continue;
+        if (dateStart.test(line)) {
+            if (pendingTitle) {
+                await upsertCalendarEvent({ title: pendingTitle, dateLabel: line, semesterLabel: semester });
+                calendarEvents += 1;
+                pendingTitle = '';
+            }
+            continue;
+        }
+        if (/^\d+$/.test(line)) continue;
+        pendingTitle = pendingTitle ? `${pendingTitle} ${line}` : line;
+    }
+
+    return { calendarEvents };
+}
+
 async function seedStructuredAuthorityRecords() {
     await documentLabService.ensureSchema();
 
@@ -416,7 +617,18 @@ async function seedStructuredAuthorityRecords() {
         }
     }
 
-    return { factsCreated, factsRefreshed, officers, fees };
+    const academic = await seedAcademicCoursesAndProgrammes();
+    const calendar = await seedAcademicCalendar();
+
+    return {
+        factsCreated,
+        factsRefreshed,
+        officers,
+        fees,
+        programmes: academic.programmes,
+        courses: academic.courses,
+        calendarEvents: calendar.calendarEvents
+    };
 }
 
 async function addFastIntentQuestion(entries, item, fallbackTitle) {
@@ -549,6 +761,14 @@ async function deactivateMalformedSeedRows() {
 }
 
 async function main() {
+    if (STRUCTURED_ONLY) {
+        const structured = await seedStructuredAuthorityRecords();
+        console.log(`[seedAuthoritativeCache] structured-only: ${structured.factsCreated} facts created, ${structured.factsRefreshed} facts refreshed, ${structured.officers} officers, ${structured.fees} fees, ${structured.programmes} programmes, ${structured.courses} courses, ${structured.calendarEvents} calendar events upserted`);
+        getDb().pool.end();
+        process.exit(0);
+        return;
+    }
+
     const entries = await buildEntries();
     if (DRY_RUN) {
         const topics = entries.reduce((acc, entry) => {
@@ -587,7 +807,7 @@ async function main() {
     } catch (_) {}
 
     console.log(`[seedAuthoritativeCache] done: ${created} created, ${refreshed} refreshed, ${skipped} skipped, ${deactivated} malformed deactivated`);
-    console.log(`[seedAuthoritativeCache] structured: ${structured.factsCreated} facts created, ${structured.factsRefreshed} facts refreshed, ${structured.officers} officers upserted, ${structured.fees} fee records upserted`);
+    console.log(`[seedAuthoritativeCache] structured: ${structured.factsCreated} facts created, ${structured.factsRefreshed} facts refreshed, ${structured.officers} officers, ${structured.fees} fees, ${structured.programmes} programmes, ${structured.courses} courses, ${structured.calendarEvents} calendar events upserted`);
     getDb().pool.end();
     process.exit(0);
 }

@@ -2366,7 +2366,9 @@
     function renderStructuredRecordCard(tableInfo, record) {
         const columns = tableInfo.columns || [];
         const titleColumn = columns.find(c => /programme|office|subject|course_title|event_title|rule_type|human_text/.test(c)) || columns[0];
-        const fields = columns.map(column => renderStructuredRecordField(column, record[column])).join('');
+        const advanced = new Set(['value_json', 'row_json', 'source_path', 'status', 'authority_type', 'scope_label', 'currentness_label', 'record_hash']);
+        const simpleColumns = columns.filter(column => !advanced.has(column));
+        const advancedColumns = columns.filter(column => advanced.has(column));
         return `
             <section class="structured-review-card" data-structured-id="${escapeHtml(record.id)}">
                 <div class="structured-review-card-head">
@@ -2375,8 +2377,16 @@
                     <small>${escapeHtml(formatDate(record.updatedAt))}</small>
                 </div>
                 <div class="structured-review-grid">
-                    ${fields}
+                    ${simpleColumns.map(column => renderStructuredRecordField(column, record[column])).join('')}
                 </div>
+                ${advancedColumns.length ? `
+                    <details class="structured-advanced">
+                        <summary>Advanced source and system fields</summary>
+                        <div class="structured-review-grid">
+                            ${advancedColumns.map(column => renderStructuredRecordField(column, record[column])).join('')}
+                        </div>
+                    </details>
+                ` : ''}
                 <div class="document-lab-output-actions">
                     <button class="btn btn-primary" data-structured-save="${escapeHtml(record.id)}"><i class="fa-solid fa-floppy-disk"></i> Save changes</button>
                 </div>
@@ -2386,11 +2396,51 @@
 
     function renderStructuredRecordField(column, value) {
         const isLong = /text|json|source_path|raw_text|human_text|value_json|row_json/.test(column);
-        const label = column.replace(/_/g, ' ');
+        const label = structuredFieldLabel(column);
         if (isLong) {
             return `<label>${escapeHtml(label)}<textarea data-structured-field="${escapeHtml(column)}" spellcheck="false">${escapeHtml(value || '')}</textarea></label>`;
         }
         return `<label>${escapeHtml(label)}<input data-structured-field="${escapeHtml(column)}" value="${escapeHtml(value || '')}" /></label>`;
+    }
+
+    function structuredFieldLabel(column) {
+        const labels = {
+            fact_type: 'Type of fact',
+            subject: 'Subject',
+            predicate_name: 'Relationship',
+            value_json: 'Structured value',
+            human_text: 'Answer text / fact wording',
+            authority_type: 'Authority type',
+            scope_label: 'Scope',
+            source_path: 'Source document',
+            status: 'Status',
+            currentness_label: 'Currentness',
+            authority_rank: 'Authority rank',
+            programme: 'Programme',
+            faculty: 'Faculty',
+            department: 'Department',
+            degree: 'Degree',
+            duration_years: 'Duration in years',
+            entry_mode: 'Entry mode',
+            level_label: 'Level',
+            semester_label: 'Semester',
+            course_code: 'Course code',
+            course_title: 'Course title',
+            credit_units: 'Credit units',
+            fee_category: 'Fee category',
+            amount_label: 'Amount shown to users',
+            amount_value: 'Amount as number',
+            session_label: 'Session',
+            student_category: 'Student category',
+            event_title: 'Calendar event',
+            event_date_label: 'Date or date range',
+            office: 'Office / role',
+            officer_name: 'Officer name',
+            rule_type: 'Rule type',
+            raw_text: 'Exact wording',
+            row_json: 'Structured row'
+        };
+        return labels[column] || column.replace(/_/g, ' ');
     }
 
     function collectStructuredRecordPayload(card) {
