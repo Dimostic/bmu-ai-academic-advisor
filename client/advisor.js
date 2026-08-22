@@ -421,8 +421,16 @@
     }
 
     function handleAuthFailure(status, data = null) {
-        if ((status === 401 || status === 403) && !state.guestDemo?.enabled) {
-            const code = String(data?.code || '').toUpperCase();
+        const errorText = String(data?.error || '').toLowerCase();
+        const code = String(data?.code || '').toUpperCase();
+        const isInvalidToken403 = status === 403 && (
+            code.includes('TOKEN') ||
+            errorText.includes('invalid token') ||
+            errorText.includes('token expired') ||
+            errorText.includes('authentication required') ||
+            errorText.includes('access denied')
+        );
+        if ((status === 401 || isInvalidToken403) && !state.guestDemo?.enabled) {
             const reason = code.includes('EXPIRED') ? 'expired' : 'login_required';
             const details = {
                 status,
@@ -3627,8 +3635,17 @@
     (async () => {
         if (!state.token) return;
         try {
-            await api('/api/admin/stats');
-            adminLink?.classList.remove('hidden');
+            state.lastApiEndpoint = '/api/admin/stats';
+            const res = await fetch('/api/admin/stats', {
+                headers: { ...authHeaders() },
+                cache: 'no-store'
+            });
+            writeAuthTrace('advisor_admin_probe', {
+                status: res.status,
+                endpoint: '/api/admin/stats',
+                success: res.ok
+            });
+            if (res.ok) adminLink?.classList.remove('hidden');
         } catch (_) { /* not an admin; leave hidden */ }
     })();
 
