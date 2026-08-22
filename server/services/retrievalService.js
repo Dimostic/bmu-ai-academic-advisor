@@ -337,7 +337,7 @@ class RetrievalService {
 
     _staticStructuredFacts(processedQuery) {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
-        const asksMedLab = /\b(bmls|b\.?\s*mls|medical laboratory science|medical lab)\b/i.test(q);
+        const asksMedLab = /\b(bmls|b\.?\s*mls|mls|medical laboratory science|medical lab)\b/i.test(q);
         const asksGraduation = /\b(graduat|requirement|duration|pass mark|core course|unclassified|credit unit|ccmas)\b/i.test(q);
         if (!asksMedLab || !asksGraduation) return [];
 
@@ -370,7 +370,7 @@ class RetrievalService {
         const q = String(queryText || '').toLowerCase();
         const catalog = ccmasExtractor.PROGRAMME_CATALOG || [];
         const aliases = [
-            ['BMLS', /\b(bmls|b\.?\s*mls|medical laboratory sciences?|medical lab)\b/i],
+            ['BMLS', /\b(bmls|b\.?\s*mls|mls|medical laboratory sciences?|medical lab)\b/i],
             ['BNSC', /\b(bnsc|b\.?\s*n\.?\s*sc|nursing sciences?|nursing)\b/i],
             ['MBBS', /\b(mbbs|medicine and surgery|medical doctor)\b/i],
             ['BDS', /\b(bds|dentistry|dental surgery)\b/i],
@@ -1430,7 +1430,7 @@ class RetrievalService {
         const alliedHealthPattern = this.config.alliedHealthPattern;
         const alliedHealthBoost = this.config.alliedHealthBoost;
         const q = String(processedQuery?.normalized || '').toLowerCase();
-        const asksMedLab = /(bmls|medical laboratory science|medical lab)/i.test(q);
+        const asksMedLab = /\b(bmls|b\.?\s*mls|mls|medical laboratory science|medical lab)\b/i.test(q);
 
         let boosted = 0;
         for (const r of results) {
@@ -1496,7 +1496,7 @@ class RetrievalService {
             if (!this._isProgrammePolicyQuery(processedQuery) && !this._isProgrammeDetailQuery(processedQuery)) return [];
 
             const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || '').toLowerCase();
-            const asksMedLab = /\b(bmls|b\.?\s*mls|medical laboratory science|medical lab)\b/i.test(q);
+            const asksMedLab = /\b(bmls|b\.?\s*mls|mls|medical laboratory science|medical lab)\b/i.test(q);
             const asksGraduation = /\b(graduat|requirement|duration|pass mark|core course|unclassified|credit unit|ccmas)\b/i.test(q);
             if (!asksMedLab || !asksGraduation) return [];
 

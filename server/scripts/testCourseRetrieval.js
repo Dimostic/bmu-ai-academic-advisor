@@ -16,9 +16,24 @@ const QUESTIONS = [
 
 function collectText(result) {
     const parts = [];
-    for (const item of result?.context || []) {
+    if (typeof result?.context === 'string') {
+        parts.push(result.context);
+    } else if (Array.isArray(result?.context)) {
+        for (const item of result.context) {
+            parts.push(item.text || item.content || item.rawText || '');
+            if (item.metadata) parts.push(JSON.stringify(item.metadata));
+        }
+    }
+    for (const item of result?.chunks || []) {
         parts.push(item.text || item.content || item.rawText || '');
         if (item.metadata) parts.push(JSON.stringify(item.metadata));
+    }
+    for (const item of result?.sources || []) {
+        if (typeof item === 'string') {
+            parts.push(item);
+        } else {
+            parts.push(JSON.stringify(item));
+        }
     }
     if (result?.structuredContext) parts.push(result.structuredContext);
     if (result?.normalizedContext) parts.push(result.normalizedContext);
@@ -38,7 +53,8 @@ async function main() {
             question,
             expected,
             matched,
-            contextCount: Array.isArray(result?.context) ? result.context.length : 0
+            contextLength: typeof result?.context === 'string' ? result.context.length : 0,
+            chunkCount: Array.isArray(result?.chunks) ? result.chunks.length : 0
         });
     }
     console.log(JSON.stringify({ ok: true, count: results.length, results }, null, 2));
