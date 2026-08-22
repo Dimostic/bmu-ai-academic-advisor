@@ -402,10 +402,10 @@
         } catch (_) {}
     }
 
-    function redirectToLogin(reason = 'expired') {
+    function redirectToLogin(reason = 'expired', details = {}) {
         if (state.guestDemo?.enabled || state.redirectingToLogin) return;
         state.redirectingToLogin = true;
-        writeAuthTrace('advisor_redirect_to_login', { reason });
+        writeAuthTrace('advisor_redirect_to_login', { reason, ...details });
         clearStoredAuth();
         try { stopCurrentAudio(); } catch (_) { /* stop helper may not be initialized yet */ }
         if (state.recording) {
@@ -424,13 +424,14 @@
         if ((status === 401 || status === 403) && !state.guestDemo?.enabled) {
             const code = String(data?.code || '').toUpperCase();
             const reason = code.includes('EXPIRED') ? 'expired' : 'login_required';
-            writeAuthTrace('advisor_auth_failure', {
+            const details = {
                 status,
                 code,
                 error: data?.error || '',
                 endpoint: data?._endpoint || state.lastApiEndpoint || ''
-            });
-            redirectToLogin(reason);
+            };
+            writeAuthTrace('advisor_auth_failure', details);
+            redirectToLogin(reason, details);
             return true;
         }
         return false;
@@ -3816,7 +3817,9 @@
         // key get a disabled mic + a clear tooltip instead of a confusing
         // raw server error after recording.
         try {
-            const h = await api('/api/advisor/health');
+            const hRes = await fetch('/api/advisor/health', { cache: 'no-store' });
+            const h = await hRes.json().catch(() => ({}));
+            writeAuthTrace('advisor_health_probe', { status: hRes.status, endpoint: '/api/advisor/health', success: Boolean(h?.success) });
             console.info('[advisor] providers:', h.providers);
             serverSttAvailable = Boolean(h?.providers?.stt);
         } catch (_) {
@@ -3845,11 +3848,23 @@
         // visitors to /login, so by this point a user must exist.
         // -------------------------------------------------------------------
         let user = null;
-        try { user = JSON.parse(localStorage.getItem('bmu_user') || 'null'); } catch (_) {}
+        try { user = JSON.parse(localStorage.getItem('bmu_user') || sessionStorage.getItem('bmu_user') || 'null'); } catch (_) {}
         if (!user && state.token) {
-            // Fall back to /api/users/me if we somehow didn't cache the user.
-            try { const me = await api('/api/users/me'); user = me?.user || null; }
-            catch (_) { /* leave null */ }
+            // Fall back to /api/users/me if we somehow didn't cache the user,
+            // but do not redirect from this optional profile lookup. A valid
+            // token can still use the advisor even if this cosmetic call fails.
+            try {
+                state.lastApiEndpoint = '/api/users/me';
+                const r = await fetch('/api/users/me', {
+                    headers: { ...authHeaders() },
+                    cache: 'no-store'
+                });
+                const me = await r.json().catch(() => ({}));
+                writeAuthTrace('advisor_profile_probe', { status: r.status, endpoint: '/api/users/me', success: Boolean(me?.success) });
+                if (r.ok && me?.success) user = me.user || null;
+            } catch (err) {
+                writeAuthTrace('advisor_profile_probe_error', { endpoint: '/api/users/me', error: err.message || 'fetch failed' });
+            }
         }
         const authSlot = document.getElementById('authSlot');
         if (authSlot && state.guestDemo.enabled) {
@@ -3911,7 +3926,13 @@
             const badge = document.getElementById('quotaBadge');
             if (!badge) return;
             try {
-                const u = await api('/api/advisor/usage');
+                const res = await fetch('/api/advisor/usage', {
+                    headers: { ...authHeaders() },
+                    cache: 'no-store'
+                });
+                const u = await res.json().catch(() => ({}));
+                writeAuthTrace('advisor_usage_probe', { status: res.status, endpoint: '/api/advisor/usage', success: Boolean(u?.success) });
+                if (!res.ok) return;
                 state.usage = u;
                 if (u?.anonymous) { badge.remove(); return; }
                 const day = u.day || {};
