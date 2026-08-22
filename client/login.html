@@ -93,13 +93,41 @@
             host.innerHTML = window.BMUAvatars ? window.BMUAvatars.thumb(g) : '';
         });
 
-        // If already signed in, skip login.
-        const existing = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
         const params = new URLSearchParams(location.search);
-        const next = params.get('next') || '/advisor';
+        const nextRaw = params.get('next') || '/advisor';
+        const next = /^\/(?!\/)/.test(nextRaw) && !nextRaw.startsWith('/login') ? nextRaw : '/advisor';
         const presetQ = params.get('q');
+        const reason = params.get('reason');
 
-        if (existing) { window.location.replace(next); return; }
+        function clearAuthCache() {
+            try { localStorage.removeItem('bmu_token'); } catch (_) {}
+            try { sessionStorage.removeItem('bmu_token'); } catch (_) {}
+            try { localStorage.removeItem('bmu_user'); } catch (_) {}
+            try { localStorage.removeItem('bmu_advisor_session'); } catch (_) {}
+            try { localStorage.removeItem('bmu_advisor_sessions'); } catch (_) {}
+        }
+
+        async function verifyExistingSession() {
+            const existing = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+            if (!existing) return false;
+            try {
+                const r = await fetch('/api/users/me', {
+                    headers: { Authorization: 'Bearer ' + existing },
+                    cache: 'no-store'
+                });
+                if (!r.ok) {
+                    clearAuthCache();
+                    return false;
+                }
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        verifyExistingSession().then(valid => {
+            if (valid) window.location.replace(next);
+        });
 
         // Carry next/q into the register link so the round-trip is preserved.
         const regLink = document.getElementById('registerLink');
@@ -109,10 +137,14 @@
         regLink.href = regUrl.pathname + regUrl.search;
 
         // Optional banner: show a friendly note if user came from a topic tile.
-        if (presetQ) {
+        if (presetQ || reason) {
             const banner = document.getElementById('banner');
-            document.getElementById('bannerMsg').textContent =
-                'Sign in to ask Dr. Tari: "' + presetQ + '"';
+            const msg = reason === 'expired'
+                ? 'Your session expired. Please sign in again to continue.'
+                : reason
+                    ? 'Please sign in again to continue.'
+                    : 'Sign in to ask Dr. Tari: "' + presetQ + '"';
+            document.getElementById('bannerMsg').textContent = msg;
             banner.classList.remove('hidden');
         }
 
@@ -156,6 +188,7 @@
                 if (!r.ok || !data.success) {
                     throw new Error(data.error || 'Sign-in failed');
                 }
+                clearAuthCache();
                 // Store token + user info; remember-me via localStorage by default
                 localStorage.setItem('bmu_token', data.token);
 

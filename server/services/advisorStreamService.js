@@ -1581,7 +1581,9 @@ async function _fetchRagContext(question) {
 
 async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
     if (sessionToken) {
-        const existing = await Advisor.getConversationByToken(sessionToken);
+        const existing = studentId
+            ? await Advisor.getConversationByTokenForStudent(sessionToken, studentId)
+            : await Advisor.getConversationByToken(sessionToken);
         if (existing) return existing;
     }
 

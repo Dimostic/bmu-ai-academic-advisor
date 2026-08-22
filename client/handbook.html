@@ -156,6 +156,13 @@
      */
     (() => {
         const token = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+        function clearAuthCache() {
+            try { localStorage.removeItem('bmu_token'); } catch (_) {}
+            try { sessionStorage.removeItem('bmu_token'); } catch (_) {}
+            try { localStorage.removeItem('bmu_user'); } catch (_) {}
+            try { localStorage.removeItem('bmu_advisor_session'); } catch (_) {}
+            try { localStorage.removeItem('bmu_advisor_sessions'); } catch (_) {}
+        }
         if (!token) {
             const next = encodeURIComponent('/handbook');
             location.replace(`/login?next=${next}`);
@@ -176,8 +183,7 @@
                 </span>
                 <button id="logoutBtn" class="btn btn-ghost"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</button>`;
             document.getElementById('logoutBtn').addEventListener('click', () => {
-                localStorage.removeItem('bmu_token'); localStorage.removeItem('bmu_user');
-                sessionStorage.removeItem('bmu_token');
+                clearAuthCache();
                 location.replace('/');
             });
         } catch (_) { /* noop */ }
@@ -185,8 +191,9 @@
         async function api(path) {
             const r = await fetch(path, { headers: { Authorization: 'Bearer ' + token } });
             if (r.status === 401 || r.status === 403) {
+                clearAuthCache();
                 const next = encodeURIComponent('/handbook');
-                location.replace(`/login?next=${next}`);
+                location.replace(`/login?next=${next}&reason=expired`);
                 throw new Error('unauthorised');
             }
             if (!r.ok) throw new Error('HTTP ' + r.status);

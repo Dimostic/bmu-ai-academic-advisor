@@ -18,6 +18,13 @@
 
     // ------------------------------------------------------------------ Auth
     const token = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+    function clearAuthCache() {
+        try { localStorage.removeItem('bmu_token'); } catch (_) {}
+        try { sessionStorage.removeItem('bmu_token'); } catch (_) {}
+        try { localStorage.removeItem('bmu_user'); } catch (_) {}
+        try { localStorage.removeItem('bmu_advisor_session'); } catch (_) {}
+        try { localStorage.removeItem('bmu_advisor_sessions'); } catch (_) {}
+    }
     if (!token) {
         location.replace('/login?next=/admin');
         return;
@@ -42,7 +49,8 @@
             if (path !== '/api/admin/stats') {
                 toast(res.status === 403 ? 'Admin access required' : 'Session expired', 'error');
                 if (res.status === 401) {
-                    setTimeout(() => location.replace('/login?next=/admin'), 1200);
+                    clearAuthCache();
+                    setTimeout(() => location.replace('/login?next=/admin&reason=expired'), 1200);
                 }
             }
             const data = await res.json().catch(() => ({}));
@@ -80,9 +88,7 @@
             </button>
         `;
         document.getElementById('logoutBtn').addEventListener('click', () => {
-            localStorage.removeItem('bmu_token');
-            localStorage.removeItem('bmu_user');
-            sessionStorage.removeItem('bmu_token');
+            clearAuthCache();
             location.replace('/');
         });
     }

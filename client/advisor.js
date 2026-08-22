@@ -367,6 +367,8 @@
         try { localStorage.removeItem('bmu_token'); } catch (_) {}
         try { sessionStorage.removeItem('bmu_token'); } catch (_) {}
         try { localStorage.removeItem('bmu_user'); } catch (_) {}
+        try { localStorage.removeItem('bmu_advisor_session'); } catch (_) {}
+        try { localStorage.removeItem('bmu_advisor_sessions'); } catch (_) {}
     }
 
     function redirectToLogin(reason = 'expired') {
@@ -3842,9 +3844,7 @@
             `;
             document.getElementById('logoutBtn')?.addEventListener('click', async () => {
                 try { await api('/api/users/logout', { method: 'POST' }); } catch (_) {}
-                localStorage.removeItem('bmu_token');
-                localStorage.removeItem('bmu_user');
-                sessionStorage.removeItem('bmu_token');
+                clearStoredAuth();
                 location.replace('/');
             });
             // Pull live quota and refresh the badge.
