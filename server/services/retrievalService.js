@@ -552,21 +552,25 @@ class RetrievalService {
 
     _detectStructuredTableRowFilter(processedQuery) {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || processedQuery?.original || '').toLowerCase();
-        const levelMatch = q.match(/\b([1-6]00)\s*(?:level|lvl|year)\b/) || q.match(/\b(?:level|year)\s*([1-6]00)\b/);
+        const levelMatch = q.match(/\b([1-7]00)\s*(?:level|lvl|l|year)\b/) || q.match(/\b(?:level|year)\s*([1-7]00)\b/);
+        const yearMatch = q.match(/\b(?:year\s*([1-7])|([1-7])(?:st|nd|rd|th)?\s*year)\b/);
+        const yearLevel = yearMatch ? `${yearMatch[1] || yearMatch[2]}00` : null;
         const rawCourseCodeMatch = q.match(/\b((?:bmu[-\s]?)?[a-z]{2,4})[-\s]?(\d{3})\b/i);
-        const blockedCoursePrefixes = ['in', 'on', 'at', 'for', 'the', 'and', 'are', 'is', 'what', 'which', 'show', 'list', 'give', 'level', 'year'];
-        const courseCodeMatch = rawCourseCodeMatch && !blockedCoursePrefixes.includes(String(rawCourseCodeMatch[1]).toLowerCase())
+        const blockedCoursePrefixes = ['in', 'on', 'at', 'for', 'the', 'and', 'are', 'is', 'what', 'which', 'show', 'list', 'give', 'level', 'year', 'do', 'does', 'did', 'take', 'takes', 'bmu', 'have', 'has'];
+        const rawPrefix = rawCourseCodeMatch ? String(rawCourseCodeMatch[1]).replace(/[^a-z]/ig, '').toLowerCase() : '';
+        const prefixWithoutBmu = rawPrefix.replace(/^bmu/, '');
+        const courseCodeMatch = rawCourseCodeMatch && !blockedCoursePrefixes.includes(rawPrefix) && !blockedCoursePrefixes.includes(prefixWithoutBmu)
             ? rawCourseCodeMatch
             : null;
         const titlePhrase = this._detectCourseTitlePhrase(q);
-        const semester = /\bfirst\s+semester\b|\b1st\s+semester\b/.test(q)
+        const semester = /\bfirst\s+semester\b|\b1st\s+semester\b|\bsemester\s*1\b/.test(q)
             ? 'first'
-            : /\bsecond\s+semester\b|\b2nd\s+semester\b/.test(q)
+            : /\bsecond\s+semester\b|\b2nd\s+semester\b|\bsemester\s*2\b/.test(q)
                 ? 'second'
                 : null;
         return {
-            active: Boolean(levelMatch || semester || courseCodeMatch || titlePhrase),
-            level: levelMatch ? `${levelMatch[1]} Level` : null,
+            active: Boolean(levelMatch || yearLevel || semester || courseCodeMatch || titlePhrase),
+            level: levelMatch ? `${levelMatch[1]} Level` : yearLevel ? `${yearLevel} Level` : null,
             semester,
             courseCode: courseCodeMatch ? `${courseCodeMatch[1].replace(/\s+/g, '-').toUpperCase()}-${courseCodeMatch[2]}`.replace(/^BMU-?/, 'BMU-') : null,
             courseTitlePhrase: titlePhrase
@@ -577,7 +581,8 @@ class RetrievalService {
         let q = String(queryText || '').toLowerCase();
         q = q.replace(/\b(what is|tell me about|how many units is|unit[s]? for|what|which|list|show|give|are|is|course|courses|in|for|the|a|an|of)\b/g, ' ');
         q = q.replace(/\b(?:bmu[-\s]?)?[a-z]{2,4}[-\s]?\d{3}\b/ig, ' ');
-        q = q.replace(/\b([1-6]00)\s*(?:level|lvl|year)\b/g, ' ');
+        q = q.replace(/\b([1-7]00)\s*(?:level|lvl|l|year)\b/g, ' ');
+        q = q.replace(/\b(?:year\s*[1-7]|[1-7](?:st|nd|rd|th)?\s*year)\b/g, ' ');
         q = q.replace(/\b(?:medical laboratory science|medicine and surgery|mbbs|bmls|nursing|pharmacy|dentistry|programme|program)\b/g, ' ');
         q = q.replace(/[^a-z0-9\s&-]/g, ' ').replace(/\s+/g, ' ').trim();
         return q.length >= 6 ? q : null;
@@ -775,9 +780,11 @@ class RetrievalService {
         if (/medical laboratory science$/i.test(value)) variants.add(`${value}s`);
         if (/community health$/i.test(value)) variants.add('Community Health Sciences');
         if (/pharmacy$/i.test(value)) variants.add('Doctor of Pharmacy');
+        if (/doctor of pharmacy$/i.test(value)) variants.add('Pharmacy');
         if (/radiography$/i.test(value)) variants.add('Radiography & Radiation Science');
         if (/physics$/i.test(value)) variants.add('Physics with Electronics');
         if (/nutrition/i.test(value)) variants.add('Nutrition & Dietetics');
+        if (/health care administration/i.test(value)) variants.add('Health Care Administration and Hospital Management');
         return [...variants].filter(Boolean);
     }
 
