@@ -18,6 +18,8 @@
     "extract:student-courses": "node server/scripts/extractStudentCoursesStructured.js",
     "test:course-catalog": "node server/scripts/testCourseCatalog.js",
     "test:course-queries": "node server/scripts/testCourseQueries.js",
+    "test:course-edge": "node server/scripts/testCourseQueries.js --edge",
+    "test:course-invalid-codes": "node server/scripts/testCourseQueries.js --invalid-codes",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js"

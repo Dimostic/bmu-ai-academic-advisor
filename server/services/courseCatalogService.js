@@ -30,7 +30,7 @@ let _catalogPromise = null;
 const PROGRAMME_ALIASES = [
     ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bmed\s+lab\b|\bbmls\b|\bmls\b/i],
     ['HEALTH INFORMATION MANAGEMENT', /\bhealth\s+information\s+management\b|\bhim\b/i],
-    ['HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT', /\b(?:health\s+care|healthcare)\s+administration\b|\bhospital\s+management\b/i],
+    ['HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT', /\b(?:health\s+care|healthcare)\s+(?:administration|admin)\b|\bhospital\s+management\b|\bhealth\s+admin\b|\bhca\b/i],
     ['HUMAN NUTRITION & DIETETICS', /\bhuman\s+nutrition\s+(?:and|&)\s+dietetics\b|\bnutrition\s+(?:and|&)\s+dietetics\b|\bdietetics\b/i],
     ['DENTAL TECHNOLOGY', /\bdental\s+(?:technology|tech)\b/i],
     ['NURSING SCIENCE', /\bnursing(?:\s+science)?\b|\bbnsc\b/i],
@@ -108,8 +108,13 @@ function detectProgramme(question) {
 }
 
 function detectLevel(question) {
-    const match = String(question || '').match(/\b(100|200|300|400|500|600|700)\s*(?:level|lvl|l)?\b/i);
-    return match ? match[1] : null;
+    const text = String(question || '');
+    const match = text.match(/\b(100|200|300|400|500|600|700)\s*(?:level|lvl|l)?\b/i);
+    if (match) return match[1];
+
+    const yearMatch = text.match(/\b(?:year\s*([1-7])|([1-7])(?:st|nd|rd|th)?\s*year)\b/i);
+    const year = yearMatch ? (yearMatch[1] || yearMatch[2]) : null;
+    return year ? `${year}00` : null;
 }
 
 function detectSemester(question) {
@@ -128,6 +133,7 @@ function normalizeCourseCode(value) {
 function formatCourseCodeDisplay(value) {
     let text = String(value || '')
         .toUpperCase()
+        .replace(/^BMU\?\s*/i, 'BMU-')
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/^BMU\s*[-\s]\s*/i, 'BMU-')
@@ -137,6 +143,10 @@ function formatCourseCodeDisplay(value) {
     text = text.replace(/^(BMU-[A-Z]{2,4})\s*(\d{3}[A-Z]?)$/, '$1 $2');
     text = text.replace(/^([A-Z]{2,4})\s*(\d{3}[A-Z]?)$/, '$1 $2');
     return text;
+}
+
+function isCleanCourseCode(value) {
+    return /^(?:BMU-)?[A-Z]{2,4}\s*\d{3}[A-Z]?$/i.test(String(value || '').trim());
 }
 
 function courseCodeMatchesLookup(rowCode, lookupCode) {
@@ -150,12 +160,15 @@ function detectCourseCode(question) {
     const blockedPrefixes = new Set([
         'AT', 'FOR', 'THE', 'AND', 'ARE', 'IS', 'IN', 'ON',
         'SHOW', 'WHAT', 'LIST', 'GIVE', 'DO', 'DOES', 'DID',
-        'TAKE', 'TAKES'
+        'TAKE', 'TAKES', 'BMU', 'HAVE', 'HAS'
     ]);
     const matches = String(question || '').toUpperCase().matchAll(/\b((?:BMU[-\s]?)?[A-Z]{2,4})[-\s]?(\d{3})\b/g);
     for (const match of matches) {
         const prefix = String(match[1] || '').replace(/[^A-Z]/g, '');
-        if (!blockedPrefixes.has(prefix)) return normalizeCourseCode(match[0]);
+        const prefixWithoutBmu = prefix.replace(/^BMU/, '');
+        if (!blockedPrefixes.has(prefix) && !blockedPrefixes.has(prefixWithoutBmu)) {
+            return normalizeCourseCode(match[0]);
+        }
     }
     return null;
 }
@@ -175,6 +188,14 @@ function isCourseListQuestion(question) {
     const asksForCourses = /\b(course|courses|curriculum|course\s+list|subjects?)\b/i.test(q);
     const hasSemester = Boolean(detectSemester(q));
     return hasProgrammeAndLevel && (asksForCourses || hasSemester);
+}
+
+function isCourseAvailabilityQuestion(question) {
+    const q = String(question || '');
+    if (!detectProgramme(q)) return false;
+    return /\b(available|levels?|years?|have|offer|show|list)\b/i.test(q)
+        && /\b(course|courses|curriculum|subjects?|level|levels?|year|years?)\b/i.test(q)
+        && !detectLevel(q);
 }
 
 async function loadCatalog() {
@@ -448,10 +469,14 @@ function mergeCourseRowsForDisplay(rows) {
 
 function formatCourseListTable(rows) {
     const tableRows = rows.map(row => {
+        const codeNote = isCleanCourseCode(row.courseCode) ? '' : 'source code needs review';
         const note = row.duplicateCount > 1 && row.category
             ? `${row.category}; repeated ${row.duplicateCount}x`
-            : row.category || '';
-        return `| ${formatSemester(row.semester)} | ${row.courseCode} | ${row.courseTitle} | ${row.creditUnits ?? ''} | ${note} |`;
+            : row.category || codeNote;
+        const finalNote = codeNote && row.category && !String(note).includes(codeNote)
+            ? `${note}; ${codeNote}`
+            : note;
+        return `| ${formatSemester(row.semester)} | ${row.courseCode} | ${row.courseTitle} | ${row.creditUnits ?? ''} | ${finalNote} |`;
     });
     return [
         '| Semester | Course code | Course title | Units | Note |',
@@ -621,6 +646,29 @@ async function buildCourseListReply(question) {
     const lookupReply = await buildCourseLookupReply(question);
     if (lookupReply) return lookupReply;
 
+    if (isCourseAvailabilityQuestion(question)) {
+        const programme = detectProgramme(question);
+        const programmeRows = (await loadCatalog())
+            .filter(row => rowProgrammeMatches(row, programme));
+        if (!programmeRows.length) return null;
+
+        const displayProgramme = displayProgrammeFromRows(programmeRows, programme);
+        const availableLevels = [...new Set(programmeRows.map(row => row.level))]
+            .sort((a, b) => Number(a) - Number(b));
+        const sourceTitles = [...new Set(programmeRows.map(row => row.sourceTitle || SOURCE_TITLE).filter(Boolean))];
+        return {
+            speech_text: `According to the BMU course catalogue, ${displayProgramme} has course entries for ${availableLevels.map(item => `${item} level`).join(', ')}.`,
+            display_markdown: `According to the **BMU course catalogue**, **${displayProgramme}** has course entries for: **${availableLevels.map(item => `${item} level`).join(', ')}**.\n\nThis only reflects the structured BMU course catalogue currently available to the advisor.`,
+            topic_slug: 'bmu_student_course_levels',
+            citations: sourceTitles.map(title => ({ title, source: `${displayProgramme} course level availability` })),
+            suggested_actions: [],
+            follow_up_questions: availableLevels.slice(0, 3).map(item => `Show ${item} level ${displayProgramme} courses`),
+            needs_escalation: false,
+            confidence: 0.96,
+            _source: 'student_courses_catalog'
+        };
+    }
+
     if (!isCourseListQuestion(question)) return null;
     const programme = detectProgramme(question);
     const level = detectLevel(question);
@@ -661,6 +709,7 @@ async function buildCourseListReply(question) {
     const table = formatCourseListTable(displayRows);
     const codes = summarizeCourseCodes(displayRows);
     const conflicts = findCourseCodeTitleConflicts(displayRows);
+    const invalidCodes = displayRows.filter(row => !isCleanCourseCode(row.courseCode));
     const sourceTitles = [...new Set(displayRows.map(row => row.sourceTitle || SOURCE_TITLE).filter(Boolean))];
     const sourceTitle = sourceTitles.length === 1 ? sourceTitles[0] : 'BMU course catalogue';
     const conflictSpeech = conflicts.length
@@ -670,10 +719,16 @@ async function buildCourseListReply(question) {
     const groupedNote = displayRows.length < rows.length
         ? ` I grouped ${rows.length} source rows into ${displayRows.length} displayed course entries where BMAS/CCMAS rows repeated the same course code and title.`
         : '';
+    const invalidCodeSpeech = invalidCodes.length
+        ? ` ${invalidCodes.length} course code${invalidCodes.length === 1 ? ' appears' : 's appear'} incomplete or irregular in the source and should be reviewed.`
+        : '';
+    const invalidCodeNote = invalidCodes.length
+        ? `\n\n**Source data note:** ${invalidCodes.length} course code${invalidCodes.length === 1 ? ' appears' : 's appear'} incomplete or irregular in the source table: ${invalidCodes.map(row => `**${row.courseCode}** (${row.courseTitle})`).join(', ')}. I have kept the source value visible for admin review.`
+        : '';
 
     return {
-        speech_text: `According to ${sourceTitle}, ${level} level ${displayProgrammeFromMatches}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}${conflictSpeech}`,
-        display_markdown: `According to **${sourceTitle}**, **${level} level ${displayProgrammeFromMatches}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}${conflictNote}\n\nThis is the BMU-specific student course list.${displayRows.some(row => row.creditUnits) ? '' : ' Credit units are not shown in this source table.'}`,
+        speech_text: `According to ${sourceTitle}, ${level} level ${displayProgrammeFromMatches}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}${conflictSpeech}${invalidCodeSpeech}`,
+        display_markdown: `According to **${sourceTitle}**, **${level} level ${displayProgrammeFromMatches}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}${conflictNote}${invalidCodeNote}\n\nThis is the BMU-specific student course list.${displayRows.some(row => row.creditUnits) ? '' : ' Credit units are not shown in this source table.'}`,
         topic_slug: 'bmu_student_courses',
         citations: sourceTitles.map(title => ({ title, source: `${displayProgramme} ${level} level course list` })),
         suggested_actions: [],
