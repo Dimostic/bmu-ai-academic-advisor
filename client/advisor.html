@@ -9,6 +9,16 @@
     <title>BMU AI Academic Advisor</title>
     <script>
         (() => {
+            function writeAuthTrace(step, details = {}) {
+                try {
+                    sessionStorage.setItem('bmu_auth_trace', JSON.stringify({
+                        step,
+                        at: new Date().toISOString(),
+                        path: location.pathname + location.search,
+                        ...details
+                    }));
+                } catch (_) {}
+            }
             const params = new URLSearchParams(location.search);
             const isGuestDemo = params.get('demo') === '1';
             let token = '';
@@ -25,6 +35,7 @@
                 } catch (_) { /* server will validate non-JWT/opaque tokens */ }
             }
             if (!token && !isGuestDemo) {
+                writeAuthTrace('advisor_early_no_token', { hasDemo: isGuestDemo });
                 const loginParams = new URLSearchParams();
                 loginParams.set('next', location.pathname + location.search);
                 const presetQ = params.get('q');

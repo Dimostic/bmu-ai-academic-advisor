@@ -371,9 +371,23 @@
         try { localStorage.removeItem('bmu_advisor_sessions'); } catch (_) {}
     }
 
+    function writeAuthTrace(step, details = {}) {
+        try {
+            sessionStorage.setItem('bmu_auth_trace', JSON.stringify({
+                step,
+                at: new Date().toISOString(),
+                path: location.pathname + location.search,
+                tokenPresent: Boolean(state.token),
+                tokenLength: state.token ? String(state.token).length : 0,
+                ...details
+            }));
+        } catch (_) {}
+    }
+
     function redirectToLogin(reason = 'expired') {
         if (state.guestDemo?.enabled || state.redirectingToLogin) return;
         state.redirectingToLogin = true;
+        writeAuthTrace('advisor_redirect_to_login', { reason });
         clearStoredAuth();
         try { stopCurrentAudio(); } catch (_) { /* stop helper may not be initialized yet */ }
         if (state.recording) {
@@ -392,6 +406,12 @@
         if ((status === 401 || status === 403) && !state.guestDemo?.enabled) {
             const code = String(data?.code || '').toUpperCase();
             const reason = code.includes('EXPIRED') ? 'expired' : 'login_required';
+            writeAuthTrace('advisor_auth_failure', {
+                status,
+                code,
+                error: data?.error || '',
+                endpoint: data?._endpoint || state.lastApiEndpoint || ''
+            });
             redirectToLogin(reason);
             return true;
         }
@@ -401,6 +421,8 @@
     function authHeaders() {
         return (!state.guestDemo?.enabled && state.token) ? { Authorization: `Bearer ${state.token}` } : {};
     }
+
+    writeAuthTrace('advisor_js_loaded', { guestDemo: Boolean(state.guestDemo?.enabled) });
 
     function guestDemoHeaders() {
         return state.guestDemo.enabled
@@ -976,8 +998,10 @@
             headers: { 'Content-Type': 'application/json', ...authHeaders(), ...guestDemoHeaders(), ...(opts.headers || {}) },
             body: opts.body ? JSON.stringify(opts.body) : undefined
         };
+        state.lastApiEndpoint = path;
         const res = await fetch(path, init);
         const data = await res.json().catch(() => ({}));
+        if (data && typeof data === 'object') data._endpoint = path;
         if (handleAuthFailure(res.status, data)) {
             throw new Error(data.error || `HTTP ${res.status}`);
         }

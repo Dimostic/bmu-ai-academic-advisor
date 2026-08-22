@@ -99,6 +99,22 @@
         const presetQ = params.get('q');
         const reason = params.get('reason');
 
+        function writeAuthTrace(step, details = {}) {
+            try {
+                sessionStorage.setItem('bmu_auth_trace', JSON.stringify({
+                    step,
+                    at: new Date().toISOString(),
+                    path: location.pathname + location.search,
+                    ...details
+                }));
+            } catch (_) {}
+        }
+
+        function readAuthTrace() {
+            try { return JSON.parse(sessionStorage.getItem('bmu_auth_trace') || 'null'); }
+            catch (_) { return null; }
+        }
+
         function clearAuthCache() {
             try { localStorage.removeItem('bmu_token'); } catch (_) {}
             try { sessionStorage.removeItem('bmu_token'); } catch (_) {}
@@ -130,10 +146,6 @@
             }
         }
 
-        verifyExistingSession().then(valid => {
-            if (valid && !form?.dataset?.submitting) window.location.replace(next);
-        });
-
         // Carry next/q into the register link so the round-trip is preserved.
         const regLink = document.getElementById('registerLink');
         const regUrl = new URL('/register', location.origin);
@@ -149,13 +161,24 @@
                 : reason
                     ? 'Please sign in again to continue.'
                     : 'Sign in to ask Dr. Tari: "' + presetQ + '"';
-            document.getElementById('bannerMsg').textContent = msg;
+            const trace = readAuthTrace();
+            const traceMsg = trace && reason
+                ? ` Last auth step: ${trace.step}${trace.status ? ` (${trace.status})` : ''}${trace.endpoint ? ` at ${trace.endpoint}` : ''}.`
+                : '';
+            document.getElementById('bannerMsg').textContent = msg + traceMsg;
             banner.classList.remove('hidden');
         }
 
         const form = document.getElementById('loginForm');
         const errorBox = document.getElementById('errorBox');
         const submitBtn = document.getElementById('submitBtn');
+
+        verifyExistingSession().then(valid => {
+            if (valid && !form.dataset.submitting) {
+                writeAuthTrace('login_existing_session_redirect', { next });
+                window.location.replace(next);
+            }
+        });
 
         document.querySelectorAll('.password-toggle').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -185,12 +208,19 @@
             const payload = { email: fd.get('email'), password: fd.get('password') };
 
             try {
+                writeAuthTrace('login_submit', { next, email: String(payload.email || '').toLowerCase() });
                 const r = await fetch('/api/users/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
                 const data = await r.json();
+                writeAuthTrace('login_response', {
+                    status: r.status,
+                    success: Boolean(data.success),
+                    hasToken: Boolean(data.token),
+                    next
+                });
                 if (!r.ok || !data.success) {
                     throw new Error(data.error || 'Sign-in failed');
                 }
@@ -226,8 +256,10 @@
                 // Hand back to whatever page asked us to authenticate
                 let target = next;
                 if (presetQ) target += (target.includes('?') ? '&' : '?') + 'q=' + encodeURIComponent(presetQ);
+                writeAuthTrace('login_redirect_to_next', { target, tokenLength: String(data.token || '').length });
                 window.location.replace(target);
             } catch (err) {
+                writeAuthTrace('login_error', { error: err.message || 'Sign-in failed' });
                 errorBox.textContent = err.message || 'Sign-in failed. Please try again.';
                 errorBox.classList.remove('hidden');
             } finally {
