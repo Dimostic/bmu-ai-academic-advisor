@@ -1008,6 +1008,11 @@ app.use(express.static(path.join(__dirname, '../client'), {
         if (filePath.endsWith('.js')) {
             res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         }
+        if (filePath.endsWith(`${path.sep}advisor.js`) || filePath.endsWith('/advisor.js')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
         if (filePath.endsWith('.png')) {
             res.setHeader('Content-Type', 'image/png');
         }
@@ -1039,6 +1044,9 @@ app.use('/uploads/audio',
 
 // Ensure PWA assets are served (avoid SPA fallback edge cases)
 app.get('/sw.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(__dirname, '../client/sw.js'));
 });
 app.get('/manifest.webmanifest', (req, res) => {
