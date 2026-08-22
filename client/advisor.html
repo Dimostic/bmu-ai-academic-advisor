@@ -7,6 +7,33 @@
     <meta name="theme-color" content="#0f3d3e" />
 
     <title>BMU AI Academic Advisor</title>
+    <script>
+        (() => {
+            const params = new URLSearchParams(location.search);
+            const isGuestDemo = params.get('demo') === '1';
+            let token = '';
+            try { token = sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || ''; }
+            catch (_) { token = ''; }
+            if (token) {
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1] || ''));
+                    if (payload.exp && payload.exp * 1000 <= Date.now()) {
+                        token = '';
+                        localStorage.removeItem('bmu_token');
+                        sessionStorage.removeItem('bmu_token');
+                    }
+                } catch (_) { /* server will validate non-JWT/opaque tokens */ }
+            }
+            if (!token && !isGuestDemo) {
+                const loginParams = new URLSearchParams();
+                loginParams.set('next', location.pathname + location.search);
+                const presetQ = params.get('q');
+                if (presetQ) loginParams.set('q', presetQ);
+                loginParams.set('reason', 'login_required');
+                location.replace('/login?' + loginParams.toString());
+            }
+        })();
+    </script>
     <script src="/theme.js"></script>
     <link rel="icon" type="image/svg+xml" href="/advisor-icon.svg?v=20260821" />
     <link rel="icon" type="image/png" sizes="192x192" href="/advisor-icon-192.png?v=20260821" />

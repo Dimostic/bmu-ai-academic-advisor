@@ -107,8 +107,12 @@
             try { localStorage.removeItem('bmu_advisor_sessions'); } catch (_) {}
         }
 
+        function getStoredToken() {
+            return localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token') || '';
+        }
+
         async function verifyExistingSession() {
-            const existing = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+            const existing = getStoredToken();
             if (!existing) return false;
             try {
                 const r = await fetch('/api/users/me', {
@@ -116,9 +120,10 @@
                     cache: 'no-store'
                 });
                 if (!r.ok) {
-                    clearAuthCache();
+                    if (getStoredToken() === existing) clearAuthCache();
                     return false;
                 }
+                if (getStoredToken() !== existing) return false;
                 return true;
             } catch (_) {
                 return false;
@@ -126,7 +131,7 @@
         }
 
         verifyExistingSession().then(valid => {
-            if (valid) window.location.replace(next);
+            if (valid && !form?.dataset?.submitting) window.location.replace(next);
         });
 
         // Carry next/q into the register link so the round-trip is preserved.
@@ -170,6 +175,7 @@
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            form.dataset.submitting = '1';
             errorBox.classList.add('hidden');
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Signing in…';
@@ -225,6 +231,7 @@
                 errorBox.textContent = err.message || 'Sign-in failed. Please try again.';
                 errorBox.classList.remove('hidden');
             } finally {
+                delete form.dataset.submitting;
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i> Sign in';
             }
