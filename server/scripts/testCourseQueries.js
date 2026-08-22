@@ -81,6 +81,7 @@ const EDGE_QUESTIONS = [
     'Show part 3 MLS courses',
     'Show part three nursing courses',
     'Show final year pharmacy courses',
+    'Show final year MLS courses',
     'Show rain semester 400 level radiography courses',
     'Show harmattan semester 400 level radiography courses'
 ];
@@ -107,7 +108,8 @@ const EXPECTED_SNIPPETS = new Map([
     ['Show 300 level MLT courses', '300 level Medical Laboratory Science has 18 displayed course entries'],
     ['Show part 3 MLS courses', '300 level Medical Laboratory Science has 18 displayed course entries'],
     ['Show part three nursing courses', '300 level Nursing Science'],
-    ['Show final year pharmacy courses', '200 level Doctor of Pharmacy'],
+    ['Show final year pharmacy courses', 'does not show final-year'],
+    ['Show final year MLS courses', '500 level Medical Laboratory Science'],
     ['Show rain semester 400 level radiography courses', '400 level Radiography & Radiation Science, First semester'],
     ['Show harmattan semester 400 level radiography courses', '400 level Radiography & Radiation Science, Second semester']
 ]);

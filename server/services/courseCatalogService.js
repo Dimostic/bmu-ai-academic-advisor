@@ -150,6 +150,10 @@ function asksFinalYear(question) {
     return /\bfinal\s+(?:year|level|part)\b|\blast\s+(?:year|level|part)\b/i.test(String(question || ''));
 }
 
+function isPlausibleFinalYearLevel(level) {
+    return Number(level) >= 400;
+}
+
 function normalizeCourseCode(value) {
     return String(value || '')
         .toUpperCase()
@@ -703,10 +707,28 @@ async function buildCourseListReply(question) {
     const programmeKeys = programmeKeysFor(programme);
     const allProgrammeRows = (await loadCatalog())
         .filter(row => programmeKeys.includes(row.programme));
+    const displayProgramme = displayProgrammeFromRows(allProgrammeRows, programme);
     if (!level && asksFinalYear(question) && allProgrammeRows.length) {
         const levels = allProgrammeRows.map(row => Number(row.level)).filter(Number.isFinite);
         const highest = levels.length ? Math.max(...levels) : null;
-        if (highest) level = String(highest);
+        if (highest && isPlausibleFinalYearLevel(highest)) {
+            level = String(highest);
+        } else {
+            const availableLevels = [...new Set(allProgrammeRows.map(row => row.level))]
+                .sort((a, b) => Number(a) - Number(b));
+            const sourceTitles = [...new Set(allProgrammeRows.map(row => row.sourceTitle || SOURCE_TITLE).filter(Boolean))];
+            return {
+                speech_text: `I checked the BMU course catalogue. It does not show final-year ${displayProgramme} courses. The available levels in that BMU source are ${availableLevels.map(item => `${item} level`).join(', ')}. I should not treat ${availableLevels[availableLevels.length - 1]} level as final year unless the source confirms it.`,
+                display_markdown: `I checked the **BMU course catalogue**. It does **not** show final-year courses for **${displayProgramme}**.\n\nAvailable level(s) for **${displayProgramme}** in that BMU source: **${availableLevels.map(item => `${item} level`).join(', ')}**.\n\nI should not treat the highest available row as final year unless the source confirms that programme's upper-year course list is complete.`,
+                topic_slug: 'bmu_student_final_year_courses_not_listed',
+                citations: sourceTitles.map(title => ({ title, source: `${displayProgramme} course list availability` })),
+                suggested_actions: [],
+                follow_up_questions: availableLevels.slice(-2).map(item => `Show ${item} level ${displayProgramme} courses`),
+                needs_escalation: false,
+                confidence: 0.94,
+                _source: 'student_courses_catalog'
+            };
+        }
     }
     const rows = (await loadCatalog())
         .filter(row => row.level === level && programmeKeys.includes(row.programme) && (!semester || row.semester === semester))
@@ -715,7 +737,6 @@ async function buildCourseListReply(question) {
             return sem || a.sn - b.sn;
         });
 
-    const displayProgramme = displayProgrammeFromRows(allProgrammeRows, programme);
     const semesterScope = semester ? `, ${formatSemester(semester)} semester` : '';
 
     if (!rows.length && allProgrammeRows.length) {
