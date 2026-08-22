@@ -24,15 +24,33 @@
     // the round-trip via the login page.
     // -----------------------------------------------------------------------
     const advisorViewParams = new URLSearchParams(location.search);
-    const _existingToken = sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token');
+    function writeEarlyAuthTrace(step, details = {}) {
+        try {
+            sessionStorage.setItem('bmu_auth_trace', JSON.stringify({
+                step,
+                at: new Date().toISOString(),
+                path: location.pathname + location.search,
+                ...details
+            }));
+        } catch (_) {}
+    }
+    let _existingToken = '';
+    try { _existingToken = sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || ''; }
+    catch (_) { _existingToken = ''; }
     const _guestDemoRequested = advisorViewParams.get('demo') === '1';
     const _isGuestDemo = _guestDemoRequested;
     if (!_existingToken && !_isGuestDemo) {
+        writeEarlyAuthTrace('advisor_js_gate_no_token', { hasSessionStorage: (() => {
+            try { return Boolean(sessionStorage.getItem('bmu_token')); } catch (_) { return false; }
+        })(), hasLocalStorage: (() => {
+            try { return Boolean(localStorage.getItem('bmu_token')); } catch (_) { return false; }
+        })() });
         const here = location.pathname + location.search;
         const params = new URLSearchParams();
         params.set('next', here || '/advisor');
         const presetQ = new URLSearchParams(location.search).get('q');
         if (presetQ) params.set('q', presetQ);
+        params.set('reason', 'login_required');
         location.replace('/login?' + params.toString());
         return;
     }

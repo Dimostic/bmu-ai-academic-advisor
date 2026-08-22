@@ -163,7 +163,7 @@
                     : 'Sign in to ask Dr. Tari: "' + presetQ + '"';
             const trace = readAuthTrace();
             const traceMsg = trace && reason
-                ? ` Last auth step: ${trace.step}${trace.status ? ` (${trace.status})` : ''}${trace.endpoint ? ` at ${trace.endpoint}` : ''}.`
+                ? ` Last auth step: ${trace.step}${trace.status ? ` (${trace.status})` : ''}${trace.endpoint ? ` at ${trace.endpoint}` : ''}${trace.tokenLength ? `; token length ${trace.tokenLength}` : ''}.`
                 : '';
             document.getElementById('bannerMsg').textContent = msg + traceMsg;
             banner.classList.remove('hidden');
@@ -226,7 +226,8 @@
                 }
                 clearAuthCache();
                 // Store token + user info; remember-me via localStorage by default
-                localStorage.setItem('bmu_token', data.token);
+                try { localStorage.setItem('bmu_token', data.token); } catch (_) {}
+                try { sessionStorage.setItem('bmu_token', data.token); } catch (_) {}
 
                 // The user picked an advisor on this form — that should
                 // override whatever's saved server-side. Persist the choice
@@ -235,8 +236,9 @@
                 if (data.user) {
                     data.user.advisorGender = advisorGender;
                 }
-                localStorage.setItem('bmu_user', JSON.stringify(data.user));
-                localStorage.setItem('bmu_advisor_gender', advisorGender);
+                try { localStorage.setItem('bmu_user', JSON.stringify(data.user)); } catch (_) {}
+                try { sessionStorage.setItem('bmu_user', JSON.stringify(data.user)); } catch (_) {}
+                try { localStorage.setItem('bmu_advisor_gender', advisorGender); } catch (_) {}
                 fetch('/api/users/advisor-preference', {
                     method: 'POST',
                     headers: {
