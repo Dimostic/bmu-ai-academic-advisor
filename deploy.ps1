@@ -32,8 +32,8 @@ Invoke-Remote 'pm2 save'
 
 Start-Sleep -Seconds 3
 
-Write-Host "[5/5] Checking pm2 status + running smoke test..."
+Write-Host "[5/5] Checking pm2 status + running smoke and golden advisor tests..."
 Invoke-Remote "pm2 status $AppName"
-Invoke-Remote "cd $AppDir && npm test"
+Invoke-Remote "cd $AppDir && npm test && npm run test:advisor-golden"
 
 Write-Host "Deployment complete." -ForegroundColor Green

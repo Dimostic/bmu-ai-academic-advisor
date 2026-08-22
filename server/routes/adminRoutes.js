@@ -1,4 +1,7 @@
 const express = require('express');
+const crypto = require('crypto');
+const multer = require('multer');
+const XLSX = require('xlsx');
 const { query } = require('../../config/db');
 const AuditTrail = require('../models/AuditTrail');
 const Document = require('../models/Document');
@@ -7,6 +10,7 @@ const User = require('../models/User');
 const Advisor = require('../models/Advisor');
 const advisorStreamService = require('../services/advisorStreamService');
 const responseQualityService = require('../services/responseQualityService');
+const documentLabService = require('../services/documentLabService');
 const emailService = (() => {
     try { return require('../services/emailService'); }
     catch (_) { return null; }
@@ -14,6 +18,90 @@ const emailService = (() => {
 const { authenticateToken, requireAdmin, requireSuperAdmin } = require('../middleware/auth');
 
 const router = express.Router();
+const structuredUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: parseInt(process.env.STRUCTURED_IMPORT_MAX_FILE_SIZE || '8388608', 10) }
+});
+
+const STRUCTURED_TABLES = {
+    structured_facts: {
+        label: 'Structured facts',
+        description: 'General approved facts used by retrieval for exact answers.',
+        columns: ['fact_type', 'subject', 'predicate_name', 'value_json', 'human_text', 'authority_type', 'scope_label', 'source_path', 'status', 'currentness_label', 'authority_rank'],
+        required: ['fact_type', 'human_text'],
+        textColumns: ['fact_type', 'subject', 'predicate_name', 'authority_type', 'scope_label', 'source_path', 'status', 'currentness_label'],
+        jsonColumns: ['value_json'],
+        numericColumns: ['authority_rank'],
+        defaults: { status: 'active', currentness_label: 'current', authority_rank: 85 },
+        search: ['fact_type', 'subject', 'predicate_name', 'human_text', 'source_path']
+    },
+    academic_programmes: {
+        label: 'Programmes',
+        description: 'Programme, faculty, department, duration and entry-mode facts.',
+        columns: ['programme', 'faculty', 'department', 'degree', 'duration_years', 'entry_mode', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        required: ['programme'],
+        textColumns: ['programme', 'faculty', 'department', 'degree', 'entry_mode', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'status'],
+        jsonColumns: ['row_json'],
+        numericColumns: ['duration_years'],
+        defaults: { status: 'active', authority_type: 'institution' },
+        search: ['programme', 'faculty', 'department', 'degree', 'entry_mode', 'source_path', 'raw_text']
+    },
+    academic_courses: {
+        label: 'Courses',
+        description: 'Course records by programme, level, semester, code, title and credit units.',
+        columns: ['programme', 'level_label', 'semester_label', 'course_code', 'course_title', 'credit_units', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        required: ['programme', 'course_title'],
+        textColumns: ['programme', 'level_label', 'semester_label', 'course_code', 'course_title', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'status'],
+        jsonColumns: ['row_json'],
+        numericColumns: ['credit_units'],
+        defaults: { status: 'active', authority_type: 'institution' },
+        search: ['programme', 'level_label', 'semester_label', 'course_code', 'course_title', 'source_path', 'raw_text']
+    },
+    academic_fees: {
+        label: 'Fees',
+        description: 'Approved fee values by programme, category, session and student category.',
+        columns: ['programme', 'fee_category', 'amount_label', 'amount_value', 'session_label', 'student_category', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        required: ['programme', 'fee_category', 'amount_label'],
+        textColumns: ['programme', 'fee_category', 'amount_label', 'session_label', 'student_category', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'status'],
+        jsonColumns: ['row_json'],
+        numericColumns: ['amount_value'],
+        defaults: { status: 'active', authority_type: 'institution' },
+        search: ['programme', 'fee_category', 'amount_label', 'session_label', 'student_category', 'source_path', 'raw_text']
+    },
+    academic_calendar_events: {
+        label: 'Calendar',
+        description: 'Academic calendar events and date labels.',
+        columns: ['event_title', 'event_date_label', 'session_label', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        required: ['event_title'],
+        textColumns: ['event_title', 'event_date_label', 'session_label', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'status'],
+        jsonColumns: ['row_json'],
+        numericColumns: [],
+        defaults: { status: 'active', authority_type: 'institution' },
+        search: ['event_title', 'event_date_label', 'session_label', 'source_path', 'raw_text']
+    },
+    academic_officers: {
+        label: 'Officers',
+        description: 'Current office-holder records such as VC, Bursar, Registrar and Council roles.',
+        columns: ['office', 'officer_name', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        required: ['office'],
+        textColumns: ['office', 'officer_name', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'status'],
+        jsonColumns: ['row_json'],
+        numericColumns: [],
+        defaults: { status: 'active', authority_type: 'institution' },
+        search: ['office', 'officer_name', 'source_path', 'raw_text']
+    },
+    academic_rules: {
+        label: 'Rules',
+        description: 'Academic rules such as admission, graduation, progression and examination policies.',
+        columns: ['rule_type', 'subject', 'programme', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        required: ['rule_type', 'raw_text'],
+        textColumns: ['rule_type', 'subject', 'programme', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'status'],
+        jsonColumns: ['row_json'],
+        numericColumns: [],
+        defaults: { status: 'active', authority_type: 'institution' },
+        search: ['rule_type', 'subject', 'programme', 'source_path', 'raw_text']
+    }
+};
 
 /** Tell the FAQ service to re-read the cached_qa table on the next
  *  question. Without this, newly-promoted Q&As don't appear in the
@@ -62,6 +150,18 @@ function _csvEscape(v) {
     const s = String(v ?? '');
     if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
     return s;
+}
+
+function _invalidateStructuredLookupCache() {
+    try {
+        const retrievalService = require('../services/retrievalService');
+        if (typeof retrievalService.clearCache === 'function') {
+            retrievalService.clearCache('all');
+        }
+    } catch (err) {
+        console.warn('[adminRoutes] structured lookup cache invalidation failed:', err.message);
+    }
+    _invalidateFAQCache();
 }
 
 let evalSchemaReady = false;
@@ -127,6 +227,124 @@ function _shapeEvalTest(row) {
         createdAt: row.created_at,
         updatedAt: row.updated_at
     };
+}
+
+function _structuredTableConfig(name) {
+    const key = String(name || '').trim();
+    return STRUCTURED_TABLES[key] ? { name: key, ...STRUCTURED_TABLES[key] } : null;
+}
+
+function _recordHash(table, record) {
+    const raw = [table, ...Object.keys(record).sort().map(k => `${k}:${record[k] ?? ''}`)].join('|').toLowerCase();
+    return crypto.createHash('sha1').update(raw).digest('hex');
+}
+
+function _normaliseHeader(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function _coerceStructuredValue(config, column, value) {
+    if (value === undefined || value === '') {
+        return config.defaults && Object.prototype.hasOwnProperty.call(config.defaults, column)
+            ? config.defaults[column]
+            : null;
+    }
+    if (config.numericColumns.includes(column)) {
+        const n = Number(String(value).replace(/[^\d.-]/g, ''));
+        return Number.isFinite(n) ? n : null;
+    }
+    if (config.jsonColumns.includes(column)) {
+        if (typeof value === 'object') return JSON.stringify(value);
+        const text = String(value || '').trim();
+        if (!text) return null;
+        try { return JSON.stringify(JSON.parse(text)); }
+        catch (_) { return text; }
+    }
+    return String(value ?? '').trim() || null;
+}
+
+function _shapeStructuredRow(config, row) {
+    const shaped = {
+        id: row.id,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+    for (const column of config.columns) {
+        shaped[column] = row[column];
+    }
+    if (row.record_hash) shaped.record_hash = row.record_hash;
+    return shaped;
+}
+
+function _structuredTemplateRows(configName, config) {
+    const base = Object.fromEntries(config.columns.map(column => [column, config.defaults?.[column] ?? '']));
+    if (configName === 'academic_officers') {
+        return [{ ...base, office: 'Vice-Chancellor', officer_name: 'Prof. Dimie Ogoina', source_path: 'BMU Brief Institutional Profile (May 2025)', raw_text: 'Vice-Chancellor: Prof. Dimie Ogoina.' }];
+    }
+    if (configName === 'academic_fees') {
+        return [{ ...base, programme: 'Medicine and Surgery (MBBS)', fee_category: 'official_total_payable', amount_label: 'N1,230,000', amount_value: 1230000, student_category: 'non-indigene', source_path: 'bmu fee structures new.docx' }];
+    }
+    if (configName === 'academic_courses') {
+        return [{ ...base, programme: 'Medical Laboratory Science', level_label: '300 level', semester_label: 'First semester', course_code: 'MLS 313', course_title: 'Basic Hematology', credit_units: 2, source_path: 'ALL COURSES FOR BMU.xlsx' }];
+    }
+    if (configName === 'academic_rules') {
+        return [{ ...base, rule_type: 'graduation_requirement', subject: 'Graduation requirements', programme: 'Medical Laboratory Science', raw_text: 'Enter the exact approved rule text here.', source_path: 'Approved source document' }];
+    }
+    if (configName === 'structured_facts') {
+        return [{ ...base, fact_type: 'principal_officer', subject: 'Vice-Chancellor', predicate_name: 'office_holder', value_json: '{"office":"Vice-Chancellor","officer_name":"Prof. Dimie Ogoina"}', human_text: 'The Vice-Chancellor of BMU is Prof. Dimie Ogoina.', source_path: 'BMU Brief Institutional Profile (May 2025)' }];
+    }
+    return [base];
+}
+
+async function _upsertStructuredRecord(tableName, config, input) {
+    const id = parseInt(input.id, 10);
+    const record = {};
+    for (const column of config.columns) {
+        record[column] = _coerceStructuredValue(config, column, input[column]);
+    }
+
+    const missing = config.required.filter(column => !record[column]);
+    if (missing.length) {
+        throw new Error(`Missing required column(s): ${missing.join(', ')}`);
+    }
+
+    if (id) {
+        const assignments = config.columns.map(column => `${column} = ?`).join(', ');
+        await query(
+            `UPDATE ${tableName}
+             SET ${assignments}, updated_at = NOW()
+             WHERE id = ?`,
+            [...config.columns.map(column => record[column]), id]
+        );
+        return { mode: 'updated', id };
+    }
+
+    const columns = [...config.columns];
+    const values = config.columns.map(column => record[column]);
+    if (tableName !== 'structured_facts') {
+        columns.unshift('record_hash');
+        values.unshift(_recordHash(tableName, record));
+    }
+    const duplicateUpdate = tableName === 'structured_facts'
+        ? ''
+        : ` ON DUPLICATE KEY UPDATE ${config.columns.map(column => `${column} = VALUES(${column})`).join(', ')}, updated_at = NOW()`;
+    await query(
+        `INSERT INTO ${tableName} (${columns.join(', ')})
+         VALUES (${columns.map(() => '?').join(', ')})${duplicateUpdate}`,
+        values
+    );
+    return { mode: 'created' };
+}
+
+function _parseStructuredWorkbook(file) {
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) return [];
+    return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
 }
 
 async function _runEvaluationTest(row) {
@@ -2716,6 +2934,163 @@ router.post('/evaluation/run-all', authenticateToken, requireAdmin, async (req, 
     } catch (error) {
         console.error('Evaluation run-all error:', error);
         res.status(500).json({ success: false, error: error.message || 'Could not run evaluation tests' });
+    }
+});
+
+router.get('/structured-records/tables', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await documentLabService.ensureSchema();
+        const tables = [];
+        for (const [name, config] of Object.entries(STRUCTURED_TABLES)) {
+            let count = 0;
+            try {
+                const rows = await query(`SELECT COUNT(*) AS count FROM ${name}`);
+                count = Number(rows?.[0]?.count || 0);
+            } catch (_) {}
+            tables.push({
+                name,
+                label: config.label,
+                description: config.description,
+                columns: config.columns,
+                required: config.required,
+                count
+            });
+        }
+        res.json({ success: true, tables });
+    } catch (error) {
+        console.error('Structured records table list error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not list structured tables' });
+    }
+});
+
+router.get('/structured-records/:table', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await documentLabService.ensureSchema();
+        const config = _structuredTableConfig(req.params.table);
+        if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
+
+        const limit = Math.max(1, Math.min(300, parseInt(req.query.limit, 10) || 100));
+        const q = String(req.query.q || '').trim();
+        let where = '';
+        const params = [];
+        if (q) {
+            where = `WHERE ${config.search.map(column => `${column} LIKE ?`).join(' OR ')}`;
+            params.push(...config.search.map(() => `%${q}%`));
+        }
+
+        const rows = await query(
+            `SELECT * FROM ${config.name} ${where} ORDER BY updated_at DESC, id DESC LIMIT ?`,
+            [...params, limit]
+        );
+        res.json({
+            success: true,
+            table: {
+                name: config.name,
+                label: config.label,
+                description: config.description,
+                columns: config.columns,
+                required: config.required
+            },
+            records: rows.map(row => _shapeStructuredRow(config, row))
+        });
+    } catch (error) {
+        console.error('Structured records list error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not list structured records' });
+    }
+});
+
+router.get('/structured-records/:table/template', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const config = _structuredTableConfig(req.params.table);
+        if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
+
+        const rows = _structuredTemplateRows(config.name, config);
+        const instructions = [
+            { field: 'Table', value: config.label },
+            { field: 'Required columns', value: config.required.join(', ') },
+            { field: 'Notes', value: 'Leave id blank to create a new record. Add an id value to update an existing record. Keep status as active for production use.' }
+        ];
+        const workbook = XLSX.utils.book_new();
+        const templateRows = rows.map(row => ({ id: '', ...row }));
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(templateRows, { header: ['id', ...config.columns] }), 'Records');
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(instructions), 'Instructions');
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${config.name}_template.xlsx"`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('Structured records template error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not create template' });
+    }
+});
+
+router.put('/structured-records/:table/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await documentLabService.ensureSchema();
+        const config = _structuredTableConfig(req.params.table);
+        if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
+        const result = await _upsertStructuredRecord(config.name, config, { ...req.body, id: req.params.id });
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'STRUCTURED_RECORD_UPDATED',
+            entityType: config.name,
+            entityId: parseInt(req.params.id, 10),
+            details: { table: config.name },
+            ipAddress: req.ip
+        });
+        _invalidateStructuredLookupCache();
+        res.json({ success: true, message: 'Structured record updated', result });
+    } catch (error) {
+        console.error('Structured records update error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not update structured record' });
+    }
+});
+
+router.post('/structured-records/:table/import', authenticateToken, requireAdmin, structuredUpload.single('file'), async (req, res) => {
+    try {
+        await documentLabService.ensureSchema();
+        const config = _structuredTableConfig(req.params.table);
+        if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
+        if (!req.file?.buffer) return res.status(400).json({ success: false, error: 'Import file is required' });
+
+        const rawRows = _parseStructuredWorkbook(req.file);
+        let created = 0;
+        let updated = 0;
+        const errors = [];
+        for (let i = 0; i < rawRows.length; i += 1) {
+            const source = rawRows[i] || {};
+            const normalized = {};
+            for (const [key, value] of Object.entries(source)) {
+                normalized[_normaliseHeader(key)] = value;
+            }
+            try {
+                const result = await _upsertStructuredRecord(config.name, config, normalized);
+                if (result.mode === 'updated') updated += 1;
+                else created += 1;
+            } catch (error) {
+                errors.push({ row: i + 2, error: error.message });
+            }
+        }
+
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'STRUCTURED_RECORDS_IMPORTED',
+            entityType: config.name,
+            details: { table: config.name, created, updated, errors: errors.length, fileName: req.file.originalname },
+            ipAddress: req.ip
+        });
+        _invalidateStructuredLookupCache();
+        res.json({
+            success: true,
+            message: `Imported ${created + updated} record(s) into ${config.label}`,
+            created,
+            updated,
+            failed: errors.length,
+            errors: errors.slice(0, 30)
+        });
+    } catch (error) {
+        console.error('Structured records import error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not import structured records' });
     }
 });
 

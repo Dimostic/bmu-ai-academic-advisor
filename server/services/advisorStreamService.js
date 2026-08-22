@@ -1266,6 +1266,15 @@ async function _buildFastIntentReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q) return null;
 
+    const requestedPrincipalOfficerByName = _detectPrincipalOfficerByName(q);
+    if (requestedPrincipalOfficerByName) return _buildPrincipalOfficerPersonReply(requestedPrincipalOfficerByName);
+
+    const requestedPrincipalOfficerRole = _detectPrincipalOfficerRole(q);
+    if (requestedPrincipalOfficerRole) return _buildPrincipalOfficerReply(requestedPrincipalOfficerRole);
+
+    if (_isPrincipalOfficersQuestion(q)) return _buildPrincipalOfficersReply();
+    if (_isGovernorVisitorQuestion(q)) return _buildGovernorVisitorReply();
+
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply(q);
     const programmeFeeReply = _buildProgrammeFeeReply(q);
     if (programmeFeeReply) return programmeFeeReply;
@@ -2297,4 +2306,15 @@ async function askStream({
     _trackOutcome({ latencyMs: Date.now() - startedAt, source: 'llm', isError: Boolean(llmError && !accumulated) });
 }
 
-module.exports = { askStream, getStreamMetrics, triggerSloAlert, _diagnoseStaticQuestion, _buildFastIntentReply };
+module.exports = {
+    askStream,
+    getStreamMetrics,
+    triggerSloAlert,
+    _diagnoseStaticQuestion,
+    _buildFastIntentReply,
+    _staticFacts: {
+        BMU_PRINCIPAL_OFFICERS,
+        BMU_VISITOR,
+        PROGRAMME_FEES
+    }
+};

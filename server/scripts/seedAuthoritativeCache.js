@@ -9,9 +9,11 @@
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 
+const crypto = require('crypto');
 const advisorStreamService = require('../services/advisorStreamService');
 const courseCatalogService = require('../services/courseCatalogService');
 const bmuLawService = require('../services/bmuLawService');
+const documentLabService = require('../services/documentLabService');
 
 const EMBEDDINGS_ENABLED = process.env.SEED_AUTHORITATIVE_EMBEDDINGS !== 'false';
 const QA_TYPE = 'authoritative_seed';
@@ -141,6 +143,19 @@ function sourcesFrom(reply, fallbackTitle) {
     return [{ title: fallbackTitle || 'BMU authoritative advisor source', source: reply?.topic_slug || 'authoritative seed' }];
 }
 
+function recordHash(parts) {
+    return crypto
+        .createHash('sha1')
+        .update(parts.map(part => String(part ?? '').trim().toLowerCase()).join('|'))
+        .digest('hex');
+}
+
+function amountValue(label) {
+    const numeric = String(label || '').replace(/[^\d.]/g, '');
+    const value = Number(numeric);
+    return Number.isFinite(value) ? value : null;
+}
+
 function isFeeSeedQuestion(question) {
     return /(fee|fees|tuition|how\s+much|payable)/i.test(String(question || ''));
 }
@@ -210,6 +225,198 @@ async function upsertEntry({ question, variations = [], answer, sources = [], co
         [cleanQuestion, ...params, QA_TYPE]
     );
     return { mode: 'created', id: result.insertId };
+}
+
+async function upsertStructuredFact({ factType, subject, predicateName, value, humanText, authorityType, scopeLabel, sourcePath, authorityRank = 90 }) {
+    const { query } = getDb();
+    const existing = await query(
+        `SELECT id FROM structured_facts
+         WHERE fact_type = ?
+           AND subject = ?
+           AND predicate_name = ?
+           AND source_path = ?
+         LIMIT 1`,
+        [factType, subject, predicateName, sourcePath]
+    );
+
+    const params = [
+        JSON.stringify(value ?? {}),
+        humanText,
+        authorityType,
+        scopeLabel,
+        sourcePath,
+        authorityRank
+    ];
+
+    if (existing.length) {
+        await query(
+            `UPDATE structured_facts
+             SET value_json = ?,
+                 human_text = ?,
+                 authority_type = ?,
+                 scope_label = ?,
+                 source_path = ?,
+                 status = 'active',
+                 currentness_label = 'current',
+                 authority_rank = ?,
+                 updated_at = NOW()
+             WHERE id = ?`,
+            [...params, existing[0].id]
+        );
+        return 'refreshed';
+    }
+
+    await query(
+        `INSERT INTO structured_facts
+            (fact_type, subject, predicate_name, value_json, human_text,
+             authority_type, scope_label, source_path, status, currentness_label, authority_rank)
+         VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, 'active', 'current', ?)`,
+        [factType, subject, predicateName, ...params]
+    );
+    return 'created';
+}
+
+async function upsertAcademicOfficer({ office, officerName, note = '', sourcePath = 'BMU Brief Institutional Profile (May 2025)' }) {
+    const { query } = getDb();
+    const rawText = note
+        ? `${office}: ${officerName} (${note}).`
+        : `${office}: ${officerName}.`;
+    const row = {
+        office,
+        officer_name: officerName,
+        note
+    };
+    const hash = recordHash(['academic_officers', office, officerName, sourcePath]);
+    await query(
+        `INSERT INTO academic_officers
+            (record_hash, office, officer_name, authority_type, scope_label, source_path, raw_text, row_json, status)
+         VALUES
+            (?, ?, ?, 'institution', 'BMU current principal officers', ?, ?, ?, 'active')
+         ON DUPLICATE KEY UPDATE
+            officer_name = VALUES(officer_name),
+            authority_type = VALUES(authority_type),
+            scope_label = VALUES(scope_label),
+            source_path = VALUES(source_path),
+            raw_text = VALUES(raw_text),
+            row_json = VALUES(row_json),
+            status = 'active',
+            updated_at = NOW()`,
+        [hash, office, officerName, sourcePath, rawText, JSON.stringify(row)]
+    );
+}
+
+async function upsertAcademicFee({ programme, levelKey, studentCategory, amount, table, sourcePath = 'bmu fee structures new.docx' }) {
+    const { query } = getDb();
+    const levelLabel = levelKey === '200_de' ? '200 Direct Entry' : `${levelKey} level`;
+    const rawText = `${programme} ${levelLabel} ${studentCategory} official total payable: N${amount}.`;
+    const row = {
+        programme,
+        level: levelLabel,
+        student_category: studentCategory,
+        amount_label: `N${amount}`,
+        table
+    };
+    const hash = recordHash(['academic_fees', programme, levelLabel, studentCategory, amount, sourcePath]);
+    await query(
+        `INSERT INTO academic_fees
+            (record_hash, programme, fee_category, amount_label, amount_value, session_label,
+             student_category, authority_type, scope_label, source_path, raw_text, row_json, status)
+         VALUES
+            (?, ?, 'official_total_payable', ?, ?, NULL, ?, 'institution', ?, ?, ?, ?, 'active')
+         ON DUPLICATE KEY UPDATE
+            programme = VALUES(programme),
+            fee_category = VALUES(fee_category),
+            amount_label = VALUES(amount_label),
+            amount_value = VALUES(amount_value),
+            student_category = VALUES(student_category),
+            authority_type = VALUES(authority_type),
+            scope_label = VALUES(scope_label),
+            source_path = VALUES(source_path),
+            raw_text = VALUES(raw_text),
+            row_json = VALUES(row_json),
+            status = 'active',
+            updated_at = NOW()`,
+        [hash, programme, `N${amount}`, amountValue(amount), studentCategory, table, sourcePath, rawText, JSON.stringify(row)]
+    );
+}
+
+async function seedStructuredAuthorityRecords() {
+    await documentLabService.ensureSchema();
+
+    let factsCreated = 0;
+    let factsRefreshed = 0;
+    let officers = 0;
+    let fees = 0;
+    const staticFacts = advisorStreamService._staticFacts || {};
+
+    for (const officer of asArray(staticFacts.BMU_PRINCIPAL_OFFICERS)) {
+        const humanText = officer.note
+            ? `${officer.position}: ${officer.name} (${officer.note}).`
+            : `${officer.position}: ${officer.name}.`;
+        const mode = await upsertStructuredFact({
+            factType: 'principal_officer',
+            subject: officer.position,
+            predicateName: 'office_holder',
+            value: {
+                office: officer.position,
+                officer_name: officer.name,
+                note: officer.note || '',
+                aliases: officer.aliases || []
+            },
+            humanText,
+            authorityType: 'institution',
+            scopeLabel: 'BMU current principal officers',
+            sourcePath: 'BMU Brief Institutional Profile (May 2025)',
+            authorityRank: 95
+        });
+        if (mode === 'created') factsCreated += 1; else factsRefreshed += 1;
+        await upsertAcademicOfficer({ office: officer.position, officerName: officer.name, note: officer.note });
+        officers += 1;
+    }
+
+    if (staticFacts.BMU_VISITOR) {
+        const visitor = staticFacts.BMU_VISITOR;
+        const mode = await upsertStructuredFact({
+            factType: 'principal_officer',
+            subject: visitor.role,
+            predicateName: 'office_holder',
+            value: visitor,
+            humanText: `${visitor.role}: ${visitor.name}, ${visitor.office}.`,
+            authorityType: 'institution',
+            scopeLabel: 'BMU current principal officers',
+            sourcePath: 'BMU Brief Institutional Profile (May 2025)',
+            authorityRank: 95
+        });
+        if (mode === 'created') factsCreated += 1; else factsRefreshed += 1;
+        await upsertAcademicOfficer({ office: visitor.role, officerName: visitor.name, note: visitor.office });
+        officers += 1;
+    }
+
+    for (const fee of Object.values(staticFacts.PROGRAMME_FEES || {})) {
+        for (const [levelKey, amount] of Object.entries(fee.indigene || {})) {
+            await upsertAcademicFee({
+                programme: fee.display,
+                levelKey,
+                studentCategory: 'indigene',
+                amount,
+                table: fee.table
+            });
+            fees += 1;
+        }
+        for (const [levelKey, amount] of Object.entries(fee.non_indigene || {})) {
+            await upsertAcademicFee({
+                programme: fee.display,
+                levelKey,
+                studentCategory: 'non-indigene',
+                amount,
+                table: fee.table
+            });
+            fees += 1;
+        }
+    }
+
+    return { factsCreated, factsRefreshed, officers, fees };
 }
 
 async function addFastIntentQuestion(entries, item, fallbackTitle) {
@@ -361,6 +568,7 @@ async function main() {
     let refreshed = 0;
     let skipped = 0;
     const deactivated = await deactivateMalformedSeedRows();
+    const structured = await seedStructuredAuthorityRecords();
 
     console.log(`[seedAuthoritativeCache] seeding ${entries.length} authoritative entries...`);
 
@@ -379,6 +587,7 @@ async function main() {
     } catch (_) {}
 
     console.log(`[seedAuthoritativeCache] done: ${created} created, ${refreshed} refreshed, ${skipped} skipped, ${deactivated} malformed deactivated`);
+    console.log(`[seedAuthoritativeCache] structured: ${structured.factsCreated} facts created, ${structured.factsRefreshed} facts refreshed, ${structured.officers} officers upserted, ${structured.fees} fee records upserted`);
     getDb().pool.end();
     process.exit(0);
 }

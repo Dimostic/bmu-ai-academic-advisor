@@ -21,6 +21,7 @@
     "test:course-edge": "node server/scripts/testCourseQueries.js --edge",
     "test:course-invalid-codes": "node server/scripts/testCourseQueries.js --invalid-codes",
     "test:course-retrieval": "node server/scripts/testCourseRetrieval.js",
+    "test:advisor-golden": "node server/scripts/testAdvisorGolden.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js"

@@ -104,6 +104,7 @@
         advisorOps: renderAdvisorOpsPage,
         documents: renderDocuments,
         documentLab: renderDocumentLab,
+        structuredRecords: renderStructuredRecords,
         faqs:      renderFAQs,
         users:     renderUsers,
         audit:     renderAudit,
@@ -2230,6 +2231,197 @@
             }
         } catch (err) {
             toast(err.message || 'Evaluation action failed', 'error');
+        }
+    }
+
+    // ------------------------------------------------ STRUCTURED RECORDS
+    async function renderStructuredRecords() {
+        main.innerHTML = `
+            <h2>Structured Facts</h2>
+            <p class="lede">Direct production lookup tables for exact advisor answers. Use this for corrected officers, fees, courses, programme rules, calendar dates, and approved facts.</p>
+            <div class="admin-actions">
+                <label>Table
+                    <select id="structuredTableSelect" class="input"></select>
+                </label>
+                <label>Search
+                    <input id="structuredSearchInput" class="input" placeholder="programme, officer, course code, source..." />
+                </label>
+                <button class="btn btn-ghost" id="structuredRefreshBtn"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                <button class="btn btn-ghost" id="structuredTemplateBtn"><i class="fa-solid fa-file-excel"></i> Template</button>
+                <label class="btn btn-primary" style="cursor:pointer;">
+                    <i class="fa-solid fa-upload"></i> Import
+                    <input type="file" id="structuredImportInput" accept=".xlsx,.xls,.csv" style="display:none;" />
+                </label>
+            </div>
+            <div id="structuredTableInfo" class="stat-row"></div>
+            <div id="structuredImportResult"></div>
+            <div id="structuredRecordsBody"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+        `;
+
+        let tables = [];
+        let currentTable = '';
+        try {
+            const r = await api('/api/admin/structured-records/tables');
+            tables = r.tables || [];
+            const select = document.getElementById('structuredTableSelect');
+            select.innerHTML = tables.map(t => `<option value="${escapeHtml(t.name)}">${escapeHtml(t.label)} (${escapeHtml(t.count)})</option>`).join('');
+            currentTable = tables[0]?.name || '';
+
+            select.addEventListener('change', () => {
+                currentTable = select.value;
+                loadStructuredRecords();
+            });
+            document.getElementById('structuredRefreshBtn')?.addEventListener('click', loadStructuredRecords);
+            document.getElementById('structuredSearchInput')?.addEventListener('keydown', e => {
+                if (e.key === 'Enter') loadStructuredRecords();
+            });
+            document.getElementById('structuredTemplateBtn')?.addEventListener('click', () => downloadStructuredTemplate(currentTable));
+            document.getElementById('structuredImportInput')?.addEventListener('change', e => importStructuredRecords(currentTable, e.target.files?.[0]));
+            await loadStructuredRecords();
+        } catch (err) {
+            document.getElementById('structuredRecordsBody').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+        }
+
+        async function loadStructuredRecords() {
+            if (!currentTable) return;
+            const info = tables.find(t => t.name === currentTable) || {};
+            const q = encodeURIComponent(document.getElementById('structuredSearchInput')?.value || '');
+            document.getElementById('structuredTableInfo').innerHTML = [
+                stat('Selected table', info.label || currentTable),
+                stat('Records', info.count ?? '—'),
+                stat('Required', (info.required || []).join(', ') || '—')
+            ].join('');
+            document.getElementById('structuredRecordsBody').innerHTML = '<div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading records…</div>';
+            try {
+                const r = await api(`/api/admin/structured-records/${encodeURIComponent(currentTable)}?limit=120&q=${q}`);
+                const records = r.records || [];
+                const tableInfo = r.table || info;
+                document.getElementById('structuredTableInfo').innerHTML = [
+                    stat('Selected table', tableInfo.label || currentTable),
+                    stat('Loaded', records.length),
+                    stat('Required', (tableInfo.required || []).join(', ') || '—')
+                ].join('');
+                document.getElementById('structuredRecordsBody').innerHTML = records.length
+                    ? records.map(record => renderStructuredRecordCard(tableInfo, record)).join('')
+                    : '<p class="empty">No records found. Download the template and import new records.</p>';
+                document.getElementById('structuredRecordsBody').onclick = handleStructuredRecordClick;
+            } catch (err) {
+                document.getElementById('structuredRecordsBody').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        async function handleStructuredRecordClick(e) {
+            const btn = e.target.closest('button[data-structured-save]');
+            if (!btn) return;
+            const card = btn.closest('[data-structured-id]');
+            const id = card?.dataset.structuredId;
+            if (!id) return;
+            btn.disabled = true;
+            try {
+                const payload = collectStructuredRecordPayload(card);
+                await api(`/api/admin/structured-records/${encodeURIComponent(currentTable)}/${encodeURIComponent(id)}`, {
+                    method: 'PUT',
+                    body: payload
+                });
+                toast('Structured record updated');
+                await loadStructuredRecords();
+            } catch (err) {
+                toast(err.message || 'Could not update structured record', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function importStructuredRecords(tableName, file) {
+            if (!tableName || !file) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+                toast('Importing structured records…');
+                const r = await api(`/api/admin/structured-records/${encodeURIComponent(tableName)}/import`, {
+                    method: 'POST',
+                    body: fd,
+                    formData: true
+                });
+                const errors = r.errors || [];
+                document.getElementById('structuredImportResult').innerHTML = errors.length
+                    ? `<div class="auth-error">Imported ${escapeHtml((r.created || 0) + (r.updated || 0))}; ${escapeHtml(errors.length)} row(s) need correction. ${escapeHtml(errors.map(x => `Row ${x.row}: ${x.error}`).join(' | '))}</div>`
+                    : `<p class="lede">Imported ${escapeHtml((r.created || 0) + (r.updated || 0))} record(s).</p>`;
+                toast(errors.length ? 'Import completed with row warnings' : 'Import complete', errors.length ? 'error' : undefined);
+                eResetImportInput();
+                const refreshed = await api('/api/admin/structured-records/tables');
+                tables = refreshed.tables || tables;
+                await loadStructuredRecords();
+            } catch (err) {
+                toast(err.message || 'Import failed', 'error');
+            }
+        }
+
+        function eResetImportInput() {
+            const input = document.getElementById('structuredImportInput');
+            if (input) input.value = '';
+        }
+    }
+
+    function renderStructuredRecordCard(tableInfo, record) {
+        const columns = tableInfo.columns || [];
+        const titleColumn = columns.find(c => /programme|office|subject|course_title|event_title|rule_type|human_text/.test(c)) || columns[0];
+        const fields = columns.map(column => renderStructuredRecordField(column, record[column])).join('');
+        return `
+            <section class="structured-review-card" data-structured-id="${escapeHtml(record.id)}">
+                <div class="structured-review-card-head">
+                    <span class="badge badge-info">ID ${escapeHtml(record.id)}</span>
+                    <strong>${escapeHtml(record[titleColumn] || tableInfo.label || 'Structured record')}</strong>
+                    <small>${escapeHtml(formatDate(record.updatedAt))}</small>
+                </div>
+                <div class="structured-review-grid">
+                    ${fields}
+                </div>
+                <div class="document-lab-output-actions">
+                    <button class="btn btn-primary" data-structured-save="${escapeHtml(record.id)}"><i class="fa-solid fa-floppy-disk"></i> Save changes</button>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderStructuredRecordField(column, value) {
+        const isLong = /text|json|source_path|raw_text|human_text|value_json|row_json/.test(column);
+        const label = column.replace(/_/g, ' ');
+        if (isLong) {
+            return `<label>${escapeHtml(label)}<textarea data-structured-field="${escapeHtml(column)}" spellcheck="false">${escapeHtml(value || '')}</textarea></label>`;
+        }
+        return `<label>${escapeHtml(label)}<input data-structured-field="${escapeHtml(column)}" value="${escapeHtml(value || '')}" /></label>`;
+    }
+
+    function collectStructuredRecordPayload(card) {
+        const payload = {};
+        card.querySelectorAll('[data-structured-field]').forEach(el => {
+            payload[el.dataset.structuredField] = el.value;
+        });
+        return payload;
+    }
+
+    async function downloadStructuredTemplate(tableName) {
+        if (!tableName) return;
+        try {
+            const res = await fetch(`/api/admin/structured-records/${encodeURIComponent(tableName)}/template`, {
+                headers: authHeaders()
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Could not download template');
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${tableName}_template.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            toast(err.message || 'Template download failed', 'error');
         }
     }
 

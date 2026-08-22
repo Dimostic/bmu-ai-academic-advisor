@@ -14,10 +14,11 @@
  */
 const express = require('express');
 const multer = require('multer');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const { optionalAuth, authenticateToken } = require('../middleware/auth');
-const { enforceLimits, recordUsage, getUsage, enforceGuestDemoLimit, recordGuestDemoUsage } = require('../middleware/usageLimits');
+const { enforceLimits, recordUsage, getUsage, enforceGuestDemoLimit, enforceGuestDemoAccess, recordGuestDemoUsage } = require('../middleware/usageLimits');
 const { query } = require('../../config/db');
 const Advisor = require('../models/Advisor');
 const advisorService = require('../services/advisorService');
@@ -65,6 +66,25 @@ async function _resolveAdvisorEscalationEmail() {
 const audioUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 8 * 1024 * 1024 }
+});
+
+const sttLimiter = rateLimit({
+    windowMs: parseInt(process.env.ADVISOR_STT_RATE_WINDOW_MS || '60000', 10),
+    max: parseInt(process.env.ADVISOR_STT_RATE_LIMIT || '20', 10),
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        const guestId = String(req.get?.('x-advisor-guest-demo-id') || '').trim();
+        const ipKey = typeof rateLimit.ipKeyGenerator === 'function'
+            ? rateLimit.ipKeyGenerator(req.ip)
+            : req.ip;
+        return req.user?.id ? `user:${req.user.id}` : `guest:${guestId || ipKey}`;
+    },
+    message: {
+        success: false,
+        code: 'STT_RATE_LIMITED',
+        error: 'Voice transcription is busy. Please wait a moment and try again.'
+    }
 });
 
 // ---------------------------------------------------------------------------
@@ -473,7 +493,7 @@ router.post('/feedback', authenticateToken, async (req, res) => {
 // POST /api/advisor/stt
 // multipart/form-data with field "audio"; optional "language" form field.
 // ---------------------------------------------------------------------------
-router.post('/stt', audioUpload.single('audio'), async (req, res) => {
+router.post('/stt', optionalAuth, enforceLimits, sttLimiter, audioUpload.single('audio'), enforceGuestDemoAccess, async (req, res) => {
     try {
         if (!sttService.isConfigured()) {
             return res.status(503).json({

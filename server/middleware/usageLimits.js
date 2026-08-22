@@ -35,6 +35,10 @@ function _guestDemoKey(req) {
     return raw.replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 120);
 }
 
+function _truthy(value) {
+    return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || '').trim());
+}
+
 /**
  * Lazily reset the rolling-window counters before any check / write.
  *
@@ -136,11 +140,47 @@ async function enforceLimits(req, res, next) {
 function enforceGuestDemoLimit(req, res, next) {
     const user = req.user;
     if (user?.id) return next();
-    if (!req.body?.guestDemo) {
+    if (!_truthy(req.body?.guestDemo)) {
         return res.status(401).json({
             success: false,
             code: 'AUTH_OR_GUEST_DEMO_REQUIRED',
             error: 'Please sign in or start the guest demo to ask Dr. Tari.'
+        });
+    }
+
+    const key = _guestDemoKey(req);
+    if (!key) {
+        return res.status(400).json({
+            success: false,
+            code: 'GUEST_DEMO_ID_REQUIRED',
+            error: 'Guest demo session is required.'
+        });
+    }
+
+    const used = Number(guestDemoUsage.get(key) || 0);
+    if (used >= GUEST_DEMO_LIMIT) {
+        return res.status(429).json({
+            success: false,
+            code: 'GUEST_DEMO_LIMIT_REACHED',
+            error: `You've used all ${GUEST_DEMO_LIMIT} guest demo questions. Create an account to continue.`,
+            limit: GUEST_DEMO_LIMIT,
+            used,
+            window: 'guest_demo'
+        });
+    }
+
+    req._guestDemoUsage = { key, used, limit: GUEST_DEMO_LIMIT };
+    return next();
+}
+
+function enforceGuestDemoAccess(req, res, next) {
+    const user = req.user;
+    if (user?.id) return next();
+    if (!_truthy(req.body?.guestDemo)) {
+        return res.status(401).json({
+            success: false,
+            code: 'AUTH_OR_GUEST_DEMO_REQUIRED',
+            error: 'Please sign in or start the guest demo to use Dr. Tari voice input.'
         });
     }
 
@@ -227,4 +267,4 @@ async function getUsage(req, res) {
     }
 }
 
-module.exports = { enforceLimits, recordUsage, getUsage, enforceGuestDemoLimit, recordGuestDemoUsage };
+module.exports = { enforceLimits, recordUsage, getUsage, enforceGuestDemoLimit, enforceGuestDemoAccess, recordGuestDemoUsage };
