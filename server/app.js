@@ -1008,7 +1008,12 @@ app.use(express.static(path.join(__dirname, '../client'), {
         if (filePath.endsWith('.js')) {
             res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         }
-        if (filePath.endsWith(`${path.sep}advisor.js`) || filePath.endsWith('/advisor.js')) {
+        if (
+            filePath.endsWith(`${path.sep}advisor.js`) ||
+            filePath.endsWith('/advisor.js') ||
+            filePath.endsWith(`${path.sep}sw.js`) ||
+            filePath.endsWith('/sw.js')
+        ) {
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
