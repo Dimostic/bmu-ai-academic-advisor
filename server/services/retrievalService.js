@@ -388,8 +388,27 @@ class RetrievalService {
             ['MCB', /\bmicrobiology\b/i],
             ['COS', /\bcomputer science|computing science\b/i]
         ];
+        const fallbackNames = {
+            BMLS: 'Medical Laboratory Science',
+            BNSC: 'Nursing Science',
+            MBBS: 'Medicine and Surgery',
+            BDS: 'Dentistry',
+            PHARMD: 'Doctor of Pharmacy',
+            BPHARM: 'Pharmacy',
+            DPT: 'Physiotherapy',
+            OD: 'Optometry',
+            RAD: 'Radiography',
+            PH: 'Public Health',
+            HIM: 'Health Information Management',
+            HAM: 'Health Care Administration and Hospital Management',
+            ANA: 'Human Anatomy',
+            PIO: 'Human Physiology',
+            BCH: 'Biochemistry',
+            MCB: 'Microbiology',
+            COS: 'Computer Science'
+        };
         for (const [code, pattern] of aliases) {
-            if (pattern.test(q)) return catalog.find(item => item.code === code) || { code };
+            if (pattern.test(q)) return catalog.find(item => item.code === code) || { code, name: fallbackNames[code] };
         }
         for (const programme of catalog) {
             const values = [programme.name, programme.degree, programme.code, ...(programme.aliases || [])].filter(Boolean);
