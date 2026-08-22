@@ -93,13 +93,27 @@ const STRUCTURED_TABLES = {
     academic_rules: {
         label: 'Rules',
         description: 'Academic rules such as admission, graduation, progression and examination policies.',
-        columns: ['rule_type', 'subject', 'programme', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'],
-        required: ['rule_type', 'raw_text'],
-        textColumns: ['rule_type', 'subject', 'programme', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'status'],
+        columns: [
+            'rule_type', 'requirement_category', 'subject', 'programme', 'entry_mode',
+            'level_label', 'semester_label', 'requirement_text', 'minimum_value',
+            'authority_type', 'scope_label', 'currentness_label', 'source_path',
+            'raw_text', 'row_json', 'status'
+        ],
+        required: ['rule_type', 'requirement_text'],
+        textColumns: [
+            'rule_type', 'requirement_category', 'subject', 'programme', 'entry_mode',
+            'level_label', 'semester_label', 'requirement_text', 'minimum_value',
+            'authority_type', 'scope_label', 'currentness_label', 'source_path',
+            'raw_text', 'status'
+        ],
         jsonColumns: ['row_json'],
         numericColumns: [],
-        defaults: { status: 'active', authority_type: 'institution' },
-        search: ['rule_type', 'subject', 'programme', 'source_path', 'raw_text']
+        defaults: { status: 'active', authority_type: 'institution', currentness_label: 'current' },
+        search: [
+            'rule_type', 'requirement_category', 'subject', 'programme', 'entry_mode',
+            'level_label', 'semester_label', 'requirement_text', 'minimum_value',
+            'source_path', 'raw_text'
+        ]
     }
 };
 
@@ -292,7 +306,16 @@ function _structuredTemplateRows(configName, config) {
         return [{ ...base, programme: 'Medical Laboratory Science', level_label: '300 level', semester_label: 'First semester', course_code: 'MLS 313', course_title: 'Basic Hematology', credit_units: 2, source_path: 'ALL COURSES FOR BMU.xlsx' }];
     }
     if (configName === 'academic_rules') {
-        return [{ ...base, rule_type: 'graduation_requirement', subject: 'Graduation requirements', programme: 'Medical Laboratory Science', raw_text: 'Enter the exact approved rule text here.', source_path: 'Approved source document' }];
+        return [{
+            ...base,
+            rule_type: 'graduation_requirement',
+            requirement_category: 'graduation',
+            subject: 'Graduation requirements',
+            programme: 'Medical Laboratory Science',
+            requirement_text: 'Enter the exact approved requirement here.',
+            raw_text: 'Enter the exact approved rule text here.',
+            source_path: 'Approved source document'
+        }];
     }
     if (configName === 'structured_facts') {
         return [{ ...base, fact_type: 'principal_officer', subject: 'Vice-Chancellor', predicate_name: 'office_holder', value_json: '{"office":"Vice-Chancellor","officer_name":"Prof. Dimie Ogoina"}', human_text: 'The Vice-Chancellor of BMU is Prof. Dimie Ogoina.', source_path: 'BMU Brief Institutional Profile (May 2025)' }];
@@ -305,6 +328,9 @@ async function _upsertStructuredRecord(tableName, config, input) {
     const record = {};
     for (const column of config.columns) {
         record[column] = _coerceStructuredValue(config, column, input[column]);
+    }
+    if (tableName === 'academic_rules' && !record.raw_text && record.requirement_text) {
+        record.raw_text = record.requirement_text;
     }
 
     const missing = config.required.filter(column => !record[column]);

@@ -138,6 +138,45 @@ function inferRuleType(text, fallback = 'general') {
     return fallback || 'general';
 }
 
+function inferRequirementCategory(text, ruleType = '') {
+    const value = `${ruleType || ''} ${text || ''}`.toLowerCase();
+    if (/\b(admission|entry requirement|eligibility|utme|direct entry|o'?level|waec|neco|jamb)\b/.test(value)) return 'admission';
+    if (/\b(graduation|graduate|minimum credit|credit units|project|research)\b/.test(value)) return 'graduation';
+    if (/\b(progression|probation|withdrawal|repeat|carry over|cgpa|gpa)\b/.test(value)) return 'progression';
+    if (/\b(exam|examination|pass mark|grade|professional examination)\b/.test(value)) return 'examination';
+    if (/\b(course registration|registration)\b/.test(value)) return 'course_registration';
+    if (/\b(transfer|readmission|re-admission)\b/.test(value)) return 'transfer';
+    if (/\b(accreditation|mdcn|nuc|professional body)\b/.test(value)) return 'regulation';
+    return ruleType || 'general';
+}
+
+function extractEntryMode(text) {
+    const value = String(text || '').toLowerCase();
+    if (/\bdirect entry\b|\bde\b/.test(value)) return 'Direct Entry';
+    if (/\butme\b|\bjamb\b/.test(value)) return 'UTME';
+    if (/\btransfer\b/.test(value)) return 'Transfer';
+    if (/\bpostgraduate\b/.test(value)) return 'Postgraduate';
+    return null;
+}
+
+function extractLevelLabel(text) {
+    const match = String(text || '').match(/\b([1-6]00)\s*(?:level|l)\b/i);
+    return match ? `${match[1]} level` : null;
+}
+
+function extractSemesterLabel(text) {
+    const value = String(text || '');
+    if (/\bfirst\s+semester\b/i.test(value)) return 'First semester';
+    if (/\bsecond\s+semester\b/i.test(value)) return 'Second semester';
+    return null;
+}
+
+function extractMinimumValue(text) {
+    const value = String(text || '');
+    const match = value.match(/\b(?:minimum|min\.?|at least|not less than)\s+([A-Za-z0-9.%/+\-\s]{1,80})/i);
+    return match ? compactText(match[0], 160) : null;
+}
+
 function safeJson(value, fallback = null) {
     if (!value) return fallback;
     if (typeof value === 'object') return value;
@@ -902,6 +941,24 @@ class DocumentLabService {
         await fs.mkdir(PROMOTED_DIR, { recursive: true });
     }
 
+    _identifier(name) {
+        const value = String(name || '').trim();
+        if (!/^[a-zA-Z0-9_]+$/.test(value)) throw new Error('Unsafe database identifier');
+        return `\`${value}\``;
+    }
+
+    async _ensureColumn(tableName, columnName, definition) {
+        const rows = await query(`SHOW COLUMNS FROM ${this._identifier(tableName)} LIKE ?`, [columnName]);
+        if (rows?.length) return;
+        await query(`ALTER TABLE ${this._identifier(tableName)} ADD COLUMN ${this._identifier(columnName)} ${definition}`);
+    }
+
+    async _ensureIndex(tableName, indexName, columnName) {
+        const rows = await query(`SHOW INDEX FROM ${this._identifier(tableName)} WHERE Key_name = ?`, [indexName]);
+        if (rows?.length) return;
+        await query(`CREATE INDEX ${this._identifier(indexName)} ON ${this._identifier(tableName)} (${this._identifier(columnName)})`);
+    }
+
     async ensureSchema() {
         if (schemaEnsured) return true;
         await this.ensureDirs();
@@ -1210,10 +1267,17 @@ class DocumentLabService {
                 source_table_id INT NULL,
                 source_document_id INT NULL,
                 rule_type VARCHAR(80) NOT NULL,
+                requirement_category VARCHAR(80) NULL,
                 subject VARCHAR(255) NULL,
                 programme VARCHAR(255) NULL,
+                entry_mode VARCHAR(120) NULL,
+                level_label VARCHAR(80) NULL,
+                semester_label VARCHAR(80) NULL,
+                requirement_text TEXT NULL,
+                minimum_value VARCHAR(160) NULL,
                 authority_type VARCHAR(80) NULL,
                 scope_label VARCHAR(160) NULL,
+                currentness_label VARCHAR(80) NULL,
                 source_path TEXT NULL,
                 raw_text TEXT NOT NULL,
                 row_json LONGTEXT NULL,
@@ -1227,6 +1291,15 @@ class DocumentLabService {
                 INDEX idx_academic_rules_subject (subject)
             ) ENGINE=InnoDB
         `);
+        await this._ensureColumn('academic_rules', 'requirement_category', 'VARCHAR(80) NULL');
+        await this._ensureColumn('academic_rules', 'entry_mode', 'VARCHAR(120) NULL');
+        await this._ensureColumn('academic_rules', 'level_label', 'VARCHAR(80) NULL');
+        await this._ensureColumn('academic_rules', 'semester_label', 'VARCHAR(80) NULL');
+        await this._ensureColumn('academic_rules', 'requirement_text', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'minimum_value', 'VARCHAR(160) NULL');
+        await this._ensureColumn('academic_rules', 'currentness_label', 'VARCHAR(80) NULL');
+        await this._ensureIndex('academic_rules', 'idx_academic_rules_category', 'requirement_category');
+        await this._ensureIndex('academic_rules', 'idx_academic_rules_entry_mode', 'entry_mode');
 
         schemaEnsured = true;
         return true;
@@ -2098,10 +2171,17 @@ class DocumentLabService {
                 source_fact_id: sourceFactId,
                 source_document_id: sourceDocumentId,
                 rule_type: ruleType,
+                requirement_category: inferRequirementCategory(text, ruleType),
                 subject,
                 programme,
+                entry_mode: extractEntryMode(text),
+                level_label: extractLevelLabel(text),
+                semester_label: extractSemesterLabel(text),
+                requirement_text: text,
+                minimum_value: extractMinimumValue(text),
                 authority_type: authorityType,
                 scope_label: scopeLabel,
+                currentness_label: 'current',
                 source_path: sourcePath,
                 raw_text: text
             });
@@ -2224,10 +2304,17 @@ class DocumentLabService {
                     source_table_id: sourceTableId,
                     source_document_id: sourceDocumentId,
                     rule_type: ruleType,
+                    requirement_category: findField(row, [/category/, /requirement type/, /rule category/]) || inferRequirementCategory(text, ruleType),
                     subject: tableRecord.title,
                     programme,
+                    entry_mode: findField(row, [/entry/, /mode/]) || extractEntryMode(text),
+                    level_label: findField(row, [/level/]) || extractLevelLabel(text),
+                    semester_label: findField(row, [/semester/]) || extractSemesterLabel(text),
+                    requirement_text: findField(row, [/requirement/, /rule/, /description/, /condition/]) || text,
+                    minimum_value: findField(row, [/minimum/, /min/, /threshold/, /grade/, /score/]) || extractMinimumValue(text),
                     authority_type: authorityType,
                     scope_label: scopeLabel,
+                    currentness_label: 'current',
                     source_path: sourcePath,
                     raw_text: text,
                     row_json: rowJson

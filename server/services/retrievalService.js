@@ -700,8 +700,15 @@ class RetrievalService {
             {
                 type: 'rule',
                 table: 'academic_rules',
-                fields: ['rule_type', 'subject', 'programme', 'scope_label', 'source_path', 'raw_text'],
-                select: 'id, rule_type, subject, programme, authority_type, scope_label, source_path, raw_text'
+                fields: [
+                    'rule_type', 'requirement_category', 'subject', 'programme',
+                    'entry_mode', 'level_label', 'semester_label', 'requirement_text',
+                    'minimum_value', 'scope_label', 'currentness_label', 'source_path', 'raw_text'
+                ],
+                select: `id, rule_type, requirement_category, subject, programme,
+                         entry_mode, level_label, semester_label, requirement_text,
+                         minimum_value, authority_type, scope_label, currentness_label,
+                         source_path, raw_text`
             }
         ];
 
@@ -870,7 +877,7 @@ class RetrievalService {
             } else if (record.type === 'officer') {
                 lines.push(`- Officer: ${data.office}${data.officer_name ? ` | Name: ${data.officer_name}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             } else {
-                lines.push(`- Rule: ${data.rule_type}${data.subject ? ` | ${data.subject}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}: ${record.rawText || ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+                lines.push(`- Rule: ${data.rule_type}${data.requirement_category ? ` | Category: ${data.requirement_category}` : ''}${data.subject ? ` | ${data.subject}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}${data.entry_mode ? ` | Entry: ${data.entry_mode}` : ''}${data.level_label ? ` | Level: ${data.level_label}` : ''}${data.semester_label ? ` | Semester: ${data.semester_label}` : ''}${data.minimum_value ? ` | Minimum: ${data.minimum_value}` : ''}: ${data.requirement_text || record.rawText || ''}${data.currentness_label ? ` [${data.currentness_label}]` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             }
         }
 

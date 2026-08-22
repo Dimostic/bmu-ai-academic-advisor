@@ -2412,7 +2412,7 @@
             academic_programmes: ['programme', 'faculty', 'department', 'degree', 'duration_years', 'entry_mode', 'status'],
             academic_courses: ['programme', 'level_label', 'semester_label', 'course_code', 'course_title', 'credit_units', 'status'],
             academic_calendar_events: ['event_title', 'event_date_label', 'session_label', 'status'],
-            academic_rules: ['rule_type', 'subject', 'programme', 'raw_text', 'status'],
+            academic_rules: ['rule_type', 'requirement_category', 'programme', 'entry_mode', 'requirement_text', 'source_path', 'status'],
             structured_facts: ['fact_type', 'subject', 'predicate_name', 'human_text', 'authority_rank', 'status']
         };
         const preferred = byTable[tableInfo.name] || all.slice(0, 6);
@@ -2562,7 +2562,10 @@
             office: 'Bursar',
             officer_name: 'Dr Ebipuado Ombu',
             rule_type: 'admission_requirement, graduation_requirement...',
+            requirement_category: 'admission, graduation, progression...',
             raw_text: 'Paste the exact approved wording.',
+            requirement_text: 'Write the requirement exactly as approved.',
+            minimum_value: 'Minimum 5 credits, CGPA 1.50, 180 UTME score...',
             row_json: '{"programme":"Medical Laboratory Science","level":"300 level"}'
         };
         return placeholders[column] || '';
@@ -2602,6 +2605,9 @@
             office: 'Office / role',
             officer_name: 'Officer name',
             rule_type: 'Rule type',
+            requirement_category: 'Requirement category',
+            requirement_text: 'Requirement text',
+            minimum_value: 'Minimum / threshold',
             raw_text: 'Exact wording',
             row_json: 'Structured row'
         };
