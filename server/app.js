@@ -949,11 +949,19 @@ app.get('/bmulogo.png', (req, res) => {
 //   /advisor   -> the talking advisor (login required client-side)
 //   /admin     -> advisor-styled admin portal (admin role required client-side)
 //   /legacy    -> the inherited assistant SPA (kept for backwards compat)
+function sendNoStorePage(res, filePath) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.sendFile(filePath);
+}
+
 app.get(['/', '/landing'], (req, res) => {
     res.sendFile(path.join(__dirname, '../client/landing.html'));
 });
 app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/login.html'));
+    sendNoStorePage(res, path.join(__dirname, '../client/login.html'));
 });
 app.get('/register', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/register.html'));
@@ -965,13 +973,13 @@ app.get('/calendar-yearbook', (req, res) => {
     res.redirect(302, '/academic-calendar');
 });
 app.get('/advisor', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/advisor.html'));
+    sendNoStorePage(res, path.join(__dirname, '../client/advisor.html'));
 });
 app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/admin.html'));
+    sendNoStorePage(res, path.join(__dirname, '../client/admin.html'));
 });
 app.get('/handbook', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/handbook.html'));
+    sendNoStorePage(res, path.join(__dirname, '../client/handbook.html'));
 });
 app.get('/change-password', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/change-password.html'));
@@ -1385,9 +1393,9 @@ app.get('*', (req, res, next) => {
     if (req.path.startsWith('/legacy/')) {
         return res.sendFile(path.join(__dirname, '../client/index.html'));
     }
-    if (req.path.startsWith('/admin'))    return res.sendFile(path.join(__dirname, '../client/admin.html'));
-    if (req.path.startsWith('/advisor'))  return res.sendFile(path.join(__dirname, '../client/advisor.html'));
-    if (req.path.startsWith('/login'))    return res.sendFile(path.join(__dirname, '../client/login.html'));
+    if (req.path.startsWith('/admin'))    return sendNoStorePage(res, path.join(__dirname, '../client/admin.html'));
+    if (req.path.startsWith('/advisor'))  return sendNoStorePage(res, path.join(__dirname, '../client/advisor.html'));
+    if (req.path.startsWith('/login'))    return sendNoStorePage(res, path.join(__dirname, '../client/login.html'));
     if (req.path.startsWith('/register')) return res.sendFile(path.join(__dirname, '../client/register.html'));
     if (req.path.startsWith('/academic-calendar')) return res.sendFile(path.join(__dirname, '../client/calendar-yearbook.html'));
     if (req.path.startsWith('/calendar-yearbook')) return res.redirect(302, '/academic-calendar');
