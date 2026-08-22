@@ -88,6 +88,12 @@ function normalizeSemesterValue(value) {
     return text;
 }
 
+function normalizeLevelValue(value) {
+    const digits = String(value || '').replace(/[^0-9]/g, '').trim();
+    if (/^[1-7]01$/.test(digits)) return `${digits[0]}00`;
+    return digits;
+}
+
 function detectProgramme(question) {
     const q = String(question || '').trim();
     const match = PROGRAMME_ALIASES.find(([, pattern]) => pattern.test(q));
@@ -198,7 +204,7 @@ async function loadUpdatedExcelCatalog() {
     for (const record of records) {
         const courseCode = String(record.Code || '').replace(/\s+/g, ' ').trim();
         const courseTitle = String(record.Name || '').replace(/\s+/g, ' ').trim();
-        const level = String(record.Level || '').replace(/[^0-9]/g, '').trim();
+        const level = normalizeLevelValue(record.Level);
         const programme = normaliseProgramme(record.Department);
         if (!courseCode && courseTitle && rows.length) {
             const previous = rows[rows.length - 1];
