@@ -2459,7 +2459,7 @@
                         <h2><i class="fa-solid fa-table-list"></i> ${isNew ? 'Add' : 'Edit'} ${escapeHtml(tableInfo.label || 'record')}</h2>
                         <p class="lede">${isNew ? 'Create a new production lookup record' : `ID ${escapeHtml(record.id)} · ${escapeHtml(structuredRecordTitle(tableInfo, record))}`}</p>
                     </div>
-                    <button class="icon-btn" value="cancel" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                    <button class="icon-btn" type="button" data-structured-dialog-close aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div class="structured-edit-grid">
                     ${simpleColumns.map(column => renderStructuredRecordField(column, record[column])).join('')}
