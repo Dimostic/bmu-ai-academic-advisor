@@ -3040,6 +3040,7 @@ router.get('/structured-records/tables', authenticateToken, requireAdmin, async 
                 description: config.description,
                 columns: config.columns,
                 required: config.required,
+                defaults: config.defaults || {},
                 count
             });
         }
@@ -3076,7 +3077,8 @@ router.get('/structured-records/:table', authenticateToken, requireAdmin, async 
                 label: config.label,
                 description: config.description,
                 columns: config.columns,
-                required: config.required
+                required: config.required,
+                defaults: config.defaults || {}
             },
             records: rows.map(row => _shapeStructuredRow(config, row))
         });

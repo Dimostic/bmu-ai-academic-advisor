@@ -2439,7 +2439,9 @@
     function createBlankStructuredRecord(tableInfo) {
         const record = {};
         for (const column of tableInfo.columns || []) {
-            record[column] = column === 'status' ? 'active' : '';
+            record[column] = Object.prototype.hasOwnProperty.call(tableInfo.defaults || {}, column)
+                ? tableInfo.defaults[column]
+                : '';
         }
         return record;
     }
@@ -2450,6 +2452,7 @@
         const isNew = !!options.isNew;
         const columns = tableInfo.columns || [];
         const advanced = new Set(['value_json', 'row_json', 'source_path', 'status', 'authority_type', 'scope_label', 'currentness_label', 'record_hash']);
+        const requiredFields = new Set(tableInfo.required || []);
         const simpleColumns = columns.filter(column => !advanced.has(column));
         const advancedColumns = columns.filter(column => advanced.has(column));
         dialog.innerHTML = `
@@ -2457,18 +2460,18 @@
                 <div class="modal-head">
                     <div>
                         <h2><i class="fa-solid fa-table-list"></i> ${isNew ? 'Add' : 'Edit'} ${escapeHtml(tableInfo.label || 'record')}</h2>
-                        <p class="lede">${isNew ? 'Create a new production lookup record' : `ID ${escapeHtml(record.id)} · ${escapeHtml(structuredRecordTitle(tableInfo, record))}`}</p>
+                        <p class="lede">${isNew ? 'Create a new production lookup record. Required fields are marked.' : `ID ${escapeHtml(record.id)} · ${escapeHtml(structuredRecordTitle(tableInfo, record))}`}</p>
                     </div>
                     <button class="icon-btn" type="button" data-structured-dialog-close aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div class="structured-edit-grid">
-                    ${simpleColumns.map(column => renderStructuredRecordField(column, record[column])).join('')}
+                    ${simpleColumns.map(column => renderStructuredRecordField(column, record[column], requiredFields.has(column))).join('')}
                 </div>
                 ${advancedColumns.length ? `
                     <details class="structured-advanced">
                         <summary>Advanced source and system fields</summary>
                         <div class="structured-edit-grid">
-                            ${advancedColumns.map(column => renderStructuredRecordField(column, record[column])).join('')}
+                            ${advancedColumns.map(column => renderStructuredRecordField(column, record[column], requiredFields.has(column))).join('')}
                         </div>
                     </details>
                 ` : ''}
@@ -2512,13 +2515,57 @@
         else dialog.setAttribute('open', 'open');
     }
 
-    function renderStructuredRecordField(column, value) {
+    function renderStructuredRecordField(column, value, required = false) {
         const isLong = /text|json|source_path|raw_text|human_text|value_json|row_json/.test(column);
         const label = structuredFieldLabel(column);
-        if (isLong) {
-            return `<label>${escapeHtml(label)}<textarea data-structured-field="${escapeHtml(column)}" spellcheck="false">${escapeHtml(value || '')}</textarea></label>`;
+        const requiredAttr = required ? ' required' : '';
+        const requiredMark = required ? ' <span class="required-indicator">Required</span>' : '';
+        const placeholder = structuredFieldPlaceholder(column);
+        if (column === 'status') {
+            const current = String(value || 'active').toLowerCase();
+            return `<label>${escapeHtml(label)}${requiredMark}<select data-structured-field="${escapeHtml(column)}"${requiredAttr}>
+                ${['active', 'inactive', 'draft'].map(option => `<option value="${option}"${current === option ? ' selected' : ''}>${option}</option>`).join('')}
+            </select></label>`;
         }
-        return `<label>${escapeHtml(label)}<input data-structured-field="${escapeHtml(column)}" value="${escapeHtml(value || '')}" /></label>`;
+        if (isLong) {
+            return `<label>${escapeHtml(label)}${requiredMark}<textarea data-structured-field="${escapeHtml(column)}" spellcheck="false" placeholder="${escapeHtml(placeholder)}"${requiredAttr}>${escapeHtml(value || '')}</textarea></label>`;
+        }
+        return `<label>${escapeHtml(label)}${requiredMark}<input data-structured-field="${escapeHtml(column)}" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder)}"${requiredAttr} /></label>`;
+    }
+
+    function structuredFieldPlaceholder(column) {
+        const placeholders = {
+            fact_type: 'principal_officer, fee, admission_rule...',
+            subject: 'Bursar, MBBS fees, 300 level MLS courses...',
+            predicate_name: 'office_holder, amount, requirement...',
+            value_json: '{"office":"Bursar","officer_name":"Dr Ebipuado Ombu"}',
+            human_text: 'Write the exact answer/fact users should receive.',
+            source_path: 'Name of approved source document',
+            programme: 'Medicine and Surgery (MBBS)',
+            faculty: 'Faculty or college name',
+            department: 'Department name',
+            degree: 'MBBS, B.Sc, B.NSc...',
+            duration_years: '5',
+            entry_mode: 'UTME, Direct Entry...',
+            level_label: '300 level',
+            semester_label: 'First semester',
+            course_code: 'MLS 313',
+            course_title: 'Basic Hematology',
+            credit_units: '2',
+            fee_category: 'tuition, total payable, acceptance fee...',
+            amount_label: 'N1,230,000',
+            amount_value: '1230000',
+            session_label: '2025/2026',
+            student_category: 'indigene, non-indigene, foreign student...',
+            event_title: 'First semester registration begins',
+            event_date_label: 'Monday 12 January 2026',
+            office: 'Bursar',
+            officer_name: 'Dr Ebipuado Ombu',
+            rule_type: 'admission_requirement, graduation_requirement...',
+            raw_text: 'Paste the exact approved wording.',
+            row_json: '{"programme":"Medical Laboratory Science","level":"300 level"}'
+        };
+        return placeholders[column] || '';
     }
 
     function structuredFieldLabel(column) {
