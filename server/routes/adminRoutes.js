@@ -3046,6 +3046,39 @@ router.put('/structured-records/:table/:id', authenticateToken, requireAdmin, as
     }
 });
 
+router.delete('/structured-records/:table/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await documentLabService.ensureSchema();
+        const config = _structuredTableConfig(req.params.table);
+        if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
+        if (!config.columns.includes('status')) {
+            return res.status(400).json({ success: false, error: 'This structured table does not support archiving' });
+        }
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json({ success: false, error: 'Valid record id is required' });
+
+        await query(
+            `UPDATE ${config.name}
+             SET status = 'inactive', updated_at = NOW()
+             WHERE id = ?`,
+            [id]
+        );
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'STRUCTURED_RECORD_ARCHIVED',
+            entityType: config.name,
+            entityId: id,
+            details: { table: config.name },
+            ipAddress: req.ip
+        });
+        _invalidateStructuredLookupCache();
+        res.json({ success: true, message: 'Structured record archived' });
+    } catch (error) {
+        console.error('Structured records archive error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not archive structured record' });
+    }
+});
+
 router.post('/structured-records/:table/import', authenticateToken, requireAdmin, structuredUpload.single('file'), async (req, res) => {
     try {
         await documentLabService.ensureSchema();

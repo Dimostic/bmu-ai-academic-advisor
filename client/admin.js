@@ -2256,10 +2256,13 @@
             <div id="structuredTableInfo" class="stat-row"></div>
             <div id="structuredImportResult"></div>
             <div id="structuredRecordsBody"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+            <dialog id="structuredEditDialog" class="modal modal--wide structured-edit-dialog"></dialog>
         `;
 
         let tables = [];
         let currentTable = '';
+        let currentRecords = [];
+        let currentTableInfo = null;
         try {
             const r = await api('/api/admin/structured-records/tables');
             tables = r.tables || [];
@@ -2296,13 +2299,15 @@
                 const r = await api(`/api/admin/structured-records/${encodeURIComponent(currentTable)}?limit=120&q=${q}`);
                 const records = r.records || [];
                 const tableInfo = r.table || info;
+                currentRecords = records;
+                currentTableInfo = tableInfo;
                 document.getElementById('structuredTableInfo').innerHTML = [
                     stat('Selected table', tableInfo.label || currentTable),
                     stat('Loaded', records.length),
                     stat('Required', (tableInfo.required || []).join(', ') || '—')
                 ].join('');
                 document.getElementById('structuredRecordsBody').innerHTML = records.length
-                    ? records.map(record => renderStructuredRecordCard(tableInfo, record)).join('')
+                    ? renderStructuredRecordsGrid(tableInfo, records)
                     : '<p class="empty">No records found. Download the template and import new records.</p>';
                 document.getElementById('structuredRecordsBody').onclick = handleStructuredRecordClick;
             } catch (err) {
@@ -2311,24 +2316,27 @@
         }
 
         async function handleStructuredRecordClick(e) {
-            const btn = e.target.closest('button[data-structured-save]');
+            const btn = e.target.closest('button[data-structured-act]');
             if (!btn) return;
-            const card = btn.closest('[data-structured-id]');
-            const id = card?.dataset.structuredId;
+            const id = btn.dataset.structuredId;
             if (!id) return;
-            btn.disabled = true;
-            try {
-                const payload = collectStructuredRecordPayload(card);
-                await api(`/api/admin/structured-records/${encodeURIComponent(currentTable)}/${encodeURIComponent(id)}`, {
-                    method: 'PUT',
-                    body: payload
-                });
-                toast('Structured record updated');
-                await loadStructuredRecords();
-            } catch (err) {
-                toast(err.message || 'Could not update structured record', 'error');
-            } finally {
-                btn.disabled = false;
+            if (btn.dataset.structuredAct === 'edit') {
+                const record = currentRecords.find(item => String(item.id) === String(id));
+                if (record && currentTableInfo) openStructuredRecordDialog(currentTable, currentTableInfo, record, loadStructuredRecords);
+            } else if (btn.dataset.structuredAct === 'archive') {
+                const record = currentRecords.find(item => String(item.id) === String(id));
+                const label = record ? structuredRecordTitle(currentTableInfo, record) : `record ${id}`;
+                if (!confirm(`Archive ${label}? The record will be hidden from production lookup but kept for audit.`)) return;
+                btn.disabled = true;
+                try {
+                    await api(`/api/admin/structured-records/${encodeURIComponent(currentTable)}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                    toast('Structured record archived');
+                    await loadStructuredRecords();
+                } catch (err) {
+                    toast(err.message || 'Could not archive structured record', 'error');
+                } finally {
+                    btn.disabled = false;
+                }
             }
         }
 
@@ -2363,35 +2371,129 @@
         }
     }
 
-    function renderStructuredRecordCard(tableInfo, record) {
-        const columns = tableInfo.columns || [];
+    function renderStructuredRecordsGrid(tableInfo, records) {
+        const columns = structuredVisibleColumns(tableInfo);
+        const head = [
+            '<th class="structured-actions-col">Actions</th>',
+            ...columns.map(column => `<th>${escapeHtml(structuredFieldLabel(column))}</th>`)
+        ].join('');
+        const body = records.map(record => {
+            const archived = String(record.status || '').toLowerCase() === 'inactive';
+            return `
+                <tr class="${archived ? 'structured-row-archived' : ''}">
+                    <td class="structured-actions-cell">
+                        <button class="btn btn-ghost" data-structured-act="edit" data-structured-id="${escapeHtml(record.id)}"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
+                        <button class="btn btn-ghost" data-structured-act="archive" data-structured-id="${escapeHtml(record.id)}"><i class="fa-solid fa-box-archive"></i> Archive</button>
+                    </td>
+                    ${columns.map(column => `<td title="${escapeHtml(record[column] || '')}">${formatStructuredGridCell(column, record[column])}</td>`).join('')}
+                </tr>
+            `;
+        }).join('');
+        return `
+            <div class="structured-grid-shell">
+                <table class="admin-table structured-grid-table">
+                    <thead><tr>${head}</tr></thead>
+                    <tbody>${body}</tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function structuredVisibleColumns(tableInfo) {
+        const all = tableInfo.columns || [];
+        const byTable = {
+            academic_officers: ['office', 'officer_name', 'source_path', 'status'],
+            academic_fees: ['programme', 'student_category', 'fee_category', 'amount_label', 'session_label', 'status'],
+            academic_programmes: ['programme', 'faculty', 'department', 'degree', 'duration_years', 'entry_mode', 'status'],
+            academic_courses: ['programme', 'level_label', 'semester_label', 'course_code', 'course_title', 'credit_units', 'status'],
+            academic_calendar_events: ['event_title', 'event_date_label', 'session_label', 'status'],
+            academic_rules: ['rule_type', 'subject', 'programme', 'raw_text', 'status'],
+            structured_facts: ['fact_type', 'subject', 'predicate_name', 'human_text', 'authority_rank', 'status']
+        };
+        const preferred = byTable[tableInfo.name] || all.slice(0, 6);
+        return preferred.filter(column => all.includes(column));
+    }
+
+    function formatStructuredGridCell(column, value) {
+        const text = String(value ?? '');
+        if (column === 'status') {
+            const cls = text.toLowerCase() === 'active' ? 'badge-success'
+                : text.toLowerCase() === 'inactive' ? 'badge-danger'
+                : 'badge-info';
+            return `<span class="badge ${cls}">${escapeHtml(text || '—')}</span>`;
+        }
+        return escapeHtml(text.length > 140 ? text.slice(0, 137) + '...' : (text || '—'));
+    }
+
+    function structuredRecordTitle(tableInfo, record) {
+        const columns = tableInfo?.columns || [];
         const titleColumn = columns.find(c => /programme|office|subject|course_title|event_title|rule_type|human_text/.test(c)) || columns[0];
+        return String(record?.[titleColumn] || `record ${record?.id || ''}`).trim();
+    }
+
+    function openStructuredRecordDialog(tableName, tableInfo, record, afterSave) {
+        const dialog = document.getElementById('structuredEditDialog');
+        if (!dialog) return;
+        const columns = tableInfo.columns || [];
         const advanced = new Set(['value_json', 'row_json', 'source_path', 'status', 'authority_type', 'scope_label', 'currentness_label', 'record_hash']);
         const simpleColumns = columns.filter(column => !advanced.has(column));
         const advancedColumns = columns.filter(column => advanced.has(column));
-        return `
-            <section class="structured-review-card" data-structured-id="${escapeHtml(record.id)}">
-                <div class="structured-review-card-head">
-                    <span class="badge badge-info">ID ${escapeHtml(record.id)}</span>
-                    <strong>${escapeHtml(record[titleColumn] || tableInfo.label || 'Structured record')}</strong>
-                    <small>${escapeHtml(formatDate(record.updatedAt))}</small>
+        dialog.innerHTML = `
+            <form method="dialog" class="structured-edit-form" data-structured-id="${escapeHtml(record.id)}">
+                <div class="modal-head">
+                    <div>
+                        <h2><i class="fa-solid fa-table-list"></i> Edit ${escapeHtml(tableInfo.label || 'record')}</h2>
+                        <p class="lede">ID ${escapeHtml(record.id)} · ${escapeHtml(structuredRecordTitle(tableInfo, record))}</p>
+                    </div>
+                    <button class="icon-btn" value="cancel" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div class="structured-review-grid">
+                <div class="structured-edit-grid">
                     ${simpleColumns.map(column => renderStructuredRecordField(column, record[column])).join('')}
                 </div>
                 ${advancedColumns.length ? `
                     <details class="structured-advanced">
                         <summary>Advanced source and system fields</summary>
-                        <div class="structured-review-grid">
+                        <div class="structured-edit-grid">
                             ${advancedColumns.map(column => renderStructuredRecordField(column, record[column])).join('')}
                         </div>
                     </details>
                 ` : ''}
-                <div class="document-lab-output-actions">
-                    <button class="btn btn-primary" data-structured-save="${escapeHtml(record.id)}"><i class="fa-solid fa-floppy-disk"></i> Save changes</button>
-                </div>
-            </section>
+                <menu>
+                    <button class="btn btn-ghost" value="cancel" type="button" data-structured-dialog-close>Cancel</button>
+                    <button class="btn btn-ghost" type="button" data-structured-dialog-archive><i class="fa-solid fa-box-archive"></i> Archive</button>
+                    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button>
+                </menu>
+            </form>
         `;
+        dialog.querySelector('[data-structured-dialog-close]')?.addEventListener('click', () => dialog.close());
+        dialog.querySelector('[data-structured-dialog-archive]')?.addEventListener('click', async () => {
+            if (!confirm(`Archive ${structuredRecordTitle(tableInfo, record)}?`)) return;
+            try {
+                await api(`/api/admin/structured-records/${encodeURIComponent(tableName)}/${encodeURIComponent(record.id)}`, { method: 'DELETE' });
+                toast('Structured record archived');
+                dialog.close();
+                await afterSave();
+            } catch (err) {
+                toast(err.message || 'Could not archive structured record', 'error');
+            }
+        });
+        dialog.querySelector('form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                const payload = collectStructuredRecordPayload(dialog);
+                await api(`/api/admin/structured-records/${encodeURIComponent(tableName)}/${encodeURIComponent(record.id)}`, {
+                    method: 'PUT',
+                    body: payload
+                });
+                toast('Structured record updated');
+                dialog.close();
+                await afterSave();
+            } catch (err) {
+                toast(err.message || 'Could not update structured record', 'error');
+            }
+        });
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', 'open');
     }
 
     function renderStructuredRecordField(column, value) {
