@@ -2247,6 +2247,7 @@
                     <input id="structuredSearchInput" class="input" placeholder="programme, officer, course code, source..." />
                 </label>
                 <button class="btn btn-ghost" id="structuredRefreshBtn"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                <button class="btn btn-primary" id="structuredAddBtn"><i class="fa-solid fa-plus"></i> Add new</button>
                 <button class="btn btn-ghost" id="structuredTemplateBtn"><i class="fa-solid fa-file-excel"></i> Template</button>
                 <label class="btn btn-primary" style="cursor:pointer;">
                     <i class="fa-solid fa-upload"></i> Import
@@ -2275,6 +2276,10 @@
                 loadStructuredRecords();
             });
             document.getElementById('structuredRefreshBtn')?.addEventListener('click', loadStructuredRecords);
+            document.getElementById('structuredAddBtn')?.addEventListener('click', () => {
+                if (!currentTable || !currentTableInfo) return;
+                openStructuredRecordDialog(currentTable, currentTableInfo, createBlankStructuredRecord(currentTableInfo), loadStructuredRecords, { isNew: true });
+            });
             document.getElementById('structuredSearchInput')?.addEventListener('keydown', e => {
                 if (e.key === 'Enter') loadStructuredRecords();
             });
@@ -2431,19 +2436,28 @@
         return String(record?.[titleColumn] || `record ${record?.id || ''}`).trim();
     }
 
-    function openStructuredRecordDialog(tableName, tableInfo, record, afterSave) {
+    function createBlankStructuredRecord(tableInfo) {
+        const record = {};
+        for (const column of tableInfo.columns || []) {
+            record[column] = column === 'status' ? 'active' : '';
+        }
+        return record;
+    }
+
+    function openStructuredRecordDialog(tableName, tableInfo, record, afterSave, options = {}) {
         const dialog = document.getElementById('structuredEditDialog');
         if (!dialog) return;
+        const isNew = !!options.isNew;
         const columns = tableInfo.columns || [];
         const advanced = new Set(['value_json', 'row_json', 'source_path', 'status', 'authority_type', 'scope_label', 'currentness_label', 'record_hash']);
         const simpleColumns = columns.filter(column => !advanced.has(column));
         const advancedColumns = columns.filter(column => advanced.has(column));
         dialog.innerHTML = `
-            <form method="dialog" class="structured-edit-form" data-structured-id="${escapeHtml(record.id)}">
+            <form method="dialog" class="structured-edit-form" data-structured-id="${escapeHtml(record.id || '')}">
                 <div class="modal-head">
                     <div>
-                        <h2><i class="fa-solid fa-table-list"></i> Edit ${escapeHtml(tableInfo.label || 'record')}</h2>
-                        <p class="lede">ID ${escapeHtml(record.id)} · ${escapeHtml(structuredRecordTitle(tableInfo, record))}</p>
+                        <h2><i class="fa-solid fa-table-list"></i> ${isNew ? 'Add' : 'Edit'} ${escapeHtml(tableInfo.label || 'record')}</h2>
+                        <p class="lede">${isNew ? 'Create a new production lookup record' : `ID ${escapeHtml(record.id)} · ${escapeHtml(structuredRecordTitle(tableInfo, record))}`}</p>
                     </div>
                     <button class="icon-btn" value="cancel" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
                 </div>
@@ -2460,8 +2474,8 @@
                 ` : ''}
                 <menu>
                     <button class="btn btn-ghost" value="cancel" type="button" data-structured-dialog-close>Cancel</button>
-                    <button class="btn btn-ghost" type="button" data-structured-dialog-archive><i class="fa-solid fa-box-archive"></i> Archive</button>
-                    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button>
+                    ${isNew ? '' : '<button class="btn btn-ghost" type="button" data-structured-dialog-archive><i class="fa-solid fa-box-archive"></i> Archive</button>'}
+                    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> ${isNew ? 'Create record' : 'Save changes'}</button>
                 </menu>
             </form>
         `;
@@ -2481,15 +2495,17 @@
             e.preventDefault();
             try {
                 const payload = collectStructuredRecordPayload(dialog);
-                await api(`/api/admin/structured-records/${encodeURIComponent(tableName)}/${encodeURIComponent(record.id)}`, {
-                    method: 'PUT',
+                await api(isNew
+                    ? `/api/admin/structured-records/${encodeURIComponent(tableName)}`
+                    : `/api/admin/structured-records/${encodeURIComponent(tableName)}/${encodeURIComponent(record.id)}`, {
+                    method: isNew ? 'POST' : 'PUT',
                     body: payload
                 });
-                toast('Structured record updated');
+                toast(isNew ? 'Structured record created' : 'Structured record updated');
                 dialog.close();
                 await afterSave();
             } catch (err) {
-                toast(err.message || 'Could not update structured record', 'error');
+                toast(err.message || `Could not ${isNew ? 'create' : 'update'} structured record`, 'error');
             }
         });
         if (typeof dialog.showModal === 'function') dialog.showModal();

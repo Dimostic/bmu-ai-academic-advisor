@@ -332,12 +332,12 @@ async function _upsertStructuredRecord(tableName, config, input) {
     const duplicateUpdate = tableName === 'structured_facts'
         ? ''
         : ` ON DUPLICATE KEY UPDATE ${config.columns.map(column => `${column} = VALUES(${column})`).join(', ')}, updated_at = NOW()`;
-    await query(
+    const result = await query(
         `INSERT INTO ${tableName} (${columns.join(', ')})
          VALUES (${columns.map(() => '?').join(', ')})${duplicateUpdate}`,
         values
     );
-    return { mode: 'created' };
+    return { mode: 'created', id: result?.insertId || null };
 }
 
 function _parseStructuredWorkbook(file) {
@@ -3108,6 +3108,29 @@ router.get('/structured-records/:table/template', authenticateToken, requireAdmi
     } catch (error) {
         console.error('Structured records template error:', error);
         res.status(500).json({ success: false, error: error.message || 'Could not create template' });
+    }
+});
+
+router.post('/structured-records/:table', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await documentLabService.ensureSchema();
+        const config = _structuredTableConfig(req.params.table);
+        if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
+        const result = await _upsertStructuredRecord(config.name, config, req.body || {});
+        await _syncPrincipalOfficerRecord(config.name, req.body || {});
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'STRUCTURED_RECORD_CREATED',
+            entityType: config.name,
+            entityId: result.id ? parseInt(result.id, 10) : null,
+            details: { table: config.name },
+            ipAddress: req.ip
+        });
+        _invalidateStructuredLookupCache();
+        res.json({ success: true, message: 'Structured record created', result });
+    } catch (error) {
+        console.error('Structured records create error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not create structured record' });
     }
 });
 
