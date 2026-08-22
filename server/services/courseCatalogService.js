@@ -9,6 +9,10 @@ let XLSX = null;
 try { XLSX = require('xlsx'); }
 catch (_) { /* optional dependency in some test contexts */ }
 
+let dbQuery = null;
+try { ({ query: dbQuery } = require('../../config/db')); }
+catch (_) { /* file parsing fallback is enough in script/test contexts */ }
+
 const LEGACY_SOURCE_TITLE = 'student courses.docx';
 const UPDATED_SOURCE_TITLE = 'ALL COURSES FOR BMU.xlsx';
 const MBBS_SOURCE_TITLE = 'COLLEGE OF MEDICINE BMU PROSPECTUS-new.docx';
@@ -158,21 +162,66 @@ function isCourseListQuestion(question) {
 async function loadCatalog() {
     if (_catalogPromise) return _catalogPromise;
     _catalogPromise = (async () => {
-        const updatedRows = await loadUpdatedExcelCatalog();
-        const mbbsRows = await loadMbbsProspectusCatalog();
-        const legacyRows = await loadLegacyDocxCatalog();
-        const updatedProgrammes = expandProgrammeSet(updatedRows.map(row => row.programme).filter(Boolean));
-        return [
-            ...updatedRows,
-            ...mbbsRows,
-            ...legacyRows.filter(row => row.programme !== 'MEDICINE AND SURGERY' && !updatedProgrammes.has(row.programme))
-        ];
+        const dbRows = await loadDbCatalog();
+        return dbRows.length ? dbRows : loadSourceCatalog();
     })().catch(error => {
         _catalogPromise = null;
         console.warn('[courseCatalogService] failed to load student courses:', error.message);
         return [];
     });
     return _catalogPromise;
+}
+
+async function loadSourceCatalog() {
+    const updatedRows = await loadUpdatedExcelCatalog();
+    const mbbsRows = await loadMbbsProspectusCatalog();
+    const legacyRows = await loadLegacyDocxCatalog();
+    const updatedProgrammes = expandProgrammeSet(updatedRows.map(row => row.programme).filter(Boolean));
+    return [
+        ...updatedRows,
+        ...mbbsRows,
+        ...legacyRows.filter(row => row.programme !== 'MEDICINE AND SURGERY' && !updatedProgrammes.has(row.programme))
+    ];
+}
+
+async function loadDbCatalog() {
+    if (!dbQuery) return [];
+    try {
+        const rows = await dbQuery(`
+            SELECT
+                id, programme, level_label, semester_label, course_code, course_title,
+                credit_units, scope_label, source_path, row_json
+            FROM academic_courses
+            WHERE status = 'active'
+            ORDER BY programme, CAST(level_label AS UNSIGNED), semester_label, course_code, id
+        `);
+        return rows.map(row => {
+            let payload = {};
+            try { payload = row.row_json ? JSON.parse(row.row_json) : {}; }
+            catch (_) { payload = {}; }
+
+            const level = String(row.level_label || payload.level || '').match(/\d{3}/)?.[0] || '';
+            return {
+                sn: Number(row.id) || 0,
+                faculty: payload.faculty || '',
+                department: normaliseProgramme(payload.department || row.programme),
+                programme: normaliseProgramme(row.programme || payload.programme),
+                courseCode: String(row.course_code || payload.courseCode || '').replace(/\s+/g, ' ').trim(),
+                courseTitle: String(row.course_title || payload.courseTitle || '').replace(/\s+/g, ' ').trim(),
+                creditUnits: row.credit_units != null ? Number(row.credit_units) : payload.creditUnits ?? null,
+                level,
+                semester: normalizeSemesterValue(row.semester_label || payload.semester),
+                category: normaliseProgramme(payload.category || row.scope_label),
+                sourceTitle: row.source_path || payload.source || SOURCE_TITLE
+            };
+        }).filter(row => row.programme && row.courseCode && row.courseTitle && row.level);
+    } catch (error) {
+        const quietCodes = new Set(['ECONNREFUSED', 'ER_NO_SUCH_TABLE', 'ER_BAD_DB_ERROR', 'ER_ACCESS_DENIED_ERROR']);
+        if (!quietCodes.has(error.code) && !/academic_courses|connect|connection/i.test(error.message || '')) {
+            console.warn('[courseCatalogService] failed to read academic_courses:', error.message || error.code);
+        }
+        return [];
+    }
 }
 
 async function loadLegacyDocxCatalog() {
@@ -602,6 +651,7 @@ module.exports = {
     buildCourseListReply,
     buildCourseLookupReply,
     loadCatalog,
+    loadSourceCatalog,
     _detectProgramme: detectProgramme,
     _detectLevel: detectLevel,
     _detectCourseCode: detectCourseCode

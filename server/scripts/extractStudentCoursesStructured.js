@@ -132,7 +132,7 @@ async function main() {
     for (const sourceTitle of COURSE_SOURCES) {
         sourceDocumentIds[sourceTitle] = await findSourceDocumentId(sourceTitle);
     }
-    const rows = await courseCatalogService.loadCatalog();
+    const rows = await courseCatalogService.loadSourceCatalog();
 
     await query(
         `UPDATE academic_courses SET status = 'inactive' WHERE source_path IN (?, ?, ?)`,
