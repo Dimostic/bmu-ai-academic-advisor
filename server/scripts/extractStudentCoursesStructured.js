@@ -4,7 +4,8 @@ const courseCatalogService = require('../services/courseCatalogService');
 
 const LEGACY_SOURCE_TITLE = 'student courses.docx';
 const UPDATED_SOURCE_TITLE = 'ALL COURSES FOR BMU.xlsx';
-const COURSE_SOURCES = [LEGACY_SOURCE_TITLE, UPDATED_SOURCE_TITLE];
+const MBBS_SOURCE_TITLE = 'COLLEGE OF MEDICINE BMU PROSPECTUS-new.docx';
+const COURSE_SOURCES = [LEGACY_SOURCE_TITLE, UPDATED_SOURCE_TITLE, MBBS_SOURCE_TITLE];
 
 function stableHash(value) {
     return crypto.createHash('sha1').update(String(value || '')).digest('hex');
@@ -53,7 +54,11 @@ async function ensureTable() {
 }
 
 async function findSourceDocumentId(sourceTitle) {
-    const sourceLike = sourceTitle === UPDATED_SOURCE_TITLE ? '%all courses for bmu%' : '%student courses%';
+    const sourceLike = sourceTitle === UPDATED_SOURCE_TITLE
+        ? '%all courses for bmu%'
+        : sourceTitle === MBBS_SOURCE_TITLE
+            ? '%college of medicine%bmu%prospectus%'
+            : '%student courses%';
     const rows = await query(
         `SELECT id FROM documents WHERE LOWER(title) = LOWER(?) OR LOWER(title) LIKE ? ORDER BY id DESC LIMIT 1`,
         [sourceTitle, sourceLike]
@@ -62,9 +67,9 @@ async function findSourceDocumentId(sourceTitle) {
 }
 
 function scopeLabel(row) {
-    return row.sourceTitle === UPDATED_SOURCE_TITLE
-        ? 'BMU updated course catalogue'
-        : 'BMU student course catalogue';
+    if (row.sourceTitle === UPDATED_SOURCE_TITLE) return 'BMU updated course catalogue';
+    if (row.sourceTitle === MBBS_SOURCE_TITLE) return 'BMU College of Medicine prospectus';
+    return 'BMU student course catalogue';
 }
 
 async function upsertCourse(row, sourceDocumentId) {
@@ -130,7 +135,7 @@ async function main() {
     const rows = await courseCatalogService.loadCatalog();
 
     await query(
-        `UPDATE academic_courses SET status = 'inactive' WHERE source_path IN (?, ?)`,
+        `UPDATE academic_courses SET status = 'inactive' WHERE source_path IN (?, ?, ?)`,
         COURSE_SOURCES
     );
 

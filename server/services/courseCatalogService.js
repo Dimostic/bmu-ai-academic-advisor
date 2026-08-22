@@ -11,12 +11,15 @@ catch (_) { /* optional dependency in some test contexts */ }
 
 const LEGACY_SOURCE_TITLE = 'student courses.docx';
 const UPDATED_SOURCE_TITLE = 'ALL COURSES FOR BMU.xlsx';
+const MBBS_SOURCE_TITLE = 'COLLEGE OF MEDICINE BMU PROSPECTUS-new.docx';
 const SOURCE_TITLE = LEGACY_SOURCE_TITLE;
 const SOURCE_PATH = path.join(__dirname, '../../sources', LEGACY_SOURCE_TITLE);
+const MBBS_SOURCE_PATH = path.join(__dirname, '../../sources', MBBS_SOURCE_TITLE);
 const UPDATED_SOURCE_CANDIDATES = [
     path.join(__dirname, '../../sources', UPDATED_SOURCE_TITLE),
     path.join(__dirname, '../../', UPDATED_SOURCE_TITLE)
 ];
+const MBBS_PROSPECTUS_COURSE_TABLE_RANGE = { start: 85, end: 106 };
 
 let _catalogPromise = null;
 
@@ -118,6 +121,13 @@ function normalizeCourseCode(value) {
         .replace(/[^A-Z0-9]/g, '');
 }
 
+function courseCodeMatchesLookup(rowCode, lookupCode) {
+    const rowNormalized = normalizeCourseCode(rowCode);
+    const lookupNormalized = normalizeCourseCode(lookupCode);
+    if (rowNormalized === lookupNormalized) return true;
+    return rowNormalized.replace(/([A-Z]{2,4}\d{3})[A-Z]$/, '$1') === lookupNormalized;
+}
+
 function detectCourseCode(question) {
     const blockedPrefixes = new Set(['AT', 'FOR', 'THE', 'AND', 'ARE', 'IS', 'IN', 'ON', 'SHOW', 'WHAT', 'LIST', 'GIVE']);
     const matches = String(question || '').toUpperCase().matchAll(/\b((?:BMU[-\s]?)?[A-Z]{2,4})[-\s]?(\d{3})\b/g);
@@ -149,11 +159,13 @@ async function loadCatalog() {
     if (_catalogPromise) return _catalogPromise;
     _catalogPromise = (async () => {
         const updatedRows = await loadUpdatedExcelCatalog();
+        const mbbsRows = await loadMbbsProspectusCatalog();
         const legacyRows = await loadLegacyDocxCatalog();
         const updatedProgrammes = expandProgrammeSet(updatedRows.map(row => row.programme).filter(Boolean));
         return [
             ...updatedRows,
-            ...legacyRows.filter(row => row.programme === 'MEDICINE AND SURGERY' || !updatedProgrammes.has(row.programme))
+            ...mbbsRows,
+            ...legacyRows.filter(row => row.programme !== 'MEDICINE AND SURGERY' && !updatedProgrammes.has(row.programme))
         ];
     })().catch(error => {
         _catalogPromise = null;
@@ -232,6 +244,45 @@ async function loadUpdatedExcelCatalog() {
             category: normaliseProgramme(record['Course Type']),
             sourceTitle: UPDATED_SOURCE_TITLE
         });
+    }
+
+    return rows;
+}
+
+async function loadMbbsProspectusCatalog() {
+    if (!mammoth || !fs.existsSync(MBBS_SOURCE_PATH)) return [];
+    const result = await mammoth.convertToHtml({ path: MBBS_SOURCE_PATH });
+    const tables = [...String(result.value || '').matchAll(/<table[\s\S]*?<\/table>/g)].map(match => match[0]);
+    const rows = [];
+
+    for (let tableIndex = MBBS_PROSPECTUS_COURSE_TABLE_RANGE.start; tableIndex <= MBBS_PROSPECTUS_COURSE_TABLE_RANGE.end; tableIndex++) {
+        const table = tables[tableIndex];
+        if (!table) continue;
+        const tableRows = [...table.matchAll(/<tr[\s\S]*?<\/tr>/g)].map(match => match[0]);
+        for (const tableRow of tableRows) {
+            const cells = [...tableRow.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map(cell => cleanCell(cell[1]));
+            if (cells.length < 3) continue;
+            const [courseCodeRaw, courseTitleRaw, creditUnitsRaw, statusRaw] = cells;
+            const courseCode = String(courseCodeRaw || '').replace(/\s+/g, ' ').trim();
+            const courseTitle = String(courseTitleRaw || '').replace(/\s+/g, ' ').trim();
+            if (!/^[A-Z]{2,4}\s*\d{3}[A-Z]?$/i.test(courseCode) || !courseTitle || /^total$/i.test(courseTitle)) continue;
+
+            const numericCode = courseCode.match(/(\d{3})/)?.[1];
+            const creditUnits = String(creditUnitsRaw || '').match(/\d+(?:\.\d+)?/)?.[0];
+            rows.push({
+                sn: rows.length + 1,
+                faculty: 'COLLEGE OF MEDICINE',
+                department: 'MEDICINE AND SURGERY',
+                programme: 'MEDICINE AND SURGERY',
+                courseCode,
+                courseTitle,
+                creditUnits: creditUnits ? Number(creditUnits) : null,
+                level: numericCode ? `${numericCode[0]}00` : '',
+                semester: numericCode && Number(numericCode) % 2 === 0 ? 'SECOND' : 'FIRST',
+                category: normaliseProgramme(statusRaw || 'CORE'),
+                sourceTitle: MBBS_SOURCE_TITLE
+            });
+        }
     }
 
     return rows;
@@ -411,7 +462,7 @@ async function buildCourseLookupReply(question) {
     const catalog = await loadCatalog();
     let rows = [];
     if (courseCode) {
-        rows = catalog.filter(row => normalizeCourseCode(row.courseCode) === courseCode);
+        rows = catalog.filter(row => courseCodeMatchesLookup(row.courseCode, courseCode));
     } else if (titlePhrase) {
         const terms = titlePhrase.split(/\s+/).filter(term => term.length > 2);
         if (terms.length < 1) return null;
