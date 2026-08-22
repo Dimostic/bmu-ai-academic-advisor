@@ -1,4 +1,7 @@
 const courseCatalogService = require('../services/courseCatalogService');
+let pool = null;
+try { ({ pool } = require('../../config/db')); }
+catch (_) { pool = null; }
 
 const DEFAULT_QUESTIONS = [
     'Show 300 level medical laboratory science courses',
@@ -53,7 +56,17 @@ async function main() {
     console.log(JSON.stringify({ ok: true, count: results.length, results }, null, 2));
 }
 
-main().catch(error => {
-    console.error(error.message || error);
-    process.exit(1);
-});
+function closePoolAndExit(code) {
+    if (!pool) {
+        process.exit(code);
+        return;
+    }
+    pool.end(() => process.exit(code));
+}
+
+main()
+    .then(() => closePoolAndExit(0))
+    .catch(error => {
+        console.error(error.message || error);
+        closePoolAndExit(1);
+    });
