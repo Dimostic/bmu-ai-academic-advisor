@@ -2521,16 +2521,45 @@
         const requiredAttr = required ? ' required' : '';
         const requiredMark = required ? ' <span class="required-indicator">Required</span>' : '';
         const placeholder = structuredFieldPlaceholder(column);
-        if (column === 'status') {
-            const current = String(value || 'active').toLowerCase();
+        const fixedOptions = structuredFieldSelectOptions(column);
+        if (fixedOptions.length) {
+            const current = String(value || fixedOptions[0] || '');
             return `<label>${escapeHtml(label)}${requiredMark}<select data-structured-field="${escapeHtml(column)}"${requiredAttr}>
-                ${['active', 'inactive', 'draft'].map(option => `<option value="${option}"${current === option ? ' selected' : ''}>${option}</option>`).join('')}
+                ${fixedOptions.map(option => `<option value="${escapeHtml(option)}"${current.toLowerCase() === option.toLowerCase() ? ' selected' : ''}>${escapeHtml(option)}</option>`).join('')}
             </select></label>`;
         }
+        const suggestions = structuredFieldSuggestions(column);
+        const listId = suggestions.length ? `structured-list-${column.replace(/[^a-z0-9_-]/gi, '-')}` : '';
+        const listAttr = listId ? ` list="${escapeHtml(listId)}"` : '';
+        const listMarkup = listId ? `<datalist id="${escapeHtml(listId)}">${suggestions.map(option => `<option value="${escapeHtml(option)}"></option>`).join('')}</datalist>` : '';
         if (isLong) {
             return `<label>${escapeHtml(label)}${requiredMark}<textarea data-structured-field="${escapeHtml(column)}" spellcheck="false" placeholder="${escapeHtml(placeholder)}"${requiredAttr}>${escapeHtml(value || '')}</textarea></label>`;
         }
-        return `<label>${escapeHtml(label)}${requiredMark}<input data-structured-field="${escapeHtml(column)}" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder)}"${requiredAttr} /></label>`;
+        return `<label>${escapeHtml(label)}${requiredMark}<input data-structured-field="${escapeHtml(column)}" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder)}"${listAttr}${requiredAttr} />${listMarkup}</label>`;
+    }
+
+    function structuredFieldSelectOptions(column) {
+        const options = {
+            status: ['active', 'draft', 'inactive'],
+            requirement_category: ['admission', 'graduation', 'progression', 'examination', 'course_registration', 'transfer', 'regulation', 'fees', 'calendar', 'general'],
+            entry_mode: ['', 'UTME', 'Direct Entry', 'Transfer', 'Postgraduate', 'All entry modes'],
+            semester_label: ['', 'First semester', 'Second semester', 'All semesters'],
+            currentness_label: ['current', 'historical', 'pending_review', 'superseded'],
+            authority_type: ['institution', 'regulator', 'professional_body', 'student_handbook', 'senate', 'unknown']
+        };
+        return options[column] || [];
+    }
+
+    function structuredFieldSuggestions(column) {
+        const suggestions = {
+            rule_type: ['admission_requirement', 'graduation_requirement', 'progression_rule', 'examination_rule', 'course_registration_rule', 'transfer_rule', 'professional_requirement', 'accreditation_requirement'],
+            level_label: ['100 level', '200 level', '300 level', '400 level', '500 level', '600 level', 'All levels'],
+            student_category: ['indigene', 'non-indigene', 'foreign student', 'all students'],
+            fee_category: ['tuition', 'official_total_payable', 'acceptance_fee', 'registration_fee', 'hostel_fee', 'clinical_fee'],
+            authority_type: ['institution', 'regulator', 'professional_body', 'student_handbook', 'senate'],
+            currentness_label: ['current', 'historical', 'pending_review', 'superseded']
+        };
+        return suggestions[column] || [];
     }
 
     function structuredFieldPlaceholder(column) {
