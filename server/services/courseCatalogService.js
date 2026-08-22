@@ -366,7 +366,15 @@ function formatProgramme(value) {
         .toLowerCase()
         .replace(/\b\w/g, ch => ch.toUpperCase())
         .replace(/\bAnd\b/g, 'and')
+        .replace(/\bOf\b/g, 'of')
+        .replace(/\bWith\b/g, 'with')
         .replace(/\bBmu\b/g, 'BMU');
+}
+
+function displayProgrammeFromRows(rows, fallbackProgramme) {
+    const names = [...new Set((rows || []).map(row => row.programme).filter(Boolean))];
+    if (names.length === 1) return formatProgramme(names[0]);
+    return formatProgramme(fallbackProgramme || names[0] || '');
 }
 
 function programmeKeysFor(programme) {
@@ -450,6 +458,19 @@ function formatCourseListTable(rows) {
         '| --- | --- | --- | --- | --- |',
         ...tableRows
     ].join('\n');
+}
+
+function formatCourseRowSpeech(row) {
+    const bits = [
+        `${row.courseCode}, ${row.courseTitle}`,
+        `${formatProgramme(row.programme)}`,
+        `${row.level} level`,
+        `${formatSemester(row.semester).toLowerCase()} semester`
+    ];
+    if (row.creditUnits) {
+        bits.push(`${row.creditUnits} unit${Number(row.creditUnits) === 1 ? '' : 's'}`);
+    }
+    return bits.join(', ');
 }
 
 function summarizeCourseCodes(rows) {
@@ -578,7 +599,7 @@ async function buildCourseLookupReply(question) {
     const sourceTitle = sourceTitles.length === 1 ? sourceTitles[0] : 'BMU course catalogue';
     const scope = rows.length === 1
         ? `${first.courseCode}, ${first.courseTitle}, is listed for ${formatProgramme(first.programme)} at ${first.level} level, ${formatSemester(first.semester).toLowerCase()} semester${first.creditUnits ? `, with ${first.creditUnits} unit${Number(first.creditUnits) === 1 ? '' : 's'}` : ''}.`
-        : `I found ${rows.length} matching BMU course entries.`;
+        : `I found ${rows.length} matching BMU course entries: ${rows.slice(0, 6).map(formatCourseRowSpeech).join('; ')}${rows.length > 6 ? '; and more' : ''}.`;
 
     return {
         speech_text: `According to ${sourceTitle}, ${scope}${rows.some(row => row.creditUnits) ? '' : ' Credit units are not shown in that source table.'}`,
@@ -614,7 +635,7 @@ async function buildCourseListReply(question) {
             return sem || a.sn - b.sn;
         });
 
-    const displayProgramme = formatProgramme(programme);
+    const displayProgramme = displayProgrammeFromRows(allProgrammeRows, programme);
     const semesterScope = semester ? `, ${formatSemester(semester)} semester` : '';
 
     if (!rows.length && allProgrammeRows.length) {
@@ -636,6 +657,7 @@ async function buildCourseListReply(question) {
     if (!rows.length) return null;
 
     const displayRows = mergeCourseRowsForDisplay(rows);
+    const displayProgrammeFromMatches = displayProgrammeFromRows(rows, programme);
     const table = formatCourseListTable(displayRows);
     const codes = summarizeCourseCodes(displayRows);
     const conflicts = findCourseCodeTitleConflicts(displayRows);
@@ -650,8 +672,8 @@ async function buildCourseListReply(question) {
         : '';
 
     return {
-        speech_text: `According to ${sourceTitle}, ${level} level ${displayProgramme}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}${conflictSpeech}`,
-        display_markdown: `According to **${sourceTitle}**, **${level} level ${displayProgramme}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}${conflictNote}\n\nThis is the BMU-specific student course list.${displayRows.some(row => row.creditUnits) ? '' : ' Credit units are not shown in this source table.'}`,
+        speech_text: `According to ${sourceTitle}, ${level} level ${displayProgrammeFromMatches}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}${conflictSpeech}`,
+        display_markdown: `According to **${sourceTitle}**, **${level} level ${displayProgrammeFromMatches}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}${conflictNote}\n\nThis is the BMU-specific student course list.${displayRows.some(row => row.creditUnits) ? '' : ' Credit units are not shown in this source table.'}`,
         topic_slug: 'bmu_student_courses',
         citations: sourceTitles.map(title => ({ title, source: `${displayProgramme} ${level} level course list` })),
         suggested_actions: [],
