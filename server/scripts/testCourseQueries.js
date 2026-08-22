@@ -75,7 +75,14 @@ const EDGE_QUESTIONS = [
     'What is CHS513?',
     'What is BMU-CHS521?',
     'Show courses for Public Health in 300 level',
-    'Show courses for 300 level in Public Health'
+    'Show courses for 300 level in Public Health',
+    'Show 400 level rad courses',
+    'Show 300 level MLT courses',
+    'Show part 3 MLS courses',
+    'Show part three nursing courses',
+    'Show final year pharmacy courses',
+    'Show rain semester 400 level radiography courses',
+    'Show harmattan semester 400 level radiography courses'
 ];
 
 const EXPECTED_SNIPPETS = new Map([
@@ -95,7 +102,14 @@ const EXPECTED_SNIPPETS = new Map([
     ['Show level 300 MLS courses', '300 level Medical Laboratory Science has 18 displayed course entries'],
     ['Show 3rd year nursing courses', '300 level Nursing Science'],
     ['What levels are available for pharmacy courses?', 'Pharmacy has course entries for 100 level, 200 level'],
-    ['Does BMU have 100 level nursing courses?', 'does not show 100 level Nursing Science courses']
+    ['Does BMU have 100 level nursing courses?', 'does not show 100 level Nursing Science courses'],
+    ['Show 400 level rad courses', '400 level Radiography & Radiation Science'],
+    ['Show 300 level MLT courses', '300 level Medical Laboratory Science has 18 displayed course entries'],
+    ['Show part 3 MLS courses', '300 level Medical Laboratory Science has 18 displayed course entries'],
+    ['Show part three nursing courses', '300 level Nursing Science'],
+    ['Show final year pharmacy courses', '200 level Doctor of Pharmacy'],
+    ['Show rain semester 400 level radiography courses', '400 level Radiography & Radiation Science, First semester'],
+    ['Show harmattan semester 400 level radiography courses', '400 level Radiography & Radiation Science, Second semester']
 ]);
 
 async function main() {

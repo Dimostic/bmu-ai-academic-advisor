@@ -5,8 +5,11 @@ catch (_) { pool = null; }
 
 const QUESTIONS = [
     ['Show 300L MLS courses', 'MLS 303'],
+    ['Show part 3 MLS courses', 'MLS 303'],
+    ['Show 300 level MLT courses', 'MLS 303'],
     ['List year 3 medical laboratory science courses', 'MLS 303'],
     ['Show 3rd year nursing courses', 'NSC 301'],
+    ['Show 400 level rad courses', 'RAD 491'],
     ['Show semester 1 500 level optometry courses', 'OPT 501'],
     ['Show semester 2 500 level optometry courses', 'OPT 598'],
     ['Tell me about medicine OPT611', 'Ocular Manifestations of Systemic Diseases'],

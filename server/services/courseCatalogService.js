@@ -28,7 +28,7 @@ const MBBS_PROSPECTUS_COURSE_TABLE_RANGE = { start: 85, end: 106 };
 let _catalogPromise = null;
 
 const PROGRAMME_ALIASES = [
-    ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bmed\s+lab\b|\bbmls\b|\bmls\b/i],
+    ['MEDICAL LABORATORY SCIENCE', /\bmedical\s+laborator(?:y|ies)\s+science\b|\bmed(?:ical)?\s+lab(?:oratory)?\s+science\b|\bmedical\s+lab(?:oratory)?\b|\bmed\s+lab\b|\bbmls\b|\bmls\b|\bmlt\b/i],
     ['HEALTH INFORMATION MANAGEMENT', /\bhealth\s+information\s+management\b|\bhim\b/i],
     ['HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT', /\b(?:health\s+care|healthcare)\s+(?:administration|admin)\b|\bhospital\s+management\b|\bhealth\s+admin\b|\bhca\b/i],
     ['HUMAN NUTRITION & DIETETICS', /\bhuman\s+nutrition\s+(?:and|&)\s+dietetics\b|\bnutrition\s+(?:and|&)\s+dietetics\b|\bdietetics\b/i],
@@ -45,7 +45,7 @@ const PROGRAMME_ALIASES = [
     ['PHARMACY', /\bpharmacy\b|\bpharm\s*d\b|\bpharmd\b|\bb\.?\s*pharm\b/i],
     ['OPTOMETRY', /\boptometry\b/i],
     ['PHYSIOTHERAPY', /\bphysiotherapy\b/i],
-    ['RADIOGRAPHY', /\bradiography\b/i],
+    ['RADIOGRAPHY', /\bradiography(?:\s+(?:and|&)\s+radiation\s+sciences?)?\b|\brad(?:iology|iography)?\s*(?:tech|technology|science)?\b/i],
     ['BIOCHEMISTRY', /\bbiochemistry\b/i],
     ['BIOLOGY', /\bbiology\b/i],
     ['CHEMISTRY', /\bchemistry\b/i],
@@ -114,14 +114,40 @@ function detectLevel(question) {
 
     const yearMatch = text.match(/\b(?:year\s*([1-7])|([1-7])(?:st|nd|rd|th)?\s*year)\b/i);
     const year = yearMatch ? (yearMatch[1] || yearMatch[2]) : null;
-    return year ? `${year}00` : null;
+    if (year) return `${year}00`;
+
+    const wordNumbers = {
+        one: '100',
+        two: '200',
+        three: '300',
+        four: '400',
+        five: '500',
+        six: '600',
+        seven: '700',
+        first: '100',
+        second: '200',
+        third: '300',
+        fourth: '400',
+        fifth: '500',
+        sixth: '600',
+        seventh: '700'
+    };
+    const partMatch = text.match(/\b(?:part|year)\s+(one|two|three|four|five|six|seven|first|second|third|fourth|fifth|sixth|seventh|[1-7])\b/i)
+        || text.match(/\b(one|two|three|four|five|six|seven|first|second|third|fourth|fifth|sixth|seventh)\s+(?:year|part)\b/i);
+    if (!partMatch) return null;
+    const value = String(partMatch[1]).toLowerCase();
+    return /^[1-7]$/.test(value) ? `${value}00` : wordNumbers[value] || null;
 }
 
 function detectSemester(question) {
     const q = String(question || '').toLowerCase();
-    if (/\bfirst\s+semester\b|\bsemester\s+1\b|\b1st\s+semester\b/.test(q)) return 'FIRST';
-    if (/\bsecond\s+semester\b|\bsemester\s+2\b|\b2nd\s+semester\b/.test(q)) return 'SECOND';
+    if (/\bfirst\s+sem(?:ester)?\b|\bsemester\s+1\b|\b1st\s+sem(?:ester)?\b|\brain\s+semester\b/.test(q)) return 'FIRST';
+    if (/\bsecond\s+sem(?:ester)?\b|\bsemester\s+2\b|\b2nd\s+sem(?:ester)?\b|\bharmattan\s+semester\b/.test(q)) return 'SECOND';
     return null;
+}
+
+function asksFinalYear(question) {
+    return /\bfinal\s+(?:year|level|part)\b|\blast\s+(?:year|level|part)\b/i.test(String(question || ''));
 }
 
 function normalizeCourseCode(value) {
@@ -187,12 +213,13 @@ function isCourseListQuestion(question) {
     const hasProgrammeAndLevel = Boolean(detectProgramme(q)) && Boolean(detectLevel(q));
     const asksForCourses = /\b(course|courses|curriculum|course\s+list|subjects?)\b/i.test(q);
     const hasSemester = Boolean(detectSemester(q));
-    return hasProgrammeAndLevel && (asksForCourses || hasSemester);
+    return (hasProgrammeAndLevel || (Boolean(detectProgramme(q)) && asksFinalYear(q))) && (asksForCourses || hasSemester);
 }
 
 function isCourseAvailabilityQuestion(question) {
     const q = String(question || '');
     if (!detectProgramme(q)) return false;
+    if (asksFinalYear(q)) return false;
     return /\b(available|levels?|years?|have|offer|show|list)\b/i.test(q)
         && /\b(course|courses|curriculum|subjects?|level|levels?|year|years?)\b/i.test(q)
         && !detectLevel(q);
@@ -671,11 +698,16 @@ async function buildCourseListReply(question) {
 
     if (!isCourseListQuestion(question)) return null;
     const programme = detectProgramme(question);
-    const level = detectLevel(question);
+    let level = detectLevel(question);
     const semester = detectSemester(question);
     const programmeKeys = programmeKeysFor(programme);
     const allProgrammeRows = (await loadCatalog())
         .filter(row => programmeKeys.includes(row.programme));
+    if (!level && asksFinalYear(question) && allProgrammeRows.length) {
+        const levels = allProgrammeRows.map(row => Number(row.level)).filter(Number.isFinite);
+        const highest = levels.length ? Math.max(...levels) : null;
+        if (highest) level = String(highest);
+    }
     const rows = (await loadCatalog())
         .filter(row => row.level === level && programmeKeys.includes(row.programme) && (!semester || row.semester === semester))
         .sort((a, b) => {

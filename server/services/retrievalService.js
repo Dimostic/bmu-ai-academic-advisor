@@ -370,7 +370,7 @@ class RetrievalService {
         const q = String(queryText || '').toLowerCase();
         const catalog = ccmasExtractor.PROGRAMME_CATALOG || [];
         const aliases = [
-            ['BMLS', /\b(bmls|b\.?\s*mls|mls|medical laboratory sciences?|medical lab)\b/i],
+            ['BMLS', /\b(bmls|b\.?\s*mls|mls|mlt|medical laboratory sciences?|med(?:ical)?\s+lab(?:oratory)?\s+science|medical lab)\b/i],
             ['BNSC', /\b(bnsc|b\.?\s*n\.?\s*sc|nursing sciences?|nursing)\b/i],
             ['MBBS', /\b(mbbs|medicine and surgery|medical doctor)\b/i],
             ['BDS', /\b(bds|dentistry|dental surgery)\b/i],
@@ -378,6 +378,7 @@ class RetrievalService {
             ['BPHARM', /\b(b\.?\s*pharm|bachelor of pharmacy)\b/i],
             ['DPT', /\b(dpt|physiotherapy)\b/i],
             ['OD', /\b(optometry|doctor of optometry)\b/i],
+            ['RAD', /\b(radiography(?:\s+(?:and|&)\s+radiation\s+sciences?)?|rad(?:iology|iography)?\s*(?:tech|technology|science)?)\b/i],
             ['PH', /\bpublic health\b/i],
             ['HIM', /\bhealth information management\b/i],
             ['HAM', /\bhealth care administration|hospital management\b/i],
@@ -554,7 +555,8 @@ class RetrievalService {
         const q = String(processedQuery?.canonicalQuery || processedQuery?.normalized || processedQuery?.original || '').toLowerCase();
         const levelMatch = q.match(/\b([1-7]00)\s*(?:level|lvl|l|year)\b/) || q.match(/\b(?:level|year)\s*([1-7]00)\b/);
         const yearMatch = q.match(/\b(?:year\s*([1-7])|([1-7])(?:st|nd|rd|th)?\s*year)\b/);
-        const yearLevel = yearMatch ? `${yearMatch[1] || yearMatch[2]}00` : null;
+        const wordLevel = this._detectWordLevel(q);
+        const yearLevel = yearMatch ? `${yearMatch[1] || yearMatch[2]}00` : wordLevel;
         const rawCourseCodeMatch = q.match(/\b((?:bmu[-\s]?)?[a-z]{2,4})[-\s]?(\d{3})\b/i);
         const blockedCoursePrefixes = ['in', 'on', 'at', 'for', 'the', 'and', 'are', 'is', 'what', 'which', 'show', 'list', 'give', 'level', 'year', 'do', 'does', 'did', 'take', 'takes', 'bmu', 'have', 'has'];
         const rawPrefix = rawCourseCodeMatch ? String(rawCourseCodeMatch[1]).replace(/[^a-z]/ig, '').toLowerCase() : '';
@@ -563,9 +565,9 @@ class RetrievalService {
             ? rawCourseCodeMatch
             : null;
         const titlePhrase = this._detectCourseTitlePhrase(q);
-        const semester = /\bfirst\s+semester\b|\b1st\s+semester\b|\bsemester\s*1\b/.test(q)
+        const semester = /\bfirst\s+sem(?:ester)?\b|\b1st\s+sem(?:ester)?\b|\bsemester\s*1\b|\brain\s+semester\b/.test(q)
             ? 'first'
-            : /\bsecond\s+semester\b|\b2nd\s+semester\b|\bsemester\s*2\b/.test(q)
+            : /\bsecond\s+sem(?:ester)?\b|\b2nd\s+sem(?:ester)?\b|\bsemester\s*2\b|\bharmattan\s+semester\b/.test(q)
                 ? 'second'
                 : null;
         return {
@@ -577,12 +579,39 @@ class RetrievalService {
         };
     }
 
+    _detectWordLevel(queryText) {
+        const q = String(queryText || '').toLowerCase();
+        const words = {
+            one: '100',
+            two: '200',
+            three: '300',
+            four: '400',
+            five: '500',
+            six: '600',
+            seven: '700',
+            first: '100',
+            second: '200',
+            third: '300',
+            fourth: '400',
+            fifth: '500',
+            sixth: '600',
+            seventh: '700'
+        };
+        const match = q.match(/\b(?:part|year)\s+(one|two|three|four|five|six|seven|first|second|third|fourth|fifth|sixth|seventh|[1-7])\b/)
+            || q.match(/\b(one|two|three|four|five|six|seven|first|second|third|fourth|fifth|sixth|seventh)\s+(?:year|part)\b/);
+        if (!match) return null;
+        const value = String(match[1]).toLowerCase();
+        return /^[1-7]$/.test(value) ? `${value}00` : words[value] || null;
+    }
+
     _detectCourseTitlePhrase(queryText) {
         let q = String(queryText || '').toLowerCase();
         q = q.replace(/\b(what is|tell me about|how many units is|unit[s]? for|what|which|list|show|give|are|is|course|courses|in|for|the|a|an|of)\b/g, ' ');
         q = q.replace(/\b(?:bmu[-\s]?)?[a-z]{2,4}[-\s]?\d{3}\b/ig, ' ');
         q = q.replace(/\b([1-7]00)\s*(?:level|lvl|l|year)\b/g, ' ');
         q = q.replace(/\b(?:year\s*[1-7]|[1-7](?:st|nd|rd|th)?\s*year)\b/g, ' ');
+        q = q.replace(/\b(?:part|year)\s+(one|two|three|four|five|six|seven|first|second|third|fourth|fifth|sixth|seventh|[1-7])\b/g, ' ');
+        q = q.replace(/\b(one|two|three|four|five|six|seven|first|second|third|fourth|fifth|sixth|seventh)\s+(?:year|part)\b/g, ' ');
         q = q.replace(/\b(?:medical laboratory science|medicine and surgery|mbbs|bmls|nursing|pharmacy|dentistry|programme|program)\b/g, ' ');
         q = q.replace(/[^a-z0-9\s&-]/g, ' ').replace(/\s+/g, ' ').trim();
         return q.length >= 6 ? q : null;
