@@ -302,6 +302,21 @@ async function upsertAcademicOfficer({ office, officerName, note = '', sourcePat
         officer_name: officerName,
         note
     };
+    const updated = await query(
+        `UPDATE academic_officers
+         SET officer_name = ?,
+             authority_type = 'institution',
+             scope_label = 'BMU current principal officers',
+             source_path = ?,
+             raw_text = ?,
+             row_json = ?,
+             status = 'active',
+             updated_at = NOW()
+         WHERE office = ?`,
+        [officerName, sourcePath, rawText, JSON.stringify(row), office]
+    );
+    if (Number(updated?.affectedRows || 0)) return;
+
     const hash = recordHash(['academic_officers', office, officerName, sourcePath]);
     await query(
         `INSERT INTO academic_officers

@@ -1414,7 +1414,7 @@ ${officialUpdates}
         const raw = this._cleanOfficerName(value);
         if (officer?.key === 'bursar') {
             if (!raw || /ebiapiado\s+ombu/i.test(raw) || /ebipiado\s+ombu/i.test(raw)) {
-                return 'Dr Ebipiado Ombu';
+                return 'Dr Ebipuado Ombu';
             }
         }
         return raw;

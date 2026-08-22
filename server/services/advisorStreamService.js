@@ -199,7 +199,7 @@ const BMU_PRINCIPAL_OFFICERS = [
     { position: 'Deputy Vice-Chancellor Administration', name: 'Prof. Ebi Aloysius Lihah', note: '' },
     { position: 'Deputy Vice-Chancellor Academic', name: 'Prof. Godwill Ziriki', note: 'in charge of Sampou campus' },
     { position: 'Registrar', name: 'Dr. (Mrs) Felicia Akusu', note: '' },
-    { position: 'Bursar', name: 'Dr Ebipiado Ombu', note: '' },
+    { position: 'Bursar', name: 'Dr Ebipuado Ombu', note: '' },
     { position: 'University Librarian', name: 'Dr. Abraham Etebu', note: '' }
 ];
 const BMU_VISITOR = {

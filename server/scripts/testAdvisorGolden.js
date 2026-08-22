@@ -25,7 +25,7 @@ const cases = [
     {
         name: 'principal-officer-bursar',
         question: 'Who is the Bursar of BMU?',
-        mustContain: ['ebipiado ombu', 'bursar']
+        mustContain: ['ebipuado ombu', 'bursar']
     },
     {
         name: 'principal-officer-pro-chancellor',

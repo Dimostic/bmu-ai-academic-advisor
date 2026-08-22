@@ -347,6 +347,93 @@ function _parseStructuredWorkbook(file) {
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
 }
 
+function _parseJsonObject(value) {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    try {
+        const parsed = JSON.parse(String(value));
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function _extractOfficerNameFromText(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return '';
+    const afterColon = raw.includes(':') ? raw.split(':').slice(1).join(':') : raw;
+    const match = afterColon.match(/\b(?:Prof\.?|Professor|Dr\.?|Mr\.?|Mrs\.?|Ms\.?|Barr\.?)\s*(?:\([^)]+\)\s*)?[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,5}/);
+    return String(match?.[0] || afterColon)
+        .replace(/[.;,\s]+$/g, '')
+        .trim();
+}
+
+async function _syncPrincipalOfficerRecord(tableName, record) {
+    if (!record || (tableName !== 'structured_facts' && tableName !== 'academic_officers')) return;
+
+    let office = '';
+    let officerName = '';
+    let sourcePath = record.source_path || 'BMU Brief Institutional Profile (May 2025)';
+    let rawText = '';
+    let value = {};
+
+    if (tableName === 'structured_facts') {
+        if (record.fact_type !== 'principal_officer' && record.predicate_name !== 'office_holder') return;
+        value = _parseJsonObject(record.value_json);
+        office = String(value.office || record.subject || '').trim();
+        officerName = _extractOfficerNameFromText(record.human_text) || String(value.officer_name || value.name || '').trim();
+        if (!office || !officerName) return;
+        value = { ...value, office, officer_name: officerName };
+        rawText = record.human_text || `${office}: ${officerName}.`;
+    } else {
+        office = String(record.office || '').trim();
+        officerName = String(record.officer_name || '').trim();
+        if (!office || !officerName) return;
+        rawText = record.raw_text || `${office}: ${officerName}.`;
+        value = _parseJsonObject(record.row_json);
+        value = { ...value, office, officer_name: officerName };
+    }
+
+    const updated = await query(
+        `UPDATE academic_officers
+         SET officer_name = ?,
+             authority_type = 'institution',
+             scope_label = 'BMU current principal officers',
+             source_path = ?,
+             raw_text = ?,
+             row_json = ?,
+             status = 'active',
+             updated_at = NOW()
+         WHERE office = ?`,
+        [officerName, sourcePath, rawText, JSON.stringify(value), office]
+    );
+    if (!Number(updated?.affectedRows || 0)) {
+        const officerHash = _recordHash('academic_officers', {
+            office,
+            officer_name: officerName,
+            source_path: sourcePath
+        });
+        await query(
+            `INSERT INTO academic_officers
+                (record_hash, office, officer_name, authority_type, scope_label, source_path, raw_text, row_json, status)
+             VALUES
+                (?, ?, ?, 'institution', 'BMU current principal officers', ?, ?, ?, 'active')`,
+            [officerHash, office, officerName, sourcePath, rawText, JSON.stringify(value)]
+        );
+    }
+
+    await query(
+        `UPDATE structured_facts
+         SET human_text = ?,
+             value_json = ?,
+             status = 'active',
+             updated_at = NOW()
+         WHERE fact_type = 'principal_officer'
+           AND (subject = ? OR JSON_UNQUOTE(JSON_EXTRACT(value_json, '$.office')) = ?)`,
+        [`${office}: ${officerName}.`, JSON.stringify(value), office, office]
+    );
+}
+
 async function _runEvaluationTest(row) {
     const retrievalService = require('../services/retrievalService');
     const expectedTerms = _jsonArray(row.expected_terms_json);
@@ -3029,7 +3116,9 @@ router.put('/structured-records/:table/:id', authenticateToken, requireAdmin, as
         await documentLabService.ensureSchema();
         const config = _structuredTableConfig(req.params.table);
         if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
-        const result = await _upsertStructuredRecord(config.name, config, { ...req.body, id: req.params.id });
+        const record = { ...req.body, id: req.params.id };
+        const result = await _upsertStructuredRecord(config.name, config, record);
+        await _syncPrincipalOfficerRecord(config.name, record);
         await AuditTrail.log({
             userId: req.user.id,
             action: 'STRUCTURED_RECORD_UPDATED',
@@ -3098,6 +3187,7 @@ router.post('/structured-records/:table/import', authenticateToken, requireAdmin
             }
             try {
                 const result = await _upsertStructuredRecord(config.name, config, normalized);
+                await _syncPrincipalOfficerRecord(config.name, normalized);
                 if (result.mode === 'updated') updated += 1;
                 else created += 1;
             } catch (error) {
