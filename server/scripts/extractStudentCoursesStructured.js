@@ -2,7 +2,9 @@ const crypto = require('crypto');
 const { query, pool } = require('../../config/db');
 const courseCatalogService = require('../services/courseCatalogService');
 
-const SOURCE_TITLE = 'student courses.docx';
+const LEGACY_SOURCE_TITLE = 'student courses.docx';
+const UPDATED_SOURCE_TITLE = 'ALL COURSES FOR BMU.xlsx';
+const COURSE_SOURCES = [LEGACY_SOURCE_TITLE, UPDATED_SOURCE_TITLE];
 
 function stableHash(value) {
     return crypto.createHash('sha1').update(String(value || '')).digest('hex');
@@ -15,6 +17,7 @@ function sourceText(row) {
         row.semester ? `${row.semester} semester` : null,
         row.courseCode,
         row.courseTitle,
+        row.creditUnits != null ? `${row.creditUnits} unit${Number(row.creditUnits) === 1 ? '' : 's'}` : null,
         row.category
     ].filter(Boolean).join(' | ');
 }
@@ -49,17 +52,25 @@ async function ensureTable() {
     `);
 }
 
-async function findSourceDocumentId() {
+async function findSourceDocumentId(sourceTitle) {
+    const sourceLike = sourceTitle === UPDATED_SOURCE_TITLE ? '%all courses for bmu%' : '%student courses%';
     const rows = await query(
-        `SELECT id FROM documents WHERE LOWER(title) = LOWER(?) OR LOWER(title) LIKE '%student courses%' ORDER BY id DESC LIMIT 1`,
-        [SOURCE_TITLE]
+        `SELECT id FROM documents WHERE LOWER(title) = LOWER(?) OR LOWER(title) LIKE ? ORDER BY id DESC LIMIT 1`,
+        [sourceTitle, sourceLike]
     );
     return rows[0]?.id || null;
 }
 
+function scopeLabel(row) {
+    return row.sourceTitle === UPDATED_SOURCE_TITLE
+        ? 'BMU updated course catalogue'
+        : 'BMU student course catalogue';
+}
+
 async function upsertCourse(row, sourceDocumentId) {
+    const sourceTitle = row.sourceTitle || LEGACY_SOURCE_TITLE;
     const payload = {
-        source: SOURCE_TITLE,
+        source: sourceTitle,
         sn: row.sn,
         faculty: row.faculty,
         department: row.department,
@@ -68,6 +79,7 @@ async function upsertCourse(row, sourceDocumentId) {
         semester: row.semester,
         courseCode: row.courseCode,
         courseTitle: row.courseTitle,
+        creditUnits: row.creditUnits ?? null,
         category: row.category
     };
     const recordHash = stableHash(JSON.stringify(payload));
@@ -77,7 +89,7 @@ async function upsertCourse(row, sourceDocumentId) {
             record_hash, source_document_id, programme, level_label, semester_label,
             course_code, course_title, credit_units, authority_type, scope_label,
             source_path, raw_text, row_json, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'active')
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
         ON DUPLICATE KEY UPDATE
             source_document_id = VALUES(source_document_id),
             programme = VALUES(programme),
@@ -100,9 +112,10 @@ async function upsertCourse(row, sourceDocumentId) {
         row.semester || null,
         row.courseCode,
         row.courseTitle,
+        row.creditUnits ?? null,
         'institutional',
-        'BMU student course catalogue',
-        SOURCE_TITLE,
+        scopeLabel(row),
+        sourceTitle,
         rawText,
         JSON.stringify(payload)
     ]);
@@ -110,30 +123,35 @@ async function upsertCourse(row, sourceDocumentId) {
 
 async function main() {
     await ensureTable();
-    const sourceDocumentId = await findSourceDocumentId();
+    const sourceDocumentIds = {};
+    for (const sourceTitle of COURSE_SOURCES) {
+        sourceDocumentIds[sourceTitle] = await findSourceDocumentId(sourceTitle);
+    }
     const rows = await courseCatalogService.loadCatalog();
 
     await query(
-        `UPDATE academic_courses SET status = 'inactive' WHERE source_path = ?`,
-        [SOURCE_TITLE]
+        `UPDATE academic_courses SET status = 'inactive' WHERE source_path IN (?, ?)`,
+        COURSE_SOURCES
     );
 
     let upserted = 0;
     for (const row of rows) {
-        await upsertCourse(row, sourceDocumentId);
+        await upsertCourse(row, sourceDocumentIds[row.sourceTitle || LEGACY_SOURCE_TITLE] || null);
         upserted++;
     }
 
     const programmeSummary = {};
+    const sourceSummary = {};
     for (const row of rows) {
         const key = row.programme || 'UNKNOWN';
         programmeSummary[key] ||= {};
         programmeSummary[key][row.level || 'unknown'] = (programmeSummary[key][row.level || 'unknown'] || 0) + 1;
+        sourceSummary[row.sourceTitle || LEGACY_SOURCE_TITLE] = (sourceSummary[row.sourceTitle || LEGACY_SOURCE_TITLE] || 0) + 1;
     }
 
     console.log(JSON.stringify({
-        source: SOURCE_TITLE,
-        sourceDocumentId,
+        sources: sourceSummary,
+        sourceDocumentIds,
         rowsParsed: rows.length,
         rowsUpserted: upserted,
         programmes: programmeSummary

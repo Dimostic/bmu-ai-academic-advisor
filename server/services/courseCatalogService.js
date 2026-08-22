@@ -1,11 +1,22 @@
 const path = require('path');
+const fs = require('fs');
 
 let mammoth = null;
 try { mammoth = require('mammoth'); }
 catch (_) { /* optional dependency in some test contexts */ }
 
-const SOURCE_TITLE = 'student courses.docx';
-const SOURCE_PATH = path.join(__dirname, '../../sources', SOURCE_TITLE);
+let XLSX = null;
+try { XLSX = require('xlsx'); }
+catch (_) { /* optional dependency in some test contexts */ }
+
+const LEGACY_SOURCE_TITLE = 'student courses.docx';
+const UPDATED_SOURCE_TITLE = 'ALL COURSES FOR BMU.xlsx';
+const SOURCE_TITLE = LEGACY_SOURCE_TITLE;
+const SOURCE_PATH = path.join(__dirname, '../../sources', LEGACY_SOURCE_TITLE);
+const UPDATED_SOURCE_CANDIDATES = [
+    path.join(__dirname, '../../sources', UPDATED_SOURCE_TITLE),
+    path.join(__dirname, '../../', UPDATED_SOURCE_TITLE)
+];
 
 let _catalogPromise = null;
 
@@ -70,6 +81,13 @@ function normaliseProgramme(value) {
         .toUpperCase();
 }
 
+function normalizeSemesterValue(value) {
+    const text = String(value || '').trim().toUpperCase();
+    if (/^1|FIRST|RAIN/.test(text)) return 'FIRST';
+    if (/^2|SECOND|HARMATTAN/.test(text)) return 'SECOND';
+    return text;
+}
+
 function detectProgramme(question) {
     const q = String(question || '').trim();
     const match = PROGRAMME_ALIASES.find(([, pattern]) => pattern.test(q));
@@ -124,7 +142,23 @@ function isCourseListQuestion(question) {
 async function loadCatalog() {
     if (_catalogPromise) return _catalogPromise;
     _catalogPromise = (async () => {
-        if (!mammoth) return [];
+        const updatedRows = await loadUpdatedExcelCatalog();
+        const legacyRows = await loadLegacyDocxCatalog();
+        const updatedProgrammes = expandProgrammeSet(updatedRows.map(row => row.programme).filter(Boolean));
+        return [
+            ...updatedRows,
+            ...legacyRows.filter(row => row.programme === 'MEDICINE AND SURGERY' || !updatedProgrammes.has(row.programme))
+        ];
+    })().catch(error => {
+        _catalogPromise = null;
+        console.warn('[courseCatalogService] failed to load student courses:', error.message);
+        return [];
+    });
+    return _catalogPromise;
+}
+
+async function loadLegacyDocxCatalog() {
+    if (!mammoth) return [];
         const result = await mammoth.convertToHtml({ path: SOURCE_PATH });
         const rows = [];
         const tableRows = [...String(result.value || '').matchAll(/<tr>([\s\S]*?)<\/tr>/g)];
@@ -141,18 +175,60 @@ async function loadCatalog() {
                 programme,
                 courseCode: courseCode.replace(/\s+/g, ' ').trim(),
                 courseTitle: courseTitle.replace(/\s+/g, ' ').trim(),
+                creditUnits: null,
                 level,
-                semester: normaliseProgramme(semester),
-                category: normaliseProgramme(category)
+                semester: normalizeSemesterValue(semester),
+                category: normaliseProgramme(category),
+                sourceTitle: LEGACY_SOURCE_TITLE
             });
         }
         return rows;
-    })().catch(error => {
-        _catalogPromise = null;
-        console.warn('[courseCatalogService] failed to load student courses:', error.message);
-        return [];
-    });
-    return _catalogPromise;
+}
+
+async function loadUpdatedExcelCatalog() {
+    if (!XLSX) return [];
+    const sourcePath = UPDATED_SOURCE_CANDIDATES.find(candidate => fs.existsSync(candidate));
+    if (!sourcePath) return [];
+
+    const workbook = XLSX.readFile(sourcePath, { cellDates: false });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const records = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+    const rows = [];
+
+    for (const record of records) {
+        const courseCode = String(record.Code || '').replace(/\s+/g, ' ').trim();
+        const courseTitle = String(record.Name || '').replace(/\s+/g, ' ').trim();
+        const level = String(record.Level || '').replace(/[^0-9]/g, '').trim();
+        const programme = normaliseProgramme(record.Department);
+        if (!courseCode && courseTitle && rows.length) {
+            const previous = rows[rows.length - 1];
+            const sameScope = previous
+                && previous.programme === programme
+                && previous.level === level
+                && previous.semester === normalizeSemesterValue(record.Semester);
+            if (sameScope) previous.courseTitle = `${previous.courseTitle} ${courseTitle}`.replace(/\s+/g, ' ').trim();
+            continue;
+        }
+        if (!courseCode || !courseTitle || !/^\d{3}$/.test(level) || !programme) continue;
+        if (/\b(mbbs|medicine\s+and\s+surgery)\b/i.test(programme)) continue;
+
+        const unitMatch = String(record.Units ?? '').match(/\d+(?:\.\d+)?/);
+        rows.push({
+            sn: Number(record['S/N']) || rows.length + 1,
+            faculty: String(record.Faculty || '').replace(/\s+/g, ' ').trim(),
+            department: programme,
+            programme,
+            courseCode,
+            courseTitle,
+            creditUnits: unitMatch ? Number(unitMatch[0]) : null,
+            level,
+            semester: normalizeSemesterValue(record.Semester),
+            category: normaliseProgramme(record['Course Type']),
+            sourceTitle: UPDATED_SOURCE_TITLE
+        });
+    }
+
+    return rows;
 }
 
 function formatSemester(value) {
@@ -173,6 +249,20 @@ function programmeKeysFor(programme) {
     return CATALOG_PROGRAMME_EQUIVALENTS[programme] || [programme];
 }
 
+function expandProgrammeSet(programmes) {
+    const expanded = new Set();
+    for (const programme of programmes) {
+        expanded.add(programme);
+        for (const [key, values] of Object.entries(CATALOG_PROGRAMME_EQUIVALENTS)) {
+            if (key === programme || values.includes(programme)) {
+                expanded.add(key);
+                values.forEach(value => expanded.add(value));
+            }
+        }
+    }
+    return expanded;
+}
+
 function rowProgrammeMatches(row, programme) {
     if (!programme) return true;
     return programmeKeysFor(programme).includes(row.programme);
@@ -180,9 +270,9 @@ function rowProgrammeMatches(row, programme) {
 
 function formatCourseRowsTable(rows) {
     return [
-        '| Programme | Level | Semester | Course code | Course title | Category |',
-        '| --- | --- | --- | --- | --- | --- |',
-        ...rows.map(row => `| ${formatProgramme(row.programme)} | ${row.level} | ${formatSemester(row.semester)} | ${row.courseCode} | ${row.courseTitle} | ${row.category || ''} |`)
+        '| Programme | Level | Semester | Course code | Course title | Units | Category | Source |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- |',
+        ...rows.map(row => `| ${formatProgramme(row.programme)} | ${row.level} | ${formatSemester(row.semester)} | ${row.courseCode} | ${row.courseTitle} | ${row.creditUnits ?? ''} | ${row.category || ''} | ${row.sourceTitle || SOURCE_TITLE} |`)
     ].join('\n');
 }
 
@@ -229,11 +319,11 @@ function formatCourseListTable(rows) {
         const note = row.duplicateCount > 1 && row.category
             ? `${row.category}; repeated ${row.duplicateCount}x`
             : row.category || '';
-        return `| ${formatSemester(row.semester)} | ${row.courseCode} | ${row.courseTitle} | ${note} |`;
+        return `| ${formatSemester(row.semester)} | ${row.courseCode} | ${row.courseTitle} | ${row.creditUnits ?? ''} | ${note} |`;
     });
     return [
-        '| Semester | Course code | Course title | Note |',
-        '| --- | --- | --- | --- |',
+        '| Semester | Course code | Course title | Units | Note |',
+        '| --- | --- | --- | --- | --- |',
         ...tableRows
     ].join('\n');
 }
@@ -288,7 +378,7 @@ function formatConflictNote(conflicts) {
         return `- ${semester}${item.courseCode}: ${item.titles.join(' / ')}`;
     }).join('\n');
     const more = conflicts.length > 8 ? `\n- ${conflicts.length - 8} more code(s) with title variants` : '';
-    return `\n\n**Source data note:** Some course codes have different titles in ${SOURCE_TITLE}. I have kept those variants visible rather than merging them:\n\n${items}${more}`;
+    return `\n\n**Source data note:** Some course codes have different titles in the BMU course catalogue. I have kept those variants visible rather than merging them:\n\n${items}${more}`;
 }
 
 function nearbyCourseSuggestions(rows, normalizedCode, programme) {
@@ -343,10 +433,10 @@ async function buildCourseLookupReply(question) {
             ? `\n\nNearby course codes in the BMU source include:\n\n${suggestions.map(item => `- ${item}`).join('\n')}`
             : '';
         return {
-            speech_text: `I checked the BMU student courses document. It does not list ${q.match(/\b(?:BMU[-\s]?)?[A-Z]{2,4}[-\s]?\d{3}\b/i)?.[0] || courseCode}${programme ? ` for ${formatProgramme(programme)}` : ''}.`,
-            display_markdown: `I checked **${SOURCE_TITLE}**. It does **not** list **${q.match(/\b(?:BMU[-\s]?)?[A-Z]{2,4}[-\s]?\d{3}\b/i)?.[0] || courseCode}**${programmeScope}.\n\nBecause this is a BMU-specific course question, I should not present a CCMAS-only course code as BMU's exact course list unless you ask for national CCMAS guidance.${suggestionText}`,
+            speech_text: `I checked the BMU course catalogue. It does not list ${q.match(/\b(?:BMU[-\s]?)?[A-Z]{2,4}[-\s]?\d{3}\b/i)?.[0] || courseCode}${programme ? ` for ${formatProgramme(programme)}` : ''}.`,
+            display_markdown: `I checked the **BMU course catalogue**. It does **not** list **${q.match(/\b(?:BMU[-\s]?)?[A-Z]{2,4}[-\s]?\d{3}\b/i)?.[0] || courseCode}**${programmeScope}.\n\nBecause this is a BMU-specific course question, I should not present a CCMAS-only course code as BMU's exact course list unless you ask for national CCMAS guidance.${suggestionText}`,
             topic_slug: 'bmu_student_course_not_listed',
-            citations: [{ title: SOURCE_TITLE, source: 'BMU student course catalogue' }],
+            citations: [{ title: 'BMU course catalogue', source: 'BMU course catalogue' }],
             suggested_actions: [],
             follow_up_questions: suggestions.slice(0, 2).map(item => `Tell me about ${item.split(' - ')[0]}`),
             needs_escalation: false,
@@ -360,15 +450,17 @@ async function buildCourseLookupReply(question) {
     const visibleRows = rows.slice(0, 12);
     const table = formatCourseRowsTable(visibleRows);
     const first = rows[0];
+    const sourceTitles = [...new Set(rows.map(row => row.sourceTitle || SOURCE_TITLE).filter(Boolean))];
+    const sourceTitle = sourceTitles.length === 1 ? sourceTitles[0] : 'BMU course catalogue';
     const scope = rows.length === 1
-        ? `${first.courseCode}, ${first.courseTitle}, is listed for ${formatProgramme(first.programme)} at ${first.level} level, ${formatSemester(first.semester).toLowerCase()} semester.`
+        ? `${first.courseCode}, ${first.courseTitle}, is listed for ${formatProgramme(first.programme)} at ${first.level} level, ${formatSemester(first.semester).toLowerCase()} semester${first.creditUnits ? `, with ${first.creditUnits} unit${Number(first.creditUnits) === 1 ? '' : 's'}` : ''}.`
         : `I found ${rows.length} matching BMU course entries.`;
 
     return {
-        speech_text: `According to the BMU student courses document, ${scope} Credit units are not shown in that source table.`,
-        display_markdown: `According to **${SOURCE_TITLE}**, I found **${rows.length} matching BMU course entr${rows.length === 1 ? 'y' : 'ies'}**:\n\n${table}${rows.length > visibleRows.length ? `\n\nShowing the first ${visibleRows.length} matches.` : ''}\n\nThis is the BMU-specific student course list. **Credit units are not shown** in this source table; CCMAS can be used only as national-minimum context where BMU-specific units are not available.`,
+        speech_text: `According to ${sourceTitle}, ${scope}${rows.some(row => row.creditUnits) ? '' : ' Credit units are not shown in that source table.'}`,
+        display_markdown: `According to **${sourceTitle}**, I found **${rows.length} matching BMU course entr${rows.length === 1 ? 'y' : 'ies'}**:\n\n${table}${rows.length > visibleRows.length ? `\n\nShowing the first ${visibleRows.length} matches.` : ''}\n\nThis is the BMU-specific student course list.${rows.some(row => row.creditUnits) ? '' : ' **Credit units are not shown** in this source table; CCMAS can be used only as national-minimum context where BMU-specific units are not available.'}`,
         topic_slug: 'bmu_student_course_lookup',
-        citations: [{ title: SOURCE_TITLE, source: 'BMU student course catalogue' }],
+        citations: sourceTitles.map(title => ({ title, source: 'BMU student course catalogue' })),
         suggested_actions: [],
         follow_up_questions: [
             first ? `Show ${first.level} level ${formatProgramme(first.programme)} courses` : null,
@@ -405,10 +497,10 @@ async function buildCourseListReply(question) {
         const availableLevels = [...new Set(allProgrammeRows.map(row => row.level))]
             .sort((a, b) => Number(a) - Number(b));
         return {
-            speech_text: `I checked the BMU student courses document. It does not show ${level} level ${displayProgramme}${semesterScope} courses. The available levels in that source are ${availableLevels.join(', ')} level.`,
-            display_markdown: `I checked **${SOURCE_TITLE}**. It does **not** show courses for **${level} level ${displayProgramme}**${semesterScope}.\n\nAvailable level(s) for **${displayProgramme}** in that BMU source: **${availableLevels.map(item => `${item} level`).join(', ')}**.\n\nI should not substitute CCMAS/general curriculum data as BMU's exact student course list unless you ask for national CCMAS guidance separately.`,
+            speech_text: `I checked the BMU course catalogue. It does not show ${level} level ${displayProgramme}${semesterScope} courses. The available levels in that source are ${availableLevels.join(', ')} level.`,
+            display_markdown: `I checked the **BMU course catalogue**. It does **not** show courses for **${level} level ${displayProgramme}**${semesterScope}.\n\nAvailable level(s) for **${displayProgramme}** in that BMU source: **${availableLevels.map(item => `${item} level`).join(', ')}**.\n\nI should not substitute CCMAS/general curriculum data as BMU's exact student course list unless you ask for national CCMAS guidance separately.`,
             topic_slug: 'bmu_student_courses_not_listed',
-            citations: [{ title: SOURCE_TITLE, source: `${displayProgramme} course list availability` }],
+            citations: [{ title: 'BMU course catalogue', source: `${displayProgramme} course list availability` }],
             suggested_actions: [],
             follow_up_questions: availableLevels.slice(0, 2).map(item => `Show ${item} level ${displayProgramme} courses`),
             needs_escalation: false,
@@ -423,6 +515,8 @@ async function buildCourseListReply(question) {
     const table = formatCourseListTable(displayRows);
     const codes = summarizeCourseCodes(displayRows);
     const conflicts = findCourseCodeTitleConflicts(displayRows);
+    const sourceTitles = [...new Set(displayRows.map(row => row.sourceTitle || SOURCE_TITLE).filter(Boolean))];
+    const sourceTitle = sourceTitles.length === 1 ? sourceTitles[0] : 'BMU course catalogue';
     const conflictSpeech = conflicts.length
         ? ` ${conflicts.length} course code${conflicts.length === 1 ? ' has' : 's have'} different title variants in the source, so I kept those variants visible.`
         : '';
@@ -432,10 +526,10 @@ async function buildCourseListReply(question) {
         : '';
 
     return {
-        speech_text: `According to the BMU student courses document, ${level} level ${displayProgramme}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}${conflictSpeech}`,
-        display_markdown: `According to **${SOURCE_TITLE}**, **${level} level ${displayProgramme}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}${conflictNote}\n\nThis is the BMU-specific student course list. Credit units are not shown in this source table.`,
+        speech_text: `According to ${sourceTitle}, ${level} level ${displayProgramme}${semesterScope} has ${displayRows.length} displayed course entries: ${codes}.${groupedNote}${conflictSpeech}`,
+        display_markdown: `According to **${sourceTitle}**, **${level} level ${displayProgramme}**${semesterScope} has **${displayRows.length} displayed course entries**.${groupedNote}\n\n${table}${conflictNote}\n\nThis is the BMU-specific student course list.${displayRows.some(row => row.creditUnits) ? '' : ' Credit units are not shown in this source table.'}`,
         topic_slug: 'bmu_student_courses',
-        citations: [{ title: SOURCE_TITLE, source: `${displayProgramme} ${level} level course list` }],
+        citations: sourceTitles.map(title => ({ title, source: `${displayProgramme} ${level} level course list` })),
         suggested_actions: [],
         follow_up_questions: [
             `Show ${level} level ${displayProgramme} first semester courses`,
