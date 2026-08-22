@@ -17,6 +17,7 @@
     "extract:ccmas:structured": "node server/scripts/extractCcmasStructuredRecords.js",
     "extract:student-courses": "node server/scripts/extractStudentCoursesStructured.js",
     "test:course-catalog": "node server/scripts/testCourseCatalog.js",
+    "test:course-queries": "node server/scripts/testCourseQueries.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js"

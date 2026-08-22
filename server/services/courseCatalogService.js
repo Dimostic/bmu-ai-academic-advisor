@@ -125,6 +125,20 @@ function normalizeCourseCode(value) {
         .replace(/[^A-Z0-9]/g, '');
 }
 
+function formatCourseCodeDisplay(value) {
+    let text = String(value || '')
+        .toUpperCase()
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^BMU\s*[-\s]\s*/i, 'BMU-')
+        .replace(/BMU-\s+/i, 'BMU-')
+        .replace(/-\s+/g, '-');
+
+    text = text.replace(/^(BMU-[A-Z]{2,4})\s*(\d{3}[A-Z]?)$/, '$1 $2');
+    text = text.replace(/^([A-Z]{2,4})\s*(\d{3}[A-Z]?)$/, '$1 $2');
+    return text;
+}
+
 function courseCodeMatchesLookup(rowCode, lookupCode) {
     const rowNormalized = normalizeCourseCode(rowCode);
     const lookupNormalized = normalizeCourseCode(lookupCode);
@@ -133,7 +147,11 @@ function courseCodeMatchesLookup(rowCode, lookupCode) {
 }
 
 function detectCourseCode(question) {
-    const blockedPrefixes = new Set(['AT', 'FOR', 'THE', 'AND', 'ARE', 'IS', 'IN', 'ON', 'SHOW', 'WHAT', 'LIST', 'GIVE']);
+    const blockedPrefixes = new Set([
+        'AT', 'FOR', 'THE', 'AND', 'ARE', 'IS', 'IN', 'ON',
+        'SHOW', 'WHAT', 'LIST', 'GIVE', 'DO', 'DOES', 'DID',
+        'TAKE', 'TAKES'
+    ]);
     const matches = String(question || '').toUpperCase().matchAll(/\b((?:BMU[-\s]?)?[A-Z]{2,4})[-\s]?(\d{3})\b/g);
     for (const match of matches) {
         const prefix = String(match[1] || '').replace(/[^A-Z]/g, '');
@@ -206,7 +224,7 @@ async function loadDbCatalog() {
                 faculty: payload.faculty || '',
                 department: normaliseProgramme(payload.department || row.programme),
                 programme: normaliseProgramme(row.programme || payload.programme),
-                courseCode: String(row.course_code || payload.courseCode || '').replace(/\s+/g, ' ').trim(),
+                courseCode: formatCourseCodeDisplay(row.course_code || payload.courseCode),
                 courseTitle: String(row.course_title || payload.courseTitle || '').replace(/\s+/g, ' ').trim(),
                 creditUnits: row.credit_units != null ? Number(row.credit_units) : payload.creditUnits ?? null,
                 level,
@@ -240,7 +258,7 @@ async function loadLegacyDocxCatalog() {
                 faculty,
                 department: normaliseProgramme(department),
                 programme,
-                courseCode: courseCode.replace(/\s+/g, ' ').trim(),
+                courseCode: formatCourseCodeDisplay(courseCode),
                 courseTitle: courseTitle.replace(/\s+/g, ' ').trim(),
                 creditUnits: null,
                 level,
@@ -263,7 +281,7 @@ async function loadUpdatedExcelCatalog() {
     const rows = [];
 
     for (const record of records) {
-        const courseCode = String(record.Code || '').replace(/\s+/g, ' ').trim();
+        const courseCode = formatCourseCodeDisplay(record.Code);
         const courseTitle = String(record.Name || '').replace(/\s+/g, ' ').trim();
         const level = normalizeLevelValue(record.Level);
         const programme = normaliseProgramme(record.Department);
@@ -323,7 +341,7 @@ async function loadMbbsProspectusCatalog() {
                 faculty: 'COLLEGE OF MEDICINE',
                 department: 'MEDICINE AND SURGERY',
                 programme: 'MEDICINE AND SURGERY',
-                courseCode,
+                courseCode: formatCourseCodeDisplay(courseCode),
                 courseTitle,
                 creditUnits: creditUnits ? Number(creditUnits) : null,
                 level: numericCode ? `${numericCode[0]}00` : '',
