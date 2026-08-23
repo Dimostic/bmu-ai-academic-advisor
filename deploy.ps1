@@ -35,7 +35,7 @@ Start-Sleep -Seconds 3
 
 Write-Host "[5/5] Checking pm2 status + running smoke, golden advisor tests, and live health checks..."
 Invoke-Remote "pm2 status $AppName"
-Invoke-Remote "cd $AppDir && SMOKE_TEST_URL=`"$HealthBaseUrl/api/health`" SMOKE_TEST_ADVISOR_URL=`"$HealthBaseUrl/api/advisor/health`" npm test && npm run test:structured-facts && npm run test:advisor-golden"
+Invoke-Remote "cd $AppDir && SMOKE_TEST_URL=`"$HealthBaseUrl/api/health`" SMOKE_TEST_ADVISOR_URL=`"$HealthBaseUrl/api/advisor/health`" npm test && npm run test:structured-facts && npm run test:advisor-policy && npm run test:advisor-golden"
 Invoke-Remote "curl -fsS `"$HealthBaseUrl/api/health`" >/dev/null"
 Invoke-Remote "curl -fsS `"$HealthBaseUrl/api/advisor/health`" >/dev/null"
 
