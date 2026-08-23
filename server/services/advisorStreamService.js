@@ -525,10 +525,14 @@ function _shapeStructuredOfficer(row) {
     const position = String(row.office || '').trim();
     const name = String(row.officer_name || '').trim();
     if (!position || !name) return null;
+    const rawNote = String(row.scope_label || '').trim();
+    const note = /principal\s+officers?|structured\s+officers?|officer\s+records?/i.test(rawNote)
+        ? ''
+        : rawNote;
     return {
         position,
         name,
-        note: String(row.scope_label || '').trim(),
+        note,
         sourcePath: String(row.source_path || 'BMU structured officers table').trim()
     };
 }

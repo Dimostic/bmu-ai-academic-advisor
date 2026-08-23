@@ -119,7 +119,7 @@
     const TRANSCRIPT_PREVIEW_MS = 650;
     const SERVER_STT_TRANSCRIPT_PREVIEW_MS = 1800;
     const AUTO_FOLLOWUP_LISTEN_MS = 5000;
-    const ANDROID_AUTO_FOLLOWUP_LISTEN_MS = 8000;
+    const ANDROID_AUTO_FOLLOWUP_LISTEN_MS = 5000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
     // ---------- State ----------
@@ -1313,7 +1313,7 @@
         el.className = 'bubble bubble--advisor';
         const body = escapeHtml(formatAssistantDisplayText(text || ''));
         const evidence = Array.isArray(citations) && citations.length
-            ? `<div class="bubble-footer"><span class="cite">${renderEvidenceSummary(citations, text || '')}</span></div>`
+            ? `<div class="bubble-footer" aria-hidden="true"><span class="cite">${renderEvidenceSummary(citations, text || '')}</span></div>`
             : '';
         el.innerHTML = `
             <header><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(window.ADVISOR_NAME || 'Dr. Tari')}</header>
@@ -1402,6 +1402,7 @@
 
         if (Array.isArray(citations) && citations.length) {
             bubble.cite.innerHTML = renderEvidenceSummary(citations, bubble.body?.textContent || speech_text || '');
+            bubble.footer.setAttribute('aria-hidden', 'true');
             bubble.footer.classList.remove('hidden');
         }
         if (bubble.playBtn) {
@@ -2809,6 +2810,21 @@
         return false;
     }
 
+    function looksLikeIntentionalAutoFollowup(text) {
+        const value = normalizeVoiceTranscript(text);
+        if (looksLikeBadVoiceTranscript(value)) return false;
+
+        const words = value.split(/\s+/).filter(Boolean);
+        if (words.length < 2 && !WAKE_WORD_RE.test(value)) return false;
+
+        if (/\?/.test(value)) return true;
+        if (WAKE_WORD_RE.test(value)) return true;
+        if (/\b(?:who|what|when|where|why|how|can|could|should|does|do|did|is|are|tell|show|list|name|explain|give|check)\b/i.test(value)) return true;
+        if (/\b(?:bmu|bayelsa|medical|university|course|courses|programme|program|fees?|admission|requirement|requirements|handbook|ccmas|aspire|vc|vice\s+chancellor|bursar|registrar|officer|officers|calendar|hostel|graduation|credit|level|semester|department|faculty|law)\b/i.test(value) && words.length >= 3) return true;
+
+        return false;
+    }
+
     function rejectBadVoiceTranscript() {
         questionInput.value = '';
         updateClearInputButton();
@@ -3064,6 +3080,10 @@
                 if (!normalized) {
                     finishListeningUi('Ready');
                     recognition = null;
+                    return;
+                }
+                if (autoFollowup && !looksLikeIntentionalAutoFollowup(normalized)) {
+                    cancelListening('Ready');
                     return;
                 }
                 if (looksLikeBadVoiceTranscript(normalized)) {
@@ -3322,6 +3342,11 @@
                     if (handleAuthFailure(res.status, data)) return;
                     if (data?.success && data.text) {
                         const normalized = normalizeVoiceTranscript(data.text);
+                        if (autoFollowup && !looksLikeIntentionalAutoFollowup(normalized)) {
+                            setAvatarState('idle', 'Ready');
+                            scheduleWakeWordListener(900);
+                            return;
+                        }
                         if (data.transcriptOk === false || looksLikeBadVoiceTranscript(normalized)) {
                             rejectBadVoiceTranscript();
                             return;
