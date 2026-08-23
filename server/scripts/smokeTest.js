@@ -9,6 +9,7 @@ require('dotenv').config({ path: ENV_PATH });
 const REQUIRED_VARS = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_NAME'];
 const RECOMMENDED_VARS = ['DEEPSEEK_API_KEY', 'OLLAMA_URL', 'OLLAMA_EMBEDDING_MODEL'];
 const ALLOW_DB_SKIP = /^(1|true|yes)$/i.test(String(process.env.SMOKE_TEST_ALLOW_DB_SKIP || ''));
+const STRICT_MODE = /^(1|true|yes)$/i.test(String(process.env.SMOKE_TEST_STRICT || ''));
 
 function checkEnvVar(key, required) {
     const value = process.env[key];
@@ -69,6 +70,10 @@ async function main() {
     console.log('\n[2] Database connectivity');
     if (ALLOW_DB_SKIP) {
         console.log('  SKIP: SMOKE_TEST_ALLOW_DB_SKIP is enabled');
+        if (STRICT_MODE) {
+            console.log('  ERROR: Strict smoke test cannot skip database connectivity');
+            hasFailure = true;
+        }
     } else {
         try {
             await checkDatabase();
@@ -82,7 +87,9 @@ async function main() {
     console.log('\n[3] Health endpoints');
     const healthUrl = process.env.SMOKE_TEST_URL;
     if (!healthUrl) {
-        console.log('  SKIP: Set SMOKE_TEST_URL to run an HTTP health check');
+        const message = 'Set SMOKE_TEST_URL to run an HTTP health check';
+        console.log(`  ${STRICT_MODE ? 'ERROR' : 'SKIP'}: ${message}`);
+        if (STRICT_MODE) hasFailure = true;
     } else {
         try {
             await checkHealth(healthUrl, 'App health');
@@ -95,7 +102,9 @@ async function main() {
 
     const advisorHealthUrl = process.env.SMOKE_TEST_ADVISOR_URL;
     if (!advisorHealthUrl) {
-        console.log('  SKIP: Set SMOKE_TEST_ADVISOR_URL to run advisor health check');
+        const message = 'Set SMOKE_TEST_ADVISOR_URL to run advisor health check';
+        console.log(`  ${STRICT_MODE ? 'ERROR' : 'SKIP'}: ${message}`);
+        if (STRICT_MODE) hasFailure = true;
     } else {
         try {
             await checkHealth(advisorHealthUrl, 'Advisor health');
