@@ -285,7 +285,7 @@ function _detectPrincipalOfficerRole(question) {
     if (/pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman)/i.test(q)) return 'Pro-Chancellor / Chairman of Governing Council';
     if (/vice[-\s]?chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)|(?:^|\W)v\s*c(?:\W|$)|(^|\W)vc(\W|$)|wise\s+chancellor|first\s+chancellor/i.test(q)) return 'Vice-Chancellor';
     if (/registrar|registerer/i.test(q)) return 'Registrar';
-    if (/bursar/i.test(q)) return 'Bursar';
+    if (/bursar|chief\s+financial\s+officer|financial\s+officer/i.test(q)) return 'Bursar';
     if (/\b(?:boss|bossar|bossa|bosa|busa|bussa|bursah)\b/i.test(q)) return 'Bursar';
     if (/university\s+librarian|\blibrarian\b/i.test(q)) return 'University Librarian';
     return null;
@@ -442,7 +442,7 @@ function _isMbbsAdmissionQuestion(question) {
     const q = String(question || '').trim().toLowerCase();
     if (/(fee|fees|tuition|cost|payment|payable|levy)/i.test(q)) return false;
     return /(mbbs|mbchb|medicine\s+and\s+surgery|\bmedicine\b)/i.test(q)
-        && /(admission|admit|entry|requirement|requirements|eligib|utme|direct\s+entry|o'?level|ssce|waec|neco|jamb|post[-\s]?utme)/i.test(q);
+        && /(admission|admit|enter|entry|requirement|requirements|required|subjects?|eligib|utme|direct\s+entry|\bde\b|o'?level|ssce|waec|neco|jamb|post[-\s]?utme)/i.test(q);
 }
 
 function _buildMbbsAdmissionReply() {

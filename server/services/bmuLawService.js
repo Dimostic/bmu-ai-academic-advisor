@@ -52,6 +52,14 @@ function buildLawReply(question) {
         });
     }
 
+    if (/(object|objective|purpose|aim).{0,40}(university|bmu)|(?:university|bmu).{0,40}(object|objective|purpose|aim)/i.test(q)) {
+        return reply({
+            section: 'Section 3 - The Vision and Mission of the University',
+            speech: 'Under Section 3, BMU is established as a medical university with a vision to be a leading internationally recognized medical institution. Its mission includes health-sector training, research for public benefit, health needs identification, and development of health-care databases.',
+            markdown: `Under **Section 3** of the **${LAW_TITLE}**, BMU is framed as a **medical university** with the vision of becoming a leading internationally recognized **medical institution**.\n\nThe mission/object includes health-sector training, research for **public benefit**, identification of health needs, and health-care **database** development.`
+        });
+    }
+
     if (/(sort\s+of\s+institution|research\s+benefit|health\s+care\s+database)/i.test(q)) {
         return reply({
             section: 'Section 3 - The Vision and Mission of the University',

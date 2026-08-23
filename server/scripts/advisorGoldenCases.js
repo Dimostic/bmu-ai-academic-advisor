@@ -15,6 +15,11 @@ module.exports = [
         mustContain: ['dimie ogoina', 'vice-chancellor']
     },
     {
+        name: 'principal-officer-vc-misspelling',
+        question: 'Who is Dimian Ogyna in BMU?',
+        mustContain: ['dimie ogoina', 'vice-chancellor']
+    },
+    {
         name: 'principal-officer-bursar',
         question: 'Who is the Bursar of BMU?',
         mustContain: ['ebipuado ombu', 'bursar']
@@ -25,9 +30,19 @@ module.exports = [
         mustContain: ['ebipuado ombu', 'bursar']
     },
     {
+        name: 'principal-officer-bursar-role',
+        question: 'Name the chief financial officer of BMU',
+        mustContain: ['ebipuado ombu', 'bursar']
+    },
+    {
         name: 'principal-officer-pro-chancellor',
         question: 'Who is the Chairman of the Governing Council of BMU?',
         mustContain: ['tarila tebepah', 'governing council']
+    },
+    {
+        name: 'principal-officer-pro-chancellor-alias',
+        question: 'Who is the Pro Chancellor of BMU?',
+        mustContain: ['tarila tebepah', 'pro-chancellor']
     },
     {
         name: 'principal-officer-registrar',
@@ -75,6 +90,26 @@ module.exports = [
         mustContain: ['computer science', '148,000', '300,000']
     },
     {
+        name: 'fees-dentistry-300-non-indigene',
+        question: 'How much is 300 level Dentistry for non indigene?',
+        mustContain: ['dentistry', '1,015,000', 'non-indigene']
+    },
+    {
+        name: 'fees-optometry-600-non-indigene',
+        question: 'What is the 600 level Optometry non-indigene fee?',
+        mustContain: ['optometry', '940,000', 'non-indigene']
+    },
+    {
+        name: 'fees-public-health-100-table',
+        question: 'Show the 100 level Public Health fee table',
+        mustContain: ['public health', '100 level', 'indigene', 'non-indigene']
+    },
+    {
+        name: 'fees-health-information-management-200-de',
+        question: 'Health Information Management 200 Direct Entry non-indigene fee',
+        mustContain: ['health information management', '200 direct entry', 'non-indigene']
+    },
+    {
         name: 'courses-mls-300',
         question: 'Show 300 level Medical Laboratory Science first semester courses',
         mustContain: ['mls 313', 'basic hematology', 'all courses for bmu.xlsx']
@@ -95,6 +130,16 @@ module.exports = [
         mustContain: ['public health', '200 level']
     },
     {
+        name: 'courses-mls-alias',
+        question: 'What are the 300 level med lab courses?',
+        mustContain: ['medical laboratory', '300 level']
+    },
+    {
+        name: 'courses-mbbs-prospectus-source',
+        question: 'Which 500 level MBBS courses are listed?',
+        mustContain: ['medicine', 'college of medicine bmu prospectus-new.docx']
+    },
+    {
         name: 'mbbs-admission-requirements',
         question: 'What are the admission requirements for MBBS?',
         mustContain: ['medicine and surgery', 'physics', 'chemistry', 'biology', 'one sitting']
@@ -105,9 +150,24 @@ module.exports = [
         mustContain: ['direct entry', 'medicine and dentistry ccmas', 'jamb']
     },
     {
+        name: 'mbbs-admission-direct-entry-variant',
+        question: 'Can I enter MBBS by DE and what subjects are required?',
+        mustContain: ['direct entry', 'physics', 'chemistry', 'biology']
+    },
+    {
+        name: 'mbbs-admission-utme-one-sitting',
+        question: 'Does medicine require one sitting in WAEC or NECO?',
+        mustContain: ['medicine and surgery', 'one sitting', 'physics', 'english']
+    },
+    {
         name: 'mbbs-duration',
         question: 'How many years is MBBS for UTME and direct entry?',
         mustContain: ['utme', 'six-year', 'direct entry', 'five-year']
+    },
+    {
+        name: 'mbbs-duration-direct-entry',
+        question: 'Is MBBS five years for direct entry students?',
+        mustContain: ['direct entry', 'five-year', 'medicine and dentistry ccmas']
     },
     {
         name: 'handbook-credit-load',
@@ -120,9 +180,24 @@ module.exports = [
         mustContain: ['one course credit unit', '1 hour', 'practical']
     },
     {
+        name: 'handbook-credit-load-low-high',
+        question: 'Can a BMU student register below 9 units or above 30 units?',
+        mustContain: ['below 9', 'above 30', 'senate approval']
+    },
+    {
+        name: 'handbook-credit-load-normal-range',
+        question: 'How many credit units should a full-time student normally register per semester?',
+        mustContain: ['15 to 24', 'per semester', 'faculty board']
+    },
+    {
         name: 'handbook-reassessment',
         question: 'How can a student appeal or request reassessment of result?',
         mustContain: ['two weeks', 'n2,000', 'senate']
+    },
+    {
+        name: 'handbook-reassessment-fee',
+        question: 'What is the fee for remarking or reassessment of a course result?',
+        mustContain: ['n2,000', 'two weeks', 'refundable']
     },
     {
         name: 'bmu-law-visitor',
@@ -138,6 +213,11 @@ module.exports = [
         name: 'bmu-law-pre-action-notice',
         question: 'What does BMU Law say about pre-action notice before suing the university?',
         mustContain: ['notice']
+    },
+    {
+        name: 'bmu-law-university-object',
+        question: 'According to BMU Law, what is the object of the university?',
+        mustContain: ['university']
     },
     {
         name: 'about-bmu',
