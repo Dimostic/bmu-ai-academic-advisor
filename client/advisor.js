@@ -170,6 +170,10 @@
         historyLoaded: false,
         loadingHistory: false,
         usageIntroShown: false,
+        voicePhase: 'idle',
+        previousVoicePhase: null,
+        voicePhaseUpdatedAt: Date.now(),
+        voicePhaseHistory: [],
         usage: null,
         guestDemo: {
             enabled: _isGuestDemo,
@@ -693,22 +697,81 @@
         }
     }
 
-    // ---------- Avatar state machine ----------
-    // The "expression" is a high-level mood the advisor wears; the
-    // "state" is what it's doing right now (idle / listening / thinking /
-    // speaking). Both are driven independently so a smile can survive a
-    // blink, and a "thinking" furrow can co-exist with the speaking bob.
+    // ---------- Avatar and voice state controller ----------
+    // The "expression" is a high-level mood the advisor wears. The voice
+    // phase is the controlled interaction state: idle, listening,
+    // transcribing, thinking, speaking, paused, or error. Existing callers
+    // still use setAvatarState(), but this function is now the single gateway
+    // for normalising and tracking those transitions.
     let currentState = 'idle';
     let currentExpression = 'neutral';
     let browAnchors = null;
+    let recognition = null;
+    const VOICE_PHASES = new Set(['idle', 'listening', 'transcribing', 'thinking', 'speaking', 'paused', 'error']);
+    const VOICE_PHASE_ALIASES = {
+        talking: 'speaking',
+        processing: 'thinking',
+        generating: 'thinking',
+        waiting: 'paused',
+        ready: 'idle',
+        cancelled: 'idle',
+        canceled: 'idle'
+    };
+
+    function normaliseVoicePhase(stateName, label = '') {
+        const raw = String(stateName || 'idle').toLowerCase().trim();
+        if (VOICE_PHASES.has(raw)) return raw;
+        if (VOICE_PHASE_ALIASES[raw]) return VOICE_PHASE_ALIASES[raw];
+        const text = `${raw} ${label || ''}`.toLowerCase();
+        if (/transcrib/.test(text)) return 'transcribing';
+        if (/listen/.test(text)) return 'listening';
+        if (/speak|talk|voice/.test(text)) return 'speaking';
+        if (/think|generat|process|prepar/.test(text)) return 'thinking';
+        if (/pause|wait/.test(text)) return 'paused';
+        if (/error|failed|problem/.test(text)) return 'error';
+        return 'idle';
+    }
+
+    function rememberVoicePhase(phase, label) {
+        if (state.voicePhase !== phase) {
+            state.previousVoicePhase = state.voicePhase;
+            state.voicePhase = phase;
+            state.voicePhaseUpdatedAt = Date.now();
+            state.voicePhaseHistory.push({
+                phase,
+                label: String(label || phase),
+                at: state.voicePhaseUpdatedAt
+            });
+            if (state.voicePhaseHistory.length > 20) state.voicePhaseHistory.shift();
+        }
+    }
+
+    window.BMUAdvisorVoiceState = function BMUAdvisorVoiceState() {
+        return {
+            phase: state.voicePhase,
+            previousPhase: state.previousVoicePhase,
+            updatedAt: state.voicePhaseUpdatedAt,
+            recording: Boolean(state.recording),
+            hasRecognition: Boolean(recognition),
+            hasMediaRecorder: Boolean(state.mediaRecorder),
+            voicePaused: Boolean(state.voicePaused),
+            history: state.voicePhaseHistory.slice()
+        };
+    };
 
     function setAvatarState(stateName, label) {
-        currentState = stateName;
-        advisorStatus.dataset.state = stateName;
-        advisorStatus.querySelector('.label').textContent = label || stateName;
-        const speaking = stateName === 'speaking' || stateName === 'talking';
+        const phase = normaliseVoicePhase(stateName, label);
+        const visibleLabel = label || stateName || phase;
+        rememberVoicePhase(phase, visibleLabel);
+        currentState = phase;
+        advisorStatus.dataset.state = phase;
+        advisorStatus.dataset.previousState = state.previousVoicePhase || '';
+        advisorStatus.querySelector('.label').textContent = visibleLabel;
+        const speaking = phase === 'speaking';
         document.body.classList.toggle('is-speaking', speaking);
-        document.body.classList.toggle('is-thinking', stateName === 'thinking');
+        document.body.classList.toggle('is-thinking', phase === 'thinking' || phase === 'transcribing');
+        document.body.classList.toggle('is-listening', phase === 'listening');
+        document.body.classList.toggle('is-paused', phase === 'paused');
 
         if (state.speakingFocusTimer) {
             clearInterval(state.speakingFocusTimer);
@@ -722,8 +785,8 @@
         }
 
         if (advisorSvg) {
-            advisorSvg.classList.toggle('av-listening', stateName === 'listening');
-            advisorSvg.classList.toggle('av-thinking',  stateName === 'thinking');
+            advisorSvg.classList.toggle('av-listening', phase === 'listening');
+            advisorSvg.classList.toggle('av-thinking',  phase === 'thinking' || phase === 'transcribing');
             advisorSvg.classList.toggle('av-speaking',  speaking);
             advisorSvg.classList.remove('listening');
         }
@@ -2905,7 +2968,6 @@
         }
     }
 
-    let recognition = null;
     let pendingVoiceSubmitTimer = null;
     function clearPendingVoiceSubmit() {
         if (pendingVoiceSubmitTimer) clearTimeout(pendingVoiceSubmitTimer);
