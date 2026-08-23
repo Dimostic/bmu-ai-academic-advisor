@@ -286,7 +286,7 @@ function _detectPrincipalOfficerRole(question) {
     if (/vice[-\s]?chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)|(?:^|\W)v\s*c(?:\W|$)|(^|\W)vc(\W|$)|wise\s+chancellor|first\s+chancellor/i.test(q)) return 'Vice-Chancellor';
     if (/registrar|registerer/i.test(q)) return 'Registrar';
     if (/bursar/i.test(q)) return 'Bursar';
-    if (/\b(?:boss|bossa|bosa|busa|bussa|bursah)\b/i.test(q)) return 'Bursar';
+    if (/\b(?:boss|bossar|bossa|bosa|busa|bussa|bursah)\b/i.test(q)) return 'Bursar';
     if (/university\s+librarian|\blibrarian\b/i.test(q)) return 'University Librarian';
     return null;
 }
@@ -435,7 +435,7 @@ function _isMbbsDurationQuestion(question) {
     const q = String(question || '').trim().toLowerCase();
     if (/(fee|fees|tuition|cost|payment|payable|levy|indigene|non[-\s]?indigene)/i.test(q)) return false;
     return /(mbbs|mbchb|medicine\s+and\s+surgery|\bmedicine\b)/i.test(q)
-        && /(how\s+long|duration|years?|academic\s+sessions?|utme|direct\s+entry|five[-\s]?year|six[-\s]?year)/i.test(q);
+        && /(how\s+long|duration|years?|academic\s+sessions?|five[-\s]?year|six[-\s]?year)/i.test(q);
 }
 
 function _isMbbsAdmissionQuestion(question) {
@@ -1500,15 +1500,17 @@ async function _buildFastIntentReply(question) {
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply(q);
     const programmeFeeReply = await _buildStructuredProgrammeFeeReply(q) || _buildProgrammeFeeReply(q);
     if (programmeFeeReply) return programmeFeeReply;
-    const courseCatalogReply = await courseCatalogService.buildCourseListReply(q);
-    if (courseCatalogReply) return courseCatalogReply;
-    if (_isMbbsAdmissionQuestion(q)) return _buildMbbsAdmissionReply();
-    const lawReply = bmuLawService.buildLawReply(q);
-    if (lawReply) return lawReply;
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
+    if (_isMbbsAdmissionQuestion(q)) return _buildMbbsAdmissionReply();
 
     const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
     if (handbookPolicyReply) return handbookPolicyReply;
+
+    const lawReply = bmuLawService.buildLawReply(q);
+    if (lawReply) return lawReply;
+
+    const courseCatalogReply = await courseCatalogService.buildCourseListReply(q);
+    if (courseCatalogReply) return courseCatalogReply;
 
     if (_isAboutBmuOverviewQuestion(q)) {
         return {
