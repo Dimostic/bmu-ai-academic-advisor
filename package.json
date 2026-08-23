@@ -21,6 +21,7 @@
     "test:course-edge": "node server/scripts/testCourseQueries.js --edge",
     "test:course-invalid-codes": "node server/scripts/testCourseQueries.js --invalid-codes",
     "test:course-retrieval": "node server/scripts/testCourseRetrieval.js",
+    "test:course-data-quality": "node server/scripts/testCourseDataQuality.js",
     "test:advisor-golden": "node server/scripts/testAdvisorGolden.js",
     "test:advisor-policy": "node server/scripts/testAdvisorPromptPolicy.js",
     "test:stt-protection": "node server/scripts/testSttProtection.js",
