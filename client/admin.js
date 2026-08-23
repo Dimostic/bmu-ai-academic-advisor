@@ -2246,6 +2246,7 @@
                 <label>Search
                     <input id="structuredSearchInput" class="input" placeholder="programme, officer, course code, source..." />
                 </label>
+                <button class="btn btn-ghost" id="structuredClearSearchBtn" type="button"><i class="fa-solid fa-xmark"></i> Clear search</button>
                 <label>Status
                     <select id="structuredStatusFilter" class="input">
                         <option value="">Any status</option>
@@ -2298,6 +2299,7 @@
         let currentTableInfo = null;
         let currentOffset = 0;
         let pageSize = 120;
+        let searchTimer = null;
         try {
             const r = await api('/api/admin/structured-records/tables');
             tables = r.tables || [];
@@ -2330,11 +2332,32 @@
                 if (!currentTable || !currentTableInfo) return;
                 openStructuredRecordDialog(currentTable, currentTableInfo, createBlankStructuredRecord(currentTableInfo), loadStructuredRecords, { isNew: true });
             });
-            document.getElementById('structuredSearchInput')?.addEventListener('keydown', e => {
+            const searchInput = document.getElementById('structuredSearchInput');
+            searchInput?.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    currentOffset = 0;
+                    loadStructuredRecords();
+                }, 350);
+            });
+            searchInput?.addEventListener('keydown', e => {
                 if (e.key === 'Enter') {
+                    clearTimeout(searchTimer);
+                    currentOffset = 0;
+                    loadStructuredRecords();
+                } else if (e.key === 'Escape') {
+                    e.currentTarget.value = '';
+                    clearTimeout(searchTimer);
                     currentOffset = 0;
                     loadStructuredRecords();
                 }
+            });
+            document.getElementById('structuredClearSearchBtn')?.addEventListener('click', () => {
+                const input = document.getElementById('structuredSearchInput');
+                if (input) input.value = '';
+                clearTimeout(searchTimer);
+                currentOffset = 0;
+                loadStructuredRecords();
             });
             document.getElementById('structuredTemplateBtn')?.addEventListener('click', () => downloadStructuredTemplate(currentTable));
             document.getElementById('structuredImportInput')?.addEventListener('change', e => importStructuredRecords(currentTable, e.target.files?.[0]));
@@ -2376,7 +2399,7 @@
                 ].join('');
                 document.getElementById('structuredRecordsBody').innerHTML = records.length
                     ? renderStructuredRecordsGrid(tableInfo, records)
-                    : '<p class="empty">No records found. Download the template and import new records.</p>';
+                    : `<p class="empty">${escapeHtml(q || status || requirementCategory ? 'No records found for the current search and filters.' : 'No records found. Download the template and import new records.')}</p>`;
                 document.getElementById('structuredRecordsBody').onclick = handleStructuredRecordClick;
                 renderStructuredPagination(pagination);
             } catch (err) {
