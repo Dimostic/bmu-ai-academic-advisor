@@ -2269,6 +2269,14 @@
                         <option value="general">General</option>
                     </select>
                 </label>
+                <label>Rows
+                    <select id="structuredPageSizeSelect" class="input">
+                        <option value="60">60</option>
+                        <option value="120" selected>120</option>
+                        <option value="240">240</option>
+                        <option value="300">300</option>
+                    </select>
+                </label>
                 <button class="btn btn-ghost" id="structuredRefreshBtn"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
                 <button class="btn btn-primary" id="structuredAddBtn"><i class="fa-solid fa-plus"></i> Add new</button>
                 <button class="btn btn-ghost" id="structuredTemplateBtn"><i class="fa-solid fa-file-excel"></i> Template</button>
@@ -2289,7 +2297,7 @@
         let currentRecords = [];
         let currentTableInfo = null;
         let currentOffset = 0;
-        const pageSize = 120;
+        let pageSize = 120;
         try {
             const r = await api('/api/admin/structured-records/tables');
             tables = r.tables || [];
@@ -2310,6 +2318,11 @@
                 loadStructuredRecords();
             });
             document.getElementById('structuredRuleCategoryFilter')?.addEventListener('change', () => {
+                currentOffset = 0;
+                loadStructuredRecords();
+            });
+            document.getElementById('structuredPageSizeSelect')?.addEventListener('change', e => {
+                pageSize = Math.max(1, Math.min(300, parseInt(e.target.value, 10) || 120));
                 currentOffset = 0;
                 loadStructuredRecords();
             });
@@ -2388,17 +2401,28 @@
             const limit = Number(pagination.limit || pageSize);
             const hasPrevious = offset > 0;
             const hasNext = offset + Number(pagination.returned || 0) < total;
+            const lastOffset = total > 0 ? Math.floor((total - 1) / limit) * limit : 0;
             holder.innerHTML = total > limit ? `
+                <button class="btn btn-ghost" id="structuredFirstPageBtn" ${hasPrevious ? '' : 'disabled'}><i class="fa-solid fa-angles-left"></i> First</button>
                 <button class="btn btn-ghost" id="structuredPrevPageBtn" ${hasPrevious ? '' : 'disabled'}><i class="fa-solid fa-chevron-left"></i> Previous</button>
                 <span class="lede">Showing ${escapeHtml(structuredPaginationRange(pagination))} of ${escapeHtml(total)}</span>
                 <button class="btn btn-ghost" id="structuredNextPageBtn" ${hasNext ? '' : 'disabled'}>Next <i class="fa-solid fa-chevron-right"></i></button>
+                <button class="btn btn-ghost" id="structuredLastPageBtn" ${hasNext ? '' : 'disabled'}>Last <i class="fa-solid fa-angles-right"></i></button>
             ` : '';
+            document.getElementById('structuredFirstPageBtn')?.addEventListener('click', () => {
+                currentOffset = 0;
+                loadStructuredRecords();
+            });
             document.getElementById('structuredPrevPageBtn')?.addEventListener('click', () => {
                 currentOffset = Math.max(0, currentOffset - limit);
                 loadStructuredRecords();
             });
             document.getElementById('structuredNextPageBtn')?.addEventListener('click', () => {
                 currentOffset += limit;
+                loadStructuredRecords();
+            });
+            document.getElementById('structuredLastPageBtn')?.addEventListener('click', () => {
+                currentOffset = lastOffset;
                 loadStructuredRecords();
             });
         }
