@@ -3085,12 +3085,23 @@ router.get('/structured-records/:table', authenticateToken, requireAdmin, async 
 
         const limit = Math.max(1, Math.min(300, parseInt(req.query.limit, 10) || 100));
         const q = String(req.query.q || '').trim();
-        let where = '';
+        const status = String(req.query.status || '').trim().toLowerCase();
+        const requirementCategory = String(req.query.requirement_category || '').trim();
+        const whereParts = [];
         const params = [];
         if (q) {
-            where = `WHERE ${config.search.map(column => `${column} LIKE ?`).join(' OR ')}`;
+            whereParts.push(`(${config.search.map(column => `${column} LIKE ?`).join(' OR ')})`);
             params.push(...config.search.map(() => `%${q}%`));
         }
+        if (status && config.columns.includes('status')) {
+            whereParts.push('status = ?');
+            params.push(status);
+        }
+        if (config.name === 'academic_rules' && requirementCategory) {
+            whereParts.push('requirement_category = ?');
+            params.push(requirementCategory);
+        }
+        const where = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
 
         const rows = await query(
             `SELECT * FROM ${config.name} ${where} ORDER BY updated_at DESC, id DESC LIMIT ?`,

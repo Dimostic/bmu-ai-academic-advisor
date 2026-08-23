@@ -2246,6 +2246,29 @@
                 <label>Search
                     <input id="structuredSearchInput" class="input" placeholder="programme, officer, course code, source..." />
                 </label>
+                <label>Status
+                    <select id="structuredStatusFilter" class="input">
+                        <option value="">Any status</option>
+                        <option value="active">Active</option>
+                        <option value="draft">Draft</option>
+                        <option value="inactive">Archived</option>
+                    </select>
+                </label>
+                <label id="structuredRuleCategoryLabel" style="display:none;">Requirement
+                    <select id="structuredRuleCategoryFilter" class="input">
+                        <option value="">Any requirement</option>
+                        <option value="admission">Admission</option>
+                        <option value="graduation">Graduation</option>
+                        <option value="progression">Progression</option>
+                        <option value="examination">Examination</option>
+                        <option value="course_registration">Course registration</option>
+                        <option value="transfer">Transfer</option>
+                        <option value="regulation">Regulation</option>
+                        <option value="fees">Fees</option>
+                        <option value="calendar">Calendar</option>
+                        <option value="general">General</option>
+                    </select>
+                </label>
                 <button class="btn btn-ghost" id="structuredRefreshBtn"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
                 <button class="btn btn-primary" id="structuredAddBtn"><i class="fa-solid fa-plus"></i> Add new</button>
                 <button class="btn btn-ghost" id="structuredTemplateBtn"><i class="fa-solid fa-file-excel"></i> Template</button>
@@ -2273,9 +2296,13 @@
 
             select.addEventListener('change', () => {
                 currentTable = select.value;
+                const ruleFilter = document.getElementById('structuredRuleCategoryFilter');
+                if (ruleFilter) ruleFilter.value = '';
                 loadStructuredRecords();
             });
             document.getElementById('structuredRefreshBtn')?.addEventListener('click', loadStructuredRecords);
+            document.getElementById('structuredStatusFilter')?.addEventListener('change', loadStructuredRecords);
+            document.getElementById('structuredRuleCategoryFilter')?.addEventListener('change', loadStructuredRecords);
             document.getElementById('structuredAddBtn')?.addEventListener('click', () => {
                 if (!currentTable || !currentTableInfo) return;
                 openStructuredRecordDialog(currentTable, currentTableInfo, createBlankStructuredRecord(currentTableInfo), loadStructuredRecords, { isNew: true });
@@ -2293,7 +2320,11 @@
         async function loadStructuredRecords() {
             if (!currentTable) return;
             const info = tables.find(t => t.name === currentTable) || {};
-            const q = encodeURIComponent(document.getElementById('structuredSearchInput')?.value || '');
+            const q = document.getElementById('structuredSearchInput')?.value || '';
+            const status = document.getElementById('structuredStatusFilter')?.value || '';
+            const requirementCategory = document.getElementById('structuredRuleCategoryFilter')?.value || '';
+            const ruleCategoryLabel = document.getElementById('structuredRuleCategoryLabel');
+            if (ruleCategoryLabel) ruleCategoryLabel.style.display = currentTable === 'academic_rules' ? '' : 'none';
             document.getElementById('structuredTableInfo').innerHTML = [
                 stat('Selected table', info.label || currentTable),
                 stat('Records', info.count ?? '—'),
@@ -2301,7 +2332,11 @@
             ].join('');
             document.getElementById('structuredRecordsBody').innerHTML = '<div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading records…</div>';
             try {
-                const r = await api(`/api/admin/structured-records/${encodeURIComponent(currentTable)}?limit=120&q=${q}`);
+                const params = new URLSearchParams({ limit: '120' });
+                if (q) params.set('q', q);
+                if (status) params.set('status', status);
+                if (currentTable === 'academic_rules' && requirementCategory) params.set('requirement_category', requirementCategory);
+                const r = await api(`/api/admin/structured-records/${encodeURIComponent(currentTable)}?${params.toString()}`);
                 const records = r.records || [];
                 const tableInfo = r.table || info;
                 currentRecords = records;
