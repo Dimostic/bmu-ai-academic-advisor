@@ -134,5 +134,9 @@ main()
         process.exitCode = 1;
     })
     .finally(() => {
-        try { pool.end(); } catch (_) {}
+        try {
+            pool.end(() => process.exit(process.exitCode || 0));
+        } catch (_) {
+            process.exit(process.exitCode || 0);
+        }
     });
