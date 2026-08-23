@@ -190,7 +190,7 @@ OUTPUT FORMAT — your reply MUST be exactly three sections, in this order, sepa
 A short, conversational spoken summary in PLAIN TEXT only. ABSOLUTELY no markdown symbols of any kind: no asterisks (* or **), no hash signs (#), no underscores, no backticks, no square brackets, no bullet markers, no numbered lists. One short paragraph of natural sentences. Maximum ${SPEECH_MAX} characters. The avatar will read this aloud, so write it the way you would speak it — never include the word "asterisk" or "hash" either.
 
 [ANSWER]
-A richer written answer for the on-screen panel. Use plain prose with short paragraphs. You MAY use a simple "- " bullet list when a list genuinely helps. Do NOT use heading markers (#, ##, ###), do NOT use bold/italic markers (**, __, *, _), do NOT use code fences or backticks. Keep it under ~500 words. The student sees this typed out as you write it.
+A richer written answer for the on-screen panel. Use plain prose with short paragraphs. You MAY use a simple "- " bullet list when a list genuinely helps. Do NOT use heading markers (#, ##, ###), do NOT use bold/italic markers (**, __, *, _), do NOT use code fences or backticks. Keep ordinary answers under ~500 words. For detailed programme requirements such as admission, graduation, progression, or professional examination rules, you may use up to ~900 words so the answer is complete. The student sees this typed out as you write it.
 
 [META]
 A SINGLE JSON object on one or more lines, with these keys:

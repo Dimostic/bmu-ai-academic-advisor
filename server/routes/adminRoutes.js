@@ -91,8 +91,8 @@ const STRUCTURED_TABLES = {
         search: ['office', 'officer_name', 'source_path', 'raw_text']
     },
     academic_rules: {
-        label: 'Rules',
-        description: 'Academic rules such as admission, graduation, progression and examination policies.',
+        label: 'Programme requirements',
+        description: 'Programme requirements and rules such as admission, graduation, progression and examination policies.',
         columns: [
             'rule_type', 'requirement_category', 'subject', 'programme', 'entry_mode',
             'level_label', 'semester_label', 'requirement_text', 'minimum_value',

@@ -28,7 +28,7 @@ function getApiKey() {
  */
 async function chat(messages, opts = {}) {
     const {
-        maxTokens   = parseInt(process.env.AI_MAX_TOKENS || '1024', 10),
+        maxTokens   = parseInt(process.env.AI_MAX_TOKENS || '2048', 10),
         temperature = parseFloat(process.env.AI_TEMPERATURE || '0.6'),
         jsonMode    = false,
         timeoutMs   = 60_000
@@ -79,7 +79,7 @@ async function chat(messages, opts = {}) {
  */
 async function* streamChat(messages, opts = {}) {
     const {
-        maxTokens   = parseInt(process.env.AI_MAX_TOKENS || '1024', 10),
+        maxTokens   = parseInt(process.env.AI_MAX_TOKENS || '2048', 10),
         temperature = parseFloat(process.env.AI_TEMPERATURE || '0.6'),
         timeoutMs   = 60_000
     } = opts;

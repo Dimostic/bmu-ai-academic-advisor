@@ -2249,7 +2249,7 @@
                 <label>Status
                     <select id="structuredStatusFilter" class="input">
                         <option value="">Any status</option>
-                        <option value="active">Active</option>
+                        <option value="active" selected>Active</option>
                         <option value="draft">Draft</option>
                         <option value="inactive">Archived</option>
                     </select>
@@ -2517,7 +2517,9 @@
                 </menu>
             </form>
         `;
-        dialog.querySelector('[data-structured-dialog-close]')?.addEventListener('click', () => dialog.close());
+        dialog.querySelectorAll('[data-structured-dialog-close]').forEach(btn => {
+            btn.addEventListener('click', () => dialog.close());
+        });
         dialog.querySelector('[data-structured-dialog-archive]')?.addEventListener('click', async () => {
             if (!confirm(`Archive ${structuredRecordTitle(tableInfo, record)}?`)) return;
             try {
