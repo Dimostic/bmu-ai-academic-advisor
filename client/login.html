@@ -161,11 +161,7 @@
                 : reason
                     ? 'Please sign in again to continue.'
                     : 'Sign in to ask Dr. Tari: "' + presetQ + '"';
-            const trace = readAuthTrace();
-            const traceMsg = trace && reason
-                ? ` Last auth step: ${trace.step}${trace.status ? ` (${trace.status})` : ''}${trace.endpoint ? ` at ${trace.endpoint}` : ''}${trace.tokenLength ? `; token length ${trace.tokenLength}` : ''}.`
-                : '';
-            document.getElementById('bannerMsg').textContent = msg + traceMsg;
+            document.getElementById('bannerMsg').textContent = msg;
             banner.classList.remove('hidden');
         }
 
