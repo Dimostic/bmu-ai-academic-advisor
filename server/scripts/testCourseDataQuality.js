@@ -62,6 +62,30 @@ function rowSignature(row) {
     ].map(value => String(value || '').trim()).join('|');
 }
 
+function exactRowSignature(row) {
+    return [
+        rowSignature(row),
+        row.creditUnits == null ? '' : row.creditUnits,
+        row.category,
+        row.sourceTitle
+    ].map(value => String(value || '').trim()).join('|');
+}
+
+function courseUnitConflicts(rows) {
+    const grouped = new Map();
+    for (const row of rows) {
+        const key = rowSignature(row);
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(row);
+    }
+    return [...grouped.values()]
+        .map(group => ({
+            rows: group,
+            units: [...new Set(group.map(row => row.creditUnits == null ? '' : String(row.creditUnits)).filter(Boolean))]
+        }))
+        .filter(item => item.rows.length > 1 && item.units.length > 1);
+}
+
 function sourceCounts(rows) {
     return rows.reduce((counts, row) => {
         const key = String(row.sourceTitle || 'Unknown source').trim() || 'Unknown source';
@@ -128,7 +152,8 @@ async function main() {
     const coverage = programmeCoverage(rows);
     const warnings = coverageWarnings(coverage);
     const failures = [];
-    const duplicateCourseRows = rows.length - new Set(rows.map(rowSignature)).size;
+    const duplicateCourseRows = rows.length - new Set(rows.map(exactRowSignature)).size;
+    const unitConflicts = courseUnitConflicts(rows);
 
     if (rows.length < MIN_EXPECTED_ROWS) {
         failures.push(`Course catalog row count dropped below ${MIN_EXPECTED_ROWS}: ${rows.length}`);
@@ -143,7 +168,23 @@ async function main() {
         warnings.push({
             type: 'duplicate_course_rows',
             count: duplicateCourseRows,
-            message: `${duplicateCourseRows} duplicate course row(s) are present after catalog loading. Review ingestion/source duplication.`
+            message: `${duplicateCourseRows} exact duplicate course row(s) are present after catalog loading. Review ingestion/source duplication.`
+        });
+    }
+    if (unitConflicts.length) {
+        warnings.push({
+            type: 'course_unit_conflicts',
+            count: unitConflicts.length,
+            message: `${unitConflicts.length} course row signature(s) have conflicting credit units and need admin review.`,
+            rows: unitConflicts.slice(0, 10).map(item => item.rows.map(row => ({
+                programme: row.programme,
+                level: row.level,
+                semester: row.semester,
+                courseCode: row.courseCode,
+                courseTitle: row.courseTitle,
+                creditUnits: row.creditUnits,
+                sourceTitle: row.sourceTitle
+            })))
         });
     }
 

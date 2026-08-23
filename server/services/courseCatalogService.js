@@ -233,7 +233,8 @@ async function loadCatalog() {
     if (_catalogPromise) return _catalogPromise;
     _catalogPromise = (async () => {
         const dbRows = await loadDbCatalog();
-        return dbRows.length ? dbRows : loadSourceCatalog();
+        const rows = dbRows.length ? dbRows : await loadSourceCatalog();
+        return dedupeCatalogRows(rows);
     })().catch(error => {
         _catalogPromise = null;
         console.warn('[courseCatalogService] failed to load student courses:', error.message);
@@ -247,11 +248,51 @@ async function loadSourceCatalog() {
     const mbbsRows = await loadMbbsProspectusCatalog();
     const legacyRows = await loadLegacyDocxCatalog();
     const updatedProgrammes = expandProgrammeSet(updatedRows.map(row => row.programme).filter(Boolean));
-    return [
+    return dedupeCatalogRows([
         ...updatedRows,
         ...mbbsRows,
         ...legacyRows.filter(row => row.programme !== 'MEDICINE AND SURGERY' && !updatedProgrammes.has(row.programme))
-    ];
+    ]);
+}
+
+function catalogDedupeKey(row) {
+    return [
+        normaliseProgramme(row.programme),
+        String(row.level || '').trim(),
+        normalizeSemesterValue(row.semester),
+        normalizeCourseCode(row.courseCode),
+        normalizeCourseTitle(row.courseTitle),
+        row.creditUnits == null ? '' : String(row.creditUnits).trim(),
+        normaliseProgramme(row.category),
+        String(row.sourceTitle || '').replace(/\s+/g, ' ').trim().toLowerCase()
+    ].join('|');
+}
+
+function mergeCatalogRow(existing, row) {
+    return {
+        ...existing,
+        sn: existing.sn || row.sn,
+        faculty: existing.faculty || row.faculty,
+        department: existing.department || row.department,
+        programme: existing.programme || row.programme,
+        courseCode: existing.courseCode || row.courseCode,
+        courseTitle: existing.courseTitle || row.courseTitle,
+        creditUnits: existing.creditUnits ?? row.creditUnits ?? null,
+        level: existing.level || row.level,
+        semester: existing.semester || row.semester,
+        category: existing.category || row.category,
+        sourceTitle: existing.sourceTitle || row.sourceTitle
+    };
+}
+
+function dedupeCatalogRows(rows) {
+    const grouped = new Map();
+    for (const row of rows || []) {
+        const key = catalogDedupeKey(row);
+        if (!key.replace(/\|/g, '')) continue;
+        grouped.set(key, grouped.has(key) ? mergeCatalogRow(grouped.get(key), row) : row);
+    }
+    return [...grouped.values()];
 }
 
 async function loadDbCatalog() {
