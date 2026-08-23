@@ -935,6 +935,7 @@ async function _buildAdmissionCutoffReply(question) {
 
 function _isRegistrationRequirementQuestion(question) {
     const q = String(question || '').toLowerCase();
+    if (/\b(credit\s+load|credit\s+unit|units?|academic\s+workload|below\s+9|above\s+30|senate\s+approval|faculty\s+board)\b/i.test(q)) return false;
     return /\b(register|registration|clearance|new\s+student|returning\s+student|fresh(?:er|ers)?|apply|application|admission\s+portal|upload\s+documents?|application\s+fee)\b/i.test(q)
         && /\b(student|students|bmu|bayelsa|admission|admissions|semester|session|portal|programme|program|applicant|applicants)\b/i.test(q);
 }
@@ -1642,8 +1643,6 @@ async function _buildFastIntentReply(question) {
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply(q);
     const admissionCutoffReply = await _buildAdmissionCutoffReply(q);
     if (admissionCutoffReply) return admissionCutoffReply;
-    const registrationRequirementReply = await _buildRegistrationRequirementReply(q);
-    if (registrationRequirementReply) return registrationRequirementReply;
     const programmeFeeReply = await _buildStructuredProgrammeFeeReply(q) || _buildProgrammeFeeReply(q);
     if (programmeFeeReply) return programmeFeeReply;
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
@@ -1651,6 +1650,9 @@ async function _buildFastIntentReply(question) {
 
     const handbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
     if (handbookPolicyReply) return handbookPolicyReply;
+
+    const registrationRequirementReply = await _buildRegistrationRequirementReply(q);
+    if (registrationRequirementReply) return registrationRequirementReply;
 
     const lawReply = bmuLawService.buildLawReply(q);
     if (lawReply) return lawReply;
