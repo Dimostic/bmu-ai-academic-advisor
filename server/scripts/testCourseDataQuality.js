@@ -120,19 +120,31 @@ function coverageWarnings(coverage) {
 async function main() {
     const rows = await courseCatalogService.loadCatalog();
     const invalidRows = rows.filter(row => !isCleanCourseCode(row.courseCode));
-    const unknownInvalidRows = invalidRows.filter(row => !KNOWN_INVALID_CODE_SIGNATURES.has(rowSignature(row)));
+    const invalidSignatures = new Set(invalidRows.map(rowSignature));
+    const uniqueInvalidRows = [...invalidSignatures].map(signature => (
+        invalidRows.find(row => rowSignature(row) === signature)
+    ));
+    const unknownInvalidRows = uniqueInvalidRows.filter(row => !KNOWN_INVALID_CODE_SIGNATURES.has(rowSignature(row)));
     const coverage = programmeCoverage(rows);
     const warnings = coverageWarnings(coverage);
     const failures = [];
+    const duplicateCourseRows = rows.length - new Set(rows.map(rowSignature)).size;
 
     if (rows.length < MIN_EXPECTED_ROWS) {
         failures.push(`Course catalog row count dropped below ${MIN_EXPECTED_ROWS}: ${rows.length}`);
     }
-    if (invalidRows.length > MAX_KNOWN_INVALID_CODES) {
-        failures.push(`Invalid course-code count exceeded baseline ${MAX_KNOWN_INVALID_CODES}: ${invalidRows.length}`);
+    if (uniqueInvalidRows.length > MAX_KNOWN_INVALID_CODES) {
+        failures.push(`Unique invalid course-code count exceeded baseline ${MAX_KNOWN_INVALID_CODES}: ${uniqueInvalidRows.length}`);
     }
     if (unknownInvalidRows.length) {
         failures.push(`Found ${unknownInvalidRows.length} unknown invalid course-code row(s)`);
+    }
+    if (duplicateCourseRows > 0) {
+        warnings.push({
+            type: 'duplicate_course_rows',
+            count: duplicateCourseRows,
+            message: `${duplicateCourseRows} duplicate course row(s) are present after catalog loading. Review ingestion/source duplication.`
+        });
     }
 
     console.log(JSON.stringify({
@@ -141,8 +153,9 @@ async function main() {
         programmes: coverage.length,
         sources: sourceCounts(rows),
         invalidCourseCodes: {
-            ok: invalidRows.length <= MAX_KNOWN_INVALID_CODES && unknownInvalidRows.length === 0,
+            ok: uniqueInvalidRows.length <= MAX_KNOWN_INVALID_CODES && unknownInvalidRows.length === 0,
             count: invalidRows.length,
+            uniqueCount: uniqueInvalidRows.length,
             knownBaseline: MAX_KNOWN_INVALID_CODES,
             rows: invalidRows.map(row => ({
                 known: KNOWN_INVALID_CODE_SIGNATURES.has(rowSignature(row)),
