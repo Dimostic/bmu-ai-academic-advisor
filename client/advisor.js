@@ -156,6 +156,7 @@
         currentAskController: null,
         askCancelled: false,
         speakingFocusTimer: null,
+        autoFollowupTimer: null,
         lastSpeakingFocusAt: 0,
         wakeWordEnabled: (() => {
             let saved = null;
@@ -1902,13 +1903,15 @@
     }
 
     function maybeStartAutoFollowupListening() {
+        clearAutoFollowupTimer();
         if (state.voicePaused) return;
         if (state.lastAskInputMode !== 'voice') return;
         if (state.recording || document.hidden) return;
         if (!questionInput || questionInput.value.trim()) return;
         if (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable) return;
         if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) return;
-        window.setTimeout(() => {
+        state.autoFollowupTimer = window.setTimeout(() => {
+            state.autoFollowupTimer = null;
             if (state.voicePaused) return;
             if (state.recording || document.hidden) return;
             if (questionInput?.value.trim()) return;
@@ -1919,7 +1922,15 @@
         }, 250);
     }
 
+    function clearAutoFollowupTimer() {
+        if (state.autoFollowupTimer) {
+            clearTimeout(state.autoFollowupTimer);
+            state.autoFollowupTimer = null;
+        }
+    }
+
     function stopCurrentAudio() {
+        clearAutoFollowupTimer();
         if (state.currentAudio) {
             try { state.currentAudio.pause(); } catch (_) {}
             try { state.currentAudio.currentTime = 0; } catch (_) {}
@@ -1942,6 +1953,7 @@
     }
 
     function cancelActiveListening({ clearText = false, label = 'Ready' } = {}) {
+        clearAutoFollowupTimer();
         state.cancelVoiceListening = true;
         state.discardVoiceRecording = true;
         clearPendingVoiceSubmit();
@@ -2992,6 +3004,7 @@
 
     function startListening(options = {}) {
         if (state.recording) return;
+        clearAutoFollowupTimer();
         state.voicePaused = false;
         state.cancelVoiceListening = false;
         state.discardVoiceRecording = false;
@@ -3295,6 +3308,7 @@
             let lastSpeechAt = 0;
             let noiseFloor = 0.008;
             let discardReason = '';
+            let speechCandidateAt = 0;
             const stopRecorder = (discard = false) => {
                 if (discard) discardReason = 'no-speech';
                 discardRecording = discardRecording || discard;
@@ -3406,11 +3420,16 @@
                     }
                     const speechThreshold = Math.max(0.010, Math.min(0.030, noiseFloor * 2.4));
                     if (rms > speechThreshold) {
-                        heardSpeech = true;
-                        lastSpeechAt = now;
-                        setAvatarState('listening', 'Listening');
+                        if (!speechCandidateAt) speechCandidateAt = now;
+                        const sustainedSpeechMs = now - speechCandidateAt;
+                        if (!autoFollowup || sustainedSpeechMs >= 420) {
+                            heardSpeech = true;
+                            lastSpeechAt = now;
+                            setAvatarState('listening', 'Listening');
+                        }
                         return;
                     }
+                    speechCandidateAt = 0;
                     if (!heardSpeech && now - startedAt >= noSpeechMs) {
                         stopRecorder(true);
                         return;
