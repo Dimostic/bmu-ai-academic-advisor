@@ -290,6 +290,41 @@ function _normaliseHeader(value) {
         .replace(/^_+|_+$/g, '');
 }
 
+function _canonicalProgrammeKey(value) {
+    const text = String(value || '')
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\bbachelor\s+of\b/g, '')
+        .replace(/\bbsc\b/g, '')
+        .replace(/\bb\s*sc\b/g, '')
+        .replace(/\bbachelor\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!text) return '';
+    if (/\bmbbs\b|\bmedicine\s+and\s+surgery\b|\bmedicine\s+surgery\b/.test(text)) return 'medicine and surgery';
+    if (/\bcommunity\s+health\b/.test(text)) return 'community health sciences';
+    if (/\bhealth\s+care\s+administration\b/.test(text) && /\bhospital\s+management\b/.test(text)) return 'health care administration and hospital management';
+    if (/\bhuman\s+nutrition\b|\bnutrition\s+and\s+dietetics\b|\bnutrition\s+dietetics\b/.test(text)) return 'nutrition and dietetics';
+    if (/\bdoctor\s+of\s+pharmacy\b|\bpharmd\b|\bpharmacy\b/.test(text)) return 'pharmacy';
+    if (text === 'physics' || /\bphysics\s+with\s+electronics\b/.test(text)) return 'physics with electronics';
+    if (/\bradiography\b/.test(text)) return 'radiography and radiation science';
+    return text;
+}
+
+function _aggregateProgrammeCounts(rows) {
+    const counts = new Map();
+    const names = new Map();
+    for (const row of rows || []) {
+        const key = _canonicalProgrammeKey(row.programme);
+        if (!key) continue;
+        counts.set(key, (counts.get(key) || 0) + Number(row.count || 0));
+        if (!names.has(key)) names.set(key, new Set());
+        names.get(key).add(row.programme);
+    }
+    return { counts, names };
+}
+
 function _coerceStructuredValue(config, column, value) {
     if (value === undefined || value === '') {
         return config.defaults && Object.prototype.hasOwnProperty.call(config.defaults, column)
@@ -3478,27 +3513,59 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             };
         });
 
-        const programmeGapRows = await query(`
-            SELECT p.programme,
-                   COUNT(DISTINCT c.id) AS course_count,
-                   COUNT(DISTINCT f.id) AS fee_count,
-                   COUNT(DISTINCT r.id) AS rule_count
-            FROM academic_programmes p
-            LEFT JOIN academic_courses c
-              ON c.status = 'active' AND LOWER(c.programme) = LOWER(p.programme)
-            LEFT JOIN academic_fees f
-              ON f.status = 'active' AND LOWER(f.programme) = LOWER(p.programme)
-            LEFT JOIN academic_rules r
-              ON r.status = 'active' AND LOWER(r.programme) = LOWER(p.programme)
-            WHERE p.status = 'active'
-              AND COALESCE(p.programme, '') <> ''
-            GROUP BY p.programme
-            ORDER BY p.programme
+        const programmeRows = await query(`
+            SELECT programme
+            FROM academic_programmes
+            WHERE status = 'active'
+              AND COALESCE(programme, '') <> ''
+            ORDER BY programme
             LIMIT 500
         `);
+        const courseCountRows = await query(`
+            SELECT programme, COUNT(*) AS count
+            FROM academic_courses
+            WHERE status = 'active'
+              AND COALESCE(programme, '') <> ''
+            GROUP BY programme
+        `);
+        const feeCountRows = await query(`
+            SELECT programme, COUNT(*) AS count
+            FROM academic_fees
+            WHERE status = 'active'
+              AND COALESCE(programme, '') <> ''
+            GROUP BY programme
+        `);
+        const ruleCountRows = await query(`
+            SELECT programme, COUNT(*) AS count
+            FROM academic_rules
+            WHERE status = 'active'
+              AND COALESCE(programme, '') <> ''
+            GROUP BY programme
+        `);
+        const courseCounts = _aggregateProgrammeCounts(courseCountRows);
+        const feeCounts = _aggregateProgrammeCounts(feeCountRows);
+        const ruleCounts = _aggregateProgrammeCounts(ruleCountRows);
+        const programmeGapRows = programmeRows.map(row => {
+            const key = _canonicalProgrammeKey(row.programme);
+            const linkedNames = new Set([
+                ...(courseCounts.names.get(key) || []),
+                ...(feeCounts.names.get(key) || []),
+                ...(ruleCounts.names.get(key) || [])
+            ]);
+            return {
+                programme: row.programme,
+                canonicalProgramme: key,
+                linkedProgrammeNames: [...linkedNames].filter(name => name !== row.programme).sort(),
+                course_count: courseCounts.counts.get(key) || 0,
+                fee_count: feeCounts.counts.get(key) || 0,
+                rule_count: ruleCounts.counts.get(key) || 0
+            };
+        });
         const programmeGaps = programmeGapRows
             .map(row => ({
                 programme: row.programme,
+                canonicalProgramme: row.canonicalProgramme,
+                linkedProgrammeNames: row.linkedProgrammeNames,
                 courseCount: Number(row.course_count || 0),
                 feeCount: Number(row.fee_count || 0),
                 ruleCount: Number(row.rule_count || 0),
