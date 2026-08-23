@@ -337,12 +337,12 @@ function _containsFuzzyOfficerName(questionNormalised, officer) {
     });
 }
 
-function _detectPrincipalOfficerByName(question) {
+function _detectPrincipalOfficerByName(question, officers = BMU_PRINCIPAL_OFFICERS) {
     const q = _normaliseOfficerName(question);
     if (!q) return null;
     const isPersonLookup = /(who is|tell me about|what do you know about|identify|profile of|current role of|position of|office of|name)/i.test(String(question || ''));
     if (!isPersonLookup) return null;
-    return BMU_PRINCIPAL_OFFICERS.find(officer => {
+    return (officers || []).find(officer => {
         const name = _normaliseOfficerName(officer.name);
         if (!name) return false;
         if (q.includes(name)) return true;
@@ -512,6 +512,227 @@ function _programmeFeeRow(level, values) {
     return `| ${_formatFeeLevel(level)} | ${values.indigene} | ${values.non_indigene} |`;
 }
 
+function _normaliseRole(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/&/g, 'and')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function _shapeStructuredOfficer(row) {
+    const position = String(row.office || '').trim();
+    const name = String(row.officer_name || '').trim();
+    if (!position || !name) return null;
+    return {
+        position,
+        name,
+        note: String(row.scope_label || '').trim(),
+        sourcePath: String(row.source_path || 'BMU structured officers table').trim()
+    };
+}
+
+async function _loadStructuredPrincipalOfficers() {
+    try {
+        const rows = await query(
+            `SELECT office, officer_name, scope_label, source_path, raw_text
+             FROM academic_officers
+             WHERE status = 'active'
+               AND COALESCE(office, '') <> ''
+               AND COALESCE(officer_name, '') <> ''
+             ORDER BY updated_at DESC, id DESC
+             LIMIT 100`
+        );
+        const seen = new Set();
+        const officers = [];
+        for (const row of rows || []) {
+            const shaped = _shapeStructuredOfficer(row);
+            if (!shaped) continue;
+            const key = _normaliseRole(shaped.position);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            officers.push(shaped);
+        }
+        return officers;
+    } catch (err) {
+        console.warn('[advisorStreamService] structured officer lookup failed:', err.message);
+        return [];
+    }
+}
+
+async function _getPrincipalOfficersForAnswer() {
+    const structured = await _loadStructuredPrincipalOfficers();
+    return structured.length ? structured : BMU_PRINCIPAL_OFFICERS;
+}
+
+function _findOfficerByRole(officers, position) {
+    const target = _normaliseRole(position);
+    return (officers || []).find(item => {
+        const role = _normaliseRole(item.position);
+        return role === target
+            || (target.includes('pro chancellor') && role.includes('pro chancellor'))
+            || (target.includes('chairman of governing council') && role.includes('chairman') && role.includes('governing council'))
+            || (target.includes('vice chancellor') && !target.includes('deputy') && role.includes('vice chancellor') && !role.includes('deputy'))
+            || (target.includes('bursar') && role.includes('bursar'))
+            || (target.includes('registrar') && role.includes('registrar'))
+            || (target.includes('university librarian') && role.includes('librarian'))
+            || (target.includes('deputy vice chancellor academic') && role.includes('deputy') && role.includes('academic'))
+            || (target.includes('deputy vice chancellor administration') && role.includes('deputy') && role.includes('administration'));
+    });
+}
+
+function _formatOfficerSource(officers) {
+    const source = officers.find(item => item.sourcePath)?.sourcePath || 'BMU Brief Institutional Profile (May 2025)';
+    return source.includes('structured') ? source : 'BMU structured officers table / BMU Brief Institutional Profile';
+}
+
+async function _buildStructuredPrincipalOfficersReply() {
+    const officers = await _getPrincipalOfficersForAnswer();
+    return _buildPrincipalOfficersReply(officers);
+}
+
+async function _buildStructuredPrincipalOfficerReply(position) {
+    const officers = await _getPrincipalOfficersForAnswer();
+    return _buildPrincipalOfficerReply(position, officers);
+}
+
+async function _buildStructuredPrincipalOfficerPersonReply(questionOrOfficer) {
+    const officers = await _getPrincipalOfficersForAnswer();
+    const officer = typeof questionOrOfficer === 'string'
+        ? _detectPrincipalOfficerByName(questionOrOfficer, officers)
+        : questionOrOfficer;
+    return _buildPrincipalOfficerPersonReply(officer);
+}
+
+function _normaliseFeeProgramme(value) {
+    return String(value || '')
+        .toUpperCase()
+        .replace(/&/g, 'AND')
+        .replace(/\bSCIENCES\b/g, 'SCIENCE')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function _structuredFeeLevel(row) {
+    const hay = [
+        row.level_label,
+        row.fee_category,
+        row.programme,
+        row.raw_text,
+        row.row_json
+    ].map(v => String(v || '')).join(' ');
+    const match = hay.match(/\b(100|200|300|400|500|600)\s*(?:level|lvl|l)?\b/i);
+    if (!match) return null;
+    if (match[1] === '200' && /\b(direct\s+entry|de)\b/i.test(hay)) return '200_de';
+    return match[1];
+}
+
+function _structuredFeeCategory(row) {
+    const hay = `${row.student_category || ''} ${row.fee_category || ''} ${row.raw_text || ''} ${row.row_json || ''}`;
+    if (/non[-\s]?indigene|non[-\s]?bayelsa/i.test(hay)) return 'non_indigene';
+    if (/\bindigene|bayelsa\s+indigene/i.test(hay)) return 'indigene';
+    return null;
+}
+
+function _structuredFeeAmount(row) {
+    const label = String(row.amount_label || '').trim();
+    if (label) return label.replace(/^N\s*/i, '').replace(/^₦\s*/, '').trim();
+    const value = Number(row.amount_value || 0);
+    return value > 0 ? value.toLocaleString('en-NG') : '';
+}
+
+async function _buildStructuredProgrammeFeeReply(question) {
+    const programmeKey = _detectFeeProgramme(question);
+    const fallbackFees = programmeKey ? PROGRAMME_FEES[programmeKey] : null;
+    if (!programmeKey || !_isProgrammeFeeQuestion(question)) return null;
+
+    const programmeNeedles = [
+        programmeKey,
+        fallbackFees?.display,
+        programmeKey.replace(/\s+SCIENCE$/, ''),
+        programmeKey.replace(/\s+&\s+/g, ' AND ')
+    ].filter(Boolean);
+
+    try {
+        const where = programmeNeedles.map(() => 'UPPER(programme) LIKE ?').join(' OR ');
+        const rows = await query(
+            `SELECT programme, fee_category, amount_label, amount_value, session_label,
+                    student_category, authority_type, scope_label, source_path, raw_text, row_json
+             FROM academic_fees
+             WHERE status = 'active'
+               AND (${where})
+             ORDER BY updated_at DESC, id DESC
+             LIMIT 250`,
+            programmeNeedles.map(value => `%${_normaliseFeeProgramme(value)}%`)
+        );
+        const records = (rows || [])
+            .map(row => ({
+                level: _structuredFeeLevel(row),
+                category: _structuredFeeCategory(row),
+                amount: _structuredFeeAmount(row),
+                session: String(row.session_label || '').trim(),
+                sourcePath: String(row.source_path || 'BMU structured fees table').trim()
+            }))
+            .filter(row => row.amount && (row.level || row.category));
+        if (!records.length) return null;
+
+        const level = _detectFeeLevel(question);
+        const category = _detectFeeCategory(question);
+        const display = fallbackFees?.display || programmeKey;
+        const sourcePath = records.find(r => r.sourcePath)?.sourcePath || 'BMU structured fees table';
+        const sourceNote = `Source: ${sourcePath}. Acceptance fee and accommodation may be separate where applicable.`;
+
+        if (level && category) {
+            const match = records.find(row => row.level === level && row.category === category);
+            if (!match) return null;
+            const categoryLabel = category === 'indigene' ? 'indigene' : 'non-indigene';
+            return {
+                speech_text: `For ${_formatFeeLevel(level)} ${display}, ${categoryLabel}, the official total payable per session is ${match.amount} naira.`,
+                display_markdown: `For **${_formatFeeLevel(level)} ${display}**, **${categoryLabel}**, the official **total payable per session** is **N${match.amount}**.\n\n${sourceNote}`,
+                topic_slug: 'programme_fee',
+                citations: [{ title: sourcePath, source: 'Academic fees structured table' }],
+                suggested_actions: [],
+                follow_up_questions: [],
+                needs_escalation: false,
+                confidence: 0.99,
+                _source: 'structured_facts'
+            };
+        }
+
+        const byLevel = new Map();
+        for (const row of records) {
+            if (!row.level || !row.category) continue;
+            const current = byLevel.get(row.level) || {};
+            current[row.category] = `N${row.amount}`;
+            byLevel.set(row.level, current);
+        }
+        const levelOrder = ['100', '200_de', '200', '300', '400', '500', '600'];
+        const tableRows = levelOrder
+            .filter(item => (!level || item === level) && byLevel.get(item)?.indigene && byLevel.get(item)?.non_indigene)
+            .map(item => _programmeFeeRow(item, byLevel.get(item)));
+        if (!tableRows.length) return null;
+
+        const scope = level ? ` for **${_formatFeeLevel(level)}**` : '';
+        const categoryHint = category ? `\n\nYou asked about **${category === 'indigene' ? 'indigene' : 'non-indigene'}** fees; the table includes both categories for comparison.` : '';
+        const table = ['| Level | Indigene total payable | Non-indigene total payable |', '| --- | ---: | ---: |', ...tableRows].join('\n');
+        return {
+            speech_text: `Here are the official ${display} fee totals${level ? ` for ${_formatFeeLevel(level)}` : ''}.`,
+            display_markdown: `Official **${display}** fee totals${scope}:\n\n${table}${categoryHint}\n\n${sourceNote}`,
+            topic_slug: 'programme_fee_table',
+            citations: [{ title: sourcePath, source: 'Academic fees structured table' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.99,
+            _source: 'structured_facts'
+        };
+    } catch (err) {
+        console.warn('[advisorStreamService] structured fee lookup failed:', err.message);
+        return null;
+    }
+}
+
 function _buildProgrammeFeeReply(question) {
     const programmeKey = _detectFeeProgramme(question);
     const fees = programmeKey ? PROGRAMME_FEES[programmeKey] : null;
@@ -566,8 +787,8 @@ function _buildMedicineFeeReply(question) {
     return _buildProgrammeFeeReply(question);
 }
 
-function _buildPrincipalOfficersReply() {
-    const rows = BMU_PRINCIPAL_OFFICERS.map(({ position, name, note }) => ({
+function _buildPrincipalOfficersReply(officers = BMU_PRINCIPAL_OFFICERS) {
+    const rows = officers.map(({ position, name, note }) => ({
         position,
         name,
         note: note || 'Current BMU profile listing'
@@ -579,10 +800,10 @@ function _buildPrincipalOfficersReply() {
     ].join('\n');
 
     return {
-        speech_text: BMU_PRINCIPAL_OFFICERS.map(({ position, name }) => `${position}: ${name}`).join('; ') + '.',
-        display_markdown: `Based on the BMU Brief Institutional Profile (May 2025), the principal officers are:\n\n${table}\n\nAlso listed in the same profile: Visitor to the University, Senator Douye Diri.`,
+        speech_text: officers.map(({ position, name }) => `${position}: ${name}`).join('; ') + '.',
+        display_markdown: `Based on the active BMU principal-officer records, the principal officers are:\n\n${table}\n\nAlso listed in the BMU profile: Visitor to the University, Senator Douye Diri.`,
         topic_slug: 'bmu_principal_officers',
-        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        citations: [{ title: _formatOfficerSource(officers), source: 'BMU principal officers' }],
         suggested_actions: [],
         follow_up_questions: [],
         needs_escalation: false,
@@ -590,15 +811,15 @@ function _buildPrincipalOfficersReply() {
     };
 }
 
-function _buildPrincipalOfficerReply(position) {
-    const officer = BMU_PRINCIPAL_OFFICERS.find(item => item.position === position);
+function _buildPrincipalOfficerReply(position, officers = BMU_PRINCIPAL_OFFICERS) {
+    const officer = _findOfficerByRole(officers, position);
     if (!officer) return null;
     const note = officer.note ? `, ${officer.note}` : '';
     return {
         speech_text: `The ${officer.position} of Bayelsa Medical University is ${officer.name}${note}.`,
         display_markdown: `The **${officer.position}** of Bayelsa Medical University is **${officer.name}**${note}.`,
         topic_slug: 'bmu_principal_officer',
-        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        citations: [{ title: officer.sourcePath || _formatOfficerSource(officers), source: 'BMU principal officers' }],
         suggested_actions: [],
         follow_up_questions: [],
         needs_escalation: false,
@@ -613,7 +834,7 @@ function _buildPrincipalOfficerPersonReply(officer) {
         speech_text: `${officer.name} is the ${officer.position} of Bayelsa Medical University${note}.`,
         display_markdown: `**${officer.name}** is the **${officer.position}** of Bayelsa Medical University${note}.`,
         topic_slug: 'bmu_principal_officer',
-        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        citations: [{ title: officer.sourcePath || 'BMU structured officers table / BMU Brief Institutional Profile', source: 'BMU principal officers' }],
         suggested_actions: [],
         follow_up_questions: [],
         needs_escalation: false,
@@ -1266,17 +1487,18 @@ async function _buildFastIntentReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q) return null;
 
-    const requestedPrincipalOfficerByName = _detectPrincipalOfficerByName(q);
+    const structuredOfficers = await _getPrincipalOfficersForAnswer();
+    const requestedPrincipalOfficerByName = _detectPrincipalOfficerByName(q, structuredOfficers);
     if (requestedPrincipalOfficerByName) return _buildPrincipalOfficerPersonReply(requestedPrincipalOfficerByName);
 
     const requestedPrincipalOfficerRole = _detectPrincipalOfficerRole(q);
-    if (requestedPrincipalOfficerRole) return _buildPrincipalOfficerReply(requestedPrincipalOfficerRole);
+    if (requestedPrincipalOfficerRole) return _buildPrincipalOfficerReply(requestedPrincipalOfficerRole, structuredOfficers);
 
-    if (_isPrincipalOfficersQuestion(q)) return _buildPrincipalOfficersReply();
+    if (_isPrincipalOfficersQuestion(q)) return _buildPrincipalOfficersReply(structuredOfficers);
     if (_isGovernorVisitorQuestion(q)) return _buildGovernorVisitorReply();
 
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply(q);
-    const programmeFeeReply = _buildProgrammeFeeReply(q);
+    const programmeFeeReply = await _buildStructuredProgrammeFeeReply(q) || _buildProgrammeFeeReply(q);
     if (programmeFeeReply) return programmeFeeReply;
     const courseCatalogReply = await courseCatalogService.buildCourseListReply(q);
     if (courseCatalogReply) return courseCatalogReply;
@@ -1868,10 +2090,10 @@ async function askStream({
 
     if (requestedPrincipalOfficerByName || requestedPrincipalOfficerRole || isPrincipalOfficersQuestion) {
         const parsed = requestedPrincipalOfficerByName
-            ? _buildPrincipalOfficerPersonReply(requestedPrincipalOfficerByName)
+            ? await _buildStructuredPrincipalOfficerPersonReply(trimmed) || _buildPrincipalOfficerPersonReply(requestedPrincipalOfficerByName)
             : requestedPrincipalOfficerRole
-            ? _buildPrincipalOfficerReply(requestedPrincipalOfficerRole)
-            : _buildPrincipalOfficersReply();
+            ? await _buildStructuredPrincipalOfficerReply(requestedPrincipalOfficerRole) || _buildPrincipalOfficerReply(requestedPrincipalOfficerRole)
+            : await _buildStructuredPrincipalOfficersReply() || _buildPrincipalOfficersReply();
         send('speech_ready', { speech_text: parsed.speech_text });
         if (parsed.display_markdown) send('token', { text: parsed.display_markdown });
 

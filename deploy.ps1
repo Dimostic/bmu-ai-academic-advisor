@@ -8,6 +8,7 @@ $VpsHost  = if ($env:BMU_VPS_HOST) { $env:BMU_VPS_HOST } else { 'bmu-server' }
 $AppDir   = '/var/www/bmu-ai-academic-advisor'
 $AppName  = 'bmuaiadvisor'
 $AppEntry = 'server/app.js'
+$HealthBaseUrl = if ($env:ADVISOR_HEALTH_BASE_URL) { $env:ADVISOR_HEALTH_BASE_URL.TrimEnd('/') } else { 'https://advisor.bmuaiagent.mehetti.com' }
 
 function Invoke-Remote([string]$Cmd) {
     Write-Host "  ssh> $Cmd" -ForegroundColor DarkGray
@@ -32,8 +33,10 @@ Invoke-Remote 'pm2 save'
 
 Start-Sleep -Seconds 3
 
-Write-Host "[5/5] Checking pm2 status + running smoke and golden advisor tests..."
+Write-Host "[5/5] Checking pm2 status + running smoke, golden advisor tests, and live health checks..."
 Invoke-Remote "pm2 status $AppName"
 Invoke-Remote "cd $AppDir && npm test && npm run test:advisor-golden"
+Invoke-Remote "curl -fsS `"$HealthBaseUrl/api/health`" >/dev/null"
+Invoke-Remote "curl -fsS `"$HealthBaseUrl/api/advisor/health`" >/dev/null"
 
 Write-Host "Deployment complete." -ForegroundColor Green
