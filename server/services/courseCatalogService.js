@@ -262,10 +262,25 @@ function catalogDedupeKey(row) {
         normalizeSemesterValue(row.semester),
         normalizeCourseCode(row.courseCode),
         normalizeCourseTitle(row.courseTitle),
-        row.creditUnits == null ? '' : String(row.creditUnits).trim(),
-        normaliseProgramme(row.category),
-        String(row.sourceTitle || '').replace(/\s+/g, ' ').trim().toLowerCase()
+        row.creditUnits == null ? '' : String(row.creditUnits).trim()
     ].join('|');
+}
+
+function mergeTextList(...values) {
+    const seen = new Set();
+    const merged = [];
+    values
+        .flatMap(value => String(value || '').split(/\s*[/;]\s*/))
+        .map(value => value.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .forEach(value => {
+            const key = value.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                merged.push(value);
+            }
+        });
+    return merged.join('/');
 }
 
 function mergeCatalogRow(existing, row) {
@@ -280,8 +295,8 @@ function mergeCatalogRow(existing, row) {
         creditUnits: existing.creditUnits ?? row.creditUnits ?? null,
         level: existing.level || row.level,
         semester: existing.semester || row.semester,
-        category: existing.category || row.category,
-        sourceTitle: existing.sourceTitle || row.sourceTitle
+        category: mergeTextList(existing.category, row.category),
+        sourceTitle: mergeTextList(existing.sourceTitle, row.sourceTitle)
     };
 }
 
