@@ -3366,6 +3366,170 @@ router.get('/structured-records/tables', authenticateToken, requireAdmin, async 
     }
 });
 
+router.get('/structured-records/quality', authenticateToken, requireAdmin, async (_req, res) => {
+    try {
+        await documentLabService.ensureSchema();
+        const tableCounts = [];
+        for (const [name, config] of Object.entries(STRUCTURED_TABLES)) {
+            const rows = await query(`
+                SELECT COUNT(*) AS total,
+                       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active
+                FROM ${name}
+            `);
+            tableCounts.push({
+                table: name,
+                label: config.label,
+                total: Number(rows?.[0]?.total || 0),
+                active: Number(rows?.[0]?.active || 0)
+            });
+        }
+
+        const criticalRoles = [
+            'Vice-Chancellor',
+            'Registrar',
+            'Bursar',
+            'University Librarian',
+            'Pro-Chancellor / Chairman of Governing Council'
+        ];
+        const officerRows = await query(`
+            SELECT office, officer_name
+            FROM academic_officers
+            WHERE status = 'active'
+        `);
+        const normalise = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const hasRole = role => officerRows.some(row => {
+            const office = normalise(row.office);
+            const target = normalise(role);
+            return office === target
+                || (target.includes('vice chancellor') && !target.includes('deputy') && office.includes('vice chancellor') && !office.includes('deputy'))
+                || (target.includes('bursar') && office.includes('bursar'))
+                || (target.includes('registrar') && office.includes('registrar'))
+                || (target.includes('librarian') && office.includes('librarian'))
+                || (target.includes('pro chancellor') && (office.includes('pro chancellor') || (office.includes('chairman') && office.includes('governing council'))));
+        });
+        const missingOfficerRoles = criticalRoles.filter(role => !hasRole(role));
+
+        const invalidCourseWhere = `
+            status = 'active'
+            AND COALESCE(course_code, '') <> ''
+            AND course_code NOT REGEXP '^(BMU-)?[A-Z]{2,4}[[:space:]]*[0-9]{3}[A-Z]?$'
+        `;
+        const invalidCourseCountRows = await query(`SELECT COUNT(*) AS count FROM academic_courses WHERE ${invalidCourseWhere}`);
+        const invalidCourseRows = await query(`
+            SELECT programme, level_label, course_code, course_title, source_path
+            FROM academic_courses
+            WHERE ${invalidCourseWhere}
+            ORDER BY programme, level_label, course_code
+            LIMIT 25
+        `);
+
+        const courseCoverageRows = await query(`
+            SELECT programme,
+                   COUNT(*) AS course_count,
+                   SUM(CASE WHEN level_label LIKE '%100%' THEN 1 ELSE 0 END) AS level_100,
+                   SUM(CASE WHEN level_label LIKE '%200%' THEN 1 ELSE 0 END) AS level_200,
+                   SUM(CASE WHEN level_label LIKE '%300%' THEN 1 ELSE 0 END) AS level_300,
+                   SUM(CASE WHEN level_label LIKE '%400%' THEN 1 ELSE 0 END) AS level_400,
+                   SUM(CASE WHEN level_label LIKE '%500%' THEN 1 ELSE 0 END) AS level_500,
+                   SUM(CASE WHEN level_label LIKE '%600%' THEN 1 ELSE 0 END) AS level_600
+            FROM academic_courses
+            WHERE status = 'active'
+              AND COALESCE(programme, '') <> ''
+            GROUP BY programme
+            ORDER BY programme
+        `);
+        const courseCoverage = courseCoverageRows.map(row => {
+            const levels = ['100', '200', '300', '400', '500', '600']
+                .filter(level => Number(row[`level_${level}`] || 0) > 0);
+            const likelyIncomplete = levels.length > 0 && !levels.includes('300');
+            return {
+                programme: row.programme,
+                courseCount: Number(row.course_count || 0),
+                levels,
+                likelyIncomplete
+            };
+        });
+
+        const programmeGapRows = await query(`
+            SELECT p.programme,
+                   COUNT(DISTINCT c.id) AS course_count,
+                   COUNT(DISTINCT f.id) AS fee_count,
+                   COUNT(DISTINCT r.id) AS rule_count
+            FROM academic_programmes p
+            LEFT JOIN academic_courses c
+              ON c.status = 'active' AND LOWER(c.programme) = LOWER(p.programme)
+            LEFT JOIN academic_fees f
+              ON f.status = 'active' AND LOWER(f.programme) = LOWER(p.programme)
+            LEFT JOIN academic_rules r
+              ON r.status = 'active' AND LOWER(r.programme) = LOWER(p.programme)
+            WHERE p.status = 'active'
+              AND COALESCE(p.programme, '') <> ''
+            GROUP BY p.programme
+            ORDER BY p.programme
+            LIMIT 500
+        `);
+        const programmeGaps = programmeGapRows
+            .map(row => ({
+                programme: row.programme,
+                courseCount: Number(row.course_count || 0),
+                feeCount: Number(row.fee_count || 0),
+                ruleCount: Number(row.rule_count || 0),
+                gaps: [
+                    Number(row.course_count || 0) ? null : 'no courses',
+                    Number(row.fee_count || 0) ? null : 'no fees',
+                    Number(row.rule_count || 0) ? null : 'no requirements'
+                ].filter(Boolean)
+            }))
+            .filter(row => row.gaps.length);
+
+        const ruleRows = await query(`
+            SELECT requirement_category, COUNT(*) AS count
+            FROM academic_rules
+            WHERE status = 'active'
+            GROUP BY requirement_category
+            ORDER BY count DESC
+        `);
+
+        const warnings = [
+            ...missingOfficerRoles.map(role => ({ severity: 'high', area: 'Officers', message: `Missing active record for ${role}` })),
+            ...programmeGaps.slice(0, 15).map(row => ({ severity: 'medium', area: 'Programmes', message: `${row.programme}: ${row.gaps.join(', ')}` })),
+            ...courseCoverage.filter(row => row.likelyIncomplete).slice(0, 15).map(row => ({ severity: 'medium', area: 'Courses', message: `${row.programme}: available levels ${row.levels.join(', ') || 'none'}` })),
+            ...invalidCourseRows.slice(0, 10).map(row => ({ severity: 'medium', area: 'Course codes', message: `${row.programme || 'Unknown'} ${row.level_label || ''}: ${row.course_code} ${row.course_title || ''}`.trim() }))
+        ];
+
+        res.json({
+            success: true,
+            generatedAt: new Date().toISOString(),
+            tableCounts,
+            officers: {
+                totalActive: officerRows.length,
+                missingCriticalRoles: missingOfficerRoles
+            },
+            courses: {
+                programmeCount: courseCoverage.length,
+                invalidCodeCount: Number(invalidCourseCountRows?.[0]?.count || 0),
+                invalidCodeSamples: invalidCourseRows,
+                incompleteLevelSamples: courseCoverage.filter(row => row.likelyIncomplete).slice(0, 25)
+            },
+            programmes: {
+                totalChecked: programmeGapRows.length,
+                gapCount: programmeGaps.length,
+                gapSamples: programmeGaps.slice(0, 25)
+            },
+            rules: {
+                categories: ruleRows.map(row => ({
+                    category: row.requirement_category || 'uncategorised',
+                    count: Number(row.count || 0)
+                }))
+            },
+            warnings
+        });
+    } catch (error) {
+        console.error('Structured records quality error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not load structured data quality' });
+    }
+});
+
 router.get('/structured-records/:table', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await documentLabService.ensureSchema();

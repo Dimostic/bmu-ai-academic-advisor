@@ -128,6 +128,8 @@
             <div class="stat-row" id="statRow"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
             <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Advisor ops</h3>
             <div id="advisorOps"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+            <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Structured data quality</h3>
+            <div id="structuredQuality"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
             <h3 style="margin: 22px 0 8px; color: var(--bg-deep);">Recent activity</h3>
             <div id="recent"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
         `;
@@ -149,6 +151,7 @@
 
             renderAdvisorBanner(overview);
             await renderAdvisorOps('advisorOps');
+            await renderStructuredQuality('structuredQuality');
 
             const recent = d.recentActivity || [];
             if (!recent.length) {
@@ -534,6 +537,71 @@
             });
         } catch (err) {
             document.getElementById('docList').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    async function renderStructuredQuality(targetId) {
+        const el = document.getElementById(targetId);
+        if (!el) return;
+        try {
+            const data = await api('/api/admin/structured-records/quality');
+            const warnings = data.warnings || [];
+            const tableCounts = data.tableCounts || [];
+            const courses = data.courses || {};
+            const programmes = data.programmes || {};
+            const officers = data.officers || {};
+            const rules = data.rules || {};
+            const highWarnings = warnings.filter(item => item.severity === 'high').length;
+            const mediumWarnings = warnings.filter(item => item.severity === 'medium').length;
+            const tableSummary = tableCounts.length
+                ? table(
+                    ['Table', 'Active', 'Total'],
+                    tableCounts.map(row => [
+                        escapeHtml(row.label || row.table || '—'),
+                        escapeHtml(String(row.active ?? 0)),
+                        escapeHtml(String(row.total ?? 0))
+                    ])
+                )
+                : '<p class="empty">No structured tables found.</p>';
+            const warningRows = warnings.length
+                ? table(
+                    ['Severity', 'Area', 'Issue'],
+                    warnings.slice(0, 20).map(row => [
+                        `<span class="badge ${row.severity === 'high' ? 'badge-danger' : 'badge-warn'}">${escapeHtml(row.severity)}</span>`,
+                        escapeHtml(row.area || '—'),
+                        escapeHtml(row.message || '—')
+                    ])
+                )
+                : '<p class="empty">No obvious structured-data warnings detected.</p>';
+            const ruleSummary = (rules.categories || []).slice(0, 8).map(row =>
+                `<span class="badge">${escapeHtml(row.category)}: ${escapeHtml(String(row.count || 0))}</span>`
+            ).join('');
+
+            el.innerHTML = `
+                <div class="stat-row">
+                    ${stat('High warnings', highWarnings)}
+                    ${stat('Medium warnings', mediumWarnings)}
+                    ${stat('Programmes with gaps', programmes.gapCount ?? 0)}
+                    ${stat('Course programmes', courses.programmeCount ?? 0)}
+                    ${stat('Invalid code samples', courses.invalidCodeCount ?? 0)}
+                    ${stat('Critical officer gaps', (officers.missingCriticalRoles || []).length)}
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 16px;">
+                    <button class="btn btn-ghost" id="structuredQualityRefresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh data quality</button>
+                    <button class="btn btn-primary" data-section-jump="structuredRecords"><i class="fa-solid fa-table-list"></i> Open structured facts</button>
+                    ${ruleSummary}
+                </div>
+                <h4 style="margin: 12px 0 8px; color: var(--bg-deep);">Warnings to review</h4>
+                ${warningRows}
+                <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Structured table coverage</h4>
+                ${tableSummary}
+            `;
+            document.getElementById('structuredQualityRefresh')?.addEventListener('click', () => renderStructuredQuality(targetId));
+            el.querySelector('[data-section-jump="structuredRecords"]')?.addEventListener('click', () => {
+                document.querySelector('[data-section="structuredRecords"]')?.click();
+            });
+        } catch (err) {
+            el.innerHTML = `<p class="auth-error">${escapeHtml(err.message || 'Could not load structured data quality')}</p>`;
         }
     }
     function showDocumentReview(review, title) {
