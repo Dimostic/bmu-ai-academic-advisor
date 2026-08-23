@@ -514,13 +514,54 @@ html[data-theme="dark"] .avatar-stage-controls {
     margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
     border-top: 1px dashed var(--line); padding-top: 10px;
 }
-.bubble-footer .cite { font-size: .8rem; color: var(--muted); }
+.bubble-footer .cite { font-size: .8rem; color: var(--muted); flex: 1 1 260px; min-width: 0; }
 .bubble-footer .cite strong { color: var(--text); }
 .bubble-footer .play-btn {
     background: transparent; border: 1px solid var(--line); border-radius: 8px;
     padding: 4px 10px; cursor: pointer; font-size: .85rem;
 }
 .bubble-footer .play-btn:hover { border-color: var(--accent); color: var(--accent); }
+.evidence-drawer {
+    border: 1px solid rgba(15,61,62,.12);
+    border-radius: 8px;
+    background: rgba(245,248,248,.8);
+    padding: 6px 8px;
+}
+.evidence-drawer--high-risk {
+    border-color: rgba(20,124,94,.28);
+    background: rgba(20,124,94,.08);
+}
+.evidence-drawer summary {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    list-style: none;
+}
+.evidence-drawer summary::-webkit-details-marker { display: none; }
+.evidence-drawer summary span {
+    color: var(--text);
+    font-weight: 800;
+    white-space: nowrap;
+}
+.evidence-drawer summary em {
+    font-style: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.evidence-drawer ul {
+    margin: 8px 0 0 18px;
+    padding: 0;
+}
+.evidence-drawer li { margin: 5px 0; }
+.evidence-drawer li span,
+.evidence-drawer li small {
+    display: block;
+    color: var(--muted);
+    margin-top: 2px;
+}
 
 .action-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .action-buttons button {

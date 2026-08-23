@@ -208,7 +208,7 @@ const Advisor = {
 
     async getRecentMessages(conversationId, limit = 20) {
         return await query(
-            `SELECT role, text, speech_text, display_markdown, topic_id, created_at
+            `SELECT role, text, speech_text, display_markdown, citations_json, topic_id, created_at
              FROM advisor_messages
              WHERE conversation_id = ?
              ORDER BY id DESC
@@ -220,9 +220,9 @@ const Advisor = {
     async getConversationMessages(conversationId, limit = 120) {
         const safeLimit = Math.max(1, Math.min(200, parseInt(limit, 10) || 120));
         return await query(
-            `SELECT role, text, speech_text, display_markdown, topic_id, created_at
+            `SELECT role, text, speech_text, display_markdown, citations_json, topic_id, created_at
              FROM (
-                SELECT id, role, text, speech_text, display_markdown, topic_id, created_at
+                SELECT id, role, text, speech_text, display_markdown, citations_json, topic_id, created_at
                 FROM advisor_messages
                 WHERE conversation_id = ?
                 ORDER BY id DESC

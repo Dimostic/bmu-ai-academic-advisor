@@ -1234,10 +1234,24 @@
         }
     }
 
-    function addAdvisorHistoryBubble(text) {
+    function parseJsonArray(value) {
+        if (Array.isArray(value)) return value;
+        if (!value || typeof value !== 'string') return [];
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    function addAdvisorHistoryBubble(text, citations = []) {
         const el = document.createElement('article');
         el.className = 'bubble bubble--advisor';
         const body = escapeHtml(formatAssistantDisplayText(text || ''));
+        const evidence = Array.isArray(citations) && citations.length
+            ? `<div class="bubble-footer"><span class="cite">${renderEvidenceSummary(citations, text || '')}</span></div>`
+            : '';
         el.innerHTML = `
             <header><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(window.ADVISOR_NAME || 'Dr. Tari')}</header>
             <div class="bubble-body">${body.replace(/\n/g, '<br/>')}</div>
@@ -1245,7 +1259,8 @@
                 <button type="button" class="quick-action-btn" data-action="copy-response">
                     <i class="fa-regular fa-copy"></i> Copy response
                 </button>
-            </div>`;
+            </div>
+            ${evidence}`;
         el.querySelector('[data-action="copy-response"]')?.addEventListener('click', () => {
             copyText(text || '', 'Response copied');
         });
@@ -1323,7 +1338,7 @@
         }
 
         if (Array.isArray(citations) && citations.length) {
-            bubble.cite.innerHTML = `<strong>Sources:</strong> ${citations.map(c => escapeHtml(c.title || c.source || '')).join(' • ')}`;
+            bubble.cite.innerHTML = renderEvidenceSummary(citations, bubble.body?.textContent || speech_text || '');
             bubble.footer.classList.remove('hidden');
         }
         if (bubble.playBtn) {
@@ -1492,7 +1507,7 @@
                 if (m.role === 'student') {
                     addStudentBubble(m.text || '');
                 } else if (m.role === 'advisor') {
-                    addAdvisorHistoryBubble(m.display_markdown || m.speech_text || m.text || '');
+                    addAdvisorHistoryBubble(m.display_markdown || m.speech_text || m.text || '', parseJsonArray(m.citations_json));
                 }
             }
 
@@ -1771,6 +1786,55 @@
             avatarPauseBtn.title = 'Pause advisor speech';
             avatarPauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
         }
+    }
+
+    function isHighRiskAdvisorAnswer(text = '', citations = []) {
+        const hay = [
+            text,
+            ...citations.map(c => `${c?.title || ''} ${c?.source || ''}`)
+        ].join(' ').toLowerCase();
+        return /\b(admission|eligib|requirement|fees?|tuition|deadline|calendar|progression|probation|withdrawal|graduation|examination|exam|course registration|carry[-\s]?over|transfer|accreditation|licen[cs]e|professional|credit load|gpa|cgpa)\b/.test(hay);
+    }
+
+    function normaliseCitation(citation) {
+        const title = String(citation?.title || citation?.document_title || citation?.source || 'BMU source').trim();
+        const detail = String(citation?.source || citation?.section || citation?.sourcePath || '').trim();
+        const reviewed = String(citation?.lastReviewed || citation?.last_reviewed || citation?.reviewedAt || '').trim();
+        const authority = String(citation?.authority || citation?.authority_type || '').trim();
+        return { title, detail, reviewed, authority };
+    }
+
+    function renderEvidenceSummary(citations = [], answerText = '') {
+        const unique = [];
+        const seen = new Set();
+        for (const citation of citations.map(normaliseCitation)) {
+            const key = `${citation.title}|${citation.detail}`.toLowerCase();
+            if (!citation.title || seen.has(key)) continue;
+            seen.add(key);
+            unique.push(citation);
+        }
+        if (!unique.length) return '';
+        const highRisk = isHighRiskAdvisorAnswer(answerText, unique);
+        const label = highRisk ? 'Evidence used' : 'Sources';
+        const first = unique[0];
+        const summary = `${first.title}${unique.length > 1 ? ` +${unique.length - 1} more` : ''}`;
+        const details = unique.map((item, index) => `
+            <li>
+                <strong>${escapeHtml(item.title)}</strong>
+                ${item.detail && item.detail !== item.title ? `<span>${escapeHtml(item.detail)}</span>` : ''}
+                ${item.authority ? `<small>Authority: ${escapeHtml(item.authority)}</small>` : ''}
+                ${item.reviewed ? `<small>Last reviewed: ${escapeHtml(item.reviewed)}</small>` : ''}
+            </li>
+        `).join('');
+        return `
+            <details class="evidence-drawer ${highRisk ? 'evidence-drawer--high-risk' : ''}">
+                <summary>
+                    <span><i class="fa-solid fa-shield-halved"></i> ${escapeHtml(label)}</span>
+                    <em>${escapeHtml(summary)}</em>
+                </summary>
+                <ul>${details}</ul>
+            </details>
+        `;
     }
 
     function maybeStartAutoFollowupListening() {
