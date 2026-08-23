@@ -98,6 +98,7 @@
     const main = document.getElementById('adminMain');
     let latestDocumentReviewHtml = '';
     let currentDocumentLabJobId = null;
+    let pendingStructuredRecordsView = null;
     const navButtons = document.querySelectorAll('.admin-nav button');
     const sections = {
         dashboard: renderDashboard,
@@ -565,14 +566,30 @@
                 : '<p class="empty">No structured tables found.</p>';
             const warningRows = warnings.length
                 ? table(
-                    ['Severity', 'Area', 'Issue'],
+                    ['Severity', 'Area', 'Issue', 'Action'],
                     warnings.slice(0, 20).map(row => [
                         `<span class="badge ${row.severity === 'high' ? 'badge-danger' : 'badge-warn'}">${escapeHtml(row.severity)}</span>`,
                         escapeHtml(row.area || '—'),
-                        escapeHtml(row.message || '—')
+                        escapeHtml(row.message || '—'),
+                        row.action
+                            ? `<button class="btn btn-ghost btn-sm" data-structured-quality-action="${escapeHtml(row.action.table || '')}" data-structured-quality-q="${escapeHtml(row.action.q || '')}"><i class="fa-solid fa-magnifying-glass"></i> ${escapeHtml(row.action.label || 'Review')}</button>`
+                            : '—'
                     ])
                 )
                 : '<p class="empty">No obvious structured-data warnings detected.</p>';
+            const unitConflictSamples = (courses.unitConflictSamples || []).slice(0, 6);
+            const unitConflictRows = unitConflictSamples.length
+                ? table(
+                    ['Programme', 'Course', 'Units', 'Rows', 'Action'],
+                    unitConflictSamples.map(row => [
+                        escapeHtml(`${row.programme || 'Unknown'} ${row.level_label || ''} ${row.semester_label || ''}`.trim()),
+                        escapeHtml(`${row.course_code || ''} ${row.course_title || ''}`.trim()),
+                        escapeHtml(row.credit_units || '—'),
+                        escapeHtml(String(row.row_count || 0)),
+                        `<button class="btn btn-ghost btn-sm" data-structured-quality-action="academic_courses" data-structured-quality-q="${escapeHtml(row.course_code || row.course_title || row.programme || '')}"><i class="fa-solid fa-magnifying-glass"></i> Review rows</button>`
+                    ])
+                )
+                : '<p class="empty">No course unit conflicts detected.</p>';
             const ruleSummary = (rules.categories || []).slice(0, 8).map(row =>
                 `<span class="badge">${escapeHtml(row.category)}: ${escapeHtml(String(row.count || 0))}</span>`
             ).join('');
@@ -584,6 +601,7 @@
                     ${stat('Programmes with gaps', programmes.gapCount ?? 0)}
                     ${stat('Course programmes', courses.programmeCount ?? 0)}
                     ${stat('Invalid code samples', courses.invalidCodeCount ?? 0)}
+                    ${stat('Unit conflicts', courses.unitConflictCount ?? 0)}
                     ${stat('Critical officer gaps', (officers.missingCriticalRoles || []).length)}
                 </div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 16px;">
@@ -593,12 +611,24 @@
                 </div>
                 <h4 style="margin: 12px 0 8px; color: var(--bg-deep);">Warnings to review</h4>
                 ${warningRows}
+                <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Course unit conflicts</h4>
+                ${unitConflictRows}
                 <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Structured table coverage</h4>
                 ${tableSummary}
             `;
             document.getElementById('structuredQualityRefresh')?.addEventListener('click', () => renderStructuredQuality(targetId));
             el.querySelector('[data-section-jump="structuredRecords"]')?.addEventListener('click', () => {
                 document.querySelector('[data-section="structuredRecords"]')?.click();
+            });
+            el.querySelectorAll('[data-structured-quality-action]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    pendingStructuredRecordsView = {
+                        table: btn.dataset.structuredQualityAction,
+                        q: btn.dataset.structuredQualityQ || '',
+                        status: 'active'
+                    };
+                    document.querySelector('[data-section="structuredRecords"]')?.click();
+                });
             });
         } catch (err) {
             el.innerHTML = `<p class="auth-error">${escapeHtml(err.message || 'Could not load structured data quality')}</p>`;
@@ -2304,6 +2334,8 @@
 
     // ------------------------------------------------ STRUCTURED RECORDS
     async function renderStructuredRecords() {
+        const initialView = pendingStructuredRecordsView;
+        pendingStructuredRecordsView = null;
         main.innerHTML = `
             <h2>Structured Facts</h2>
             <p class="lede">Direct production lookup tables for exact advisor answers. Use this for corrected officers, fees, courses, programme rules, calendar dates, and approved facts.</p>
@@ -2373,7 +2405,18 @@
             tables = r.tables || [];
             const select = document.getElementById('structuredTableSelect');
             select.innerHTML = tables.map(t => `<option value="${escapeHtml(t.name)}">${escapeHtml(t.label)} (${escapeHtml(t.count)})</option>`).join('');
-            currentTable = tables[0]?.name || '';
+            currentTable = initialView?.table && tables.some(t => t.name === initialView.table)
+                ? initialView.table
+                : tables[0]?.name || '';
+            select.value = currentTable;
+            if (initialView?.q) {
+                const searchInput = document.getElementById('structuredSearchInput');
+                if (searchInput) searchInput.value = initialView.q;
+            }
+            if (initialView?.status) {
+                const statusFilter = document.getElementById('structuredStatusFilter');
+                if (statusFilter) statusFilter.value = initialView.status;
+            }
 
             select.addEventListener('change', () => {
                 currentTable = select.value;

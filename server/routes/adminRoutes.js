@@ -3423,6 +3423,34 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             LIMIT 25
         `);
 
+        const courseUnitConflictRows = await query(`
+            SELECT
+                MIN(programme) AS programme,
+                MIN(level_label) AS level_label,
+                MIN(semester_label) AS semester_label,
+                MIN(course_code) AS course_code,
+                MIN(course_title) AS course_title,
+                COUNT(*) AS row_count,
+                COUNT(DISTINCT COALESCE(CAST(credit_units AS CHAR), '__blank__')) AS unit_variant_count,
+                GROUP_CONCAT(DISTINCT COALESCE(CAST(credit_units AS CHAR), 'blank') ORDER BY credit_units SEPARATOR ', ') AS credit_units,
+                GROUP_CONCAT(id ORDER BY id SEPARATOR ',') AS record_ids,
+                MIN(source_path) AS source_path
+            FROM academic_courses
+            WHERE status = 'active'
+              AND COALESCE(programme, '') <> ''
+              AND COALESCE(course_code, '') <> ''
+              AND COALESCE(course_title, '') <> ''
+            GROUP BY
+                LOWER(TRIM(programme)),
+                LOWER(TRIM(level_label)),
+                LOWER(TRIM(semester_label)),
+                LOWER(TRIM(course_code)),
+                LOWER(TRIM(course_title))
+            HAVING unit_variant_count > 1
+            ORDER BY programme, level_label, semester_label, course_code
+            LIMIT 25
+        `);
+
         const courseCoverageRows = await query(`
             SELECT programme,
                    COUNT(*) AS course_count,
@@ -3494,6 +3522,16 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             ...missingOfficerRoles.map(role => ({ severity: 'high', area: 'Officers', message: `Missing active record for ${role}` })),
             ...programmeGaps.slice(0, 15).map(row => ({ severity: 'medium', area: 'Programmes', message: `${row.programme}: ${row.gaps.join(', ')}` })),
             ...courseCoverage.filter(row => row.likelyIncomplete).slice(0, 15).map(row => ({ severity: 'medium', area: 'Courses', message: `${row.programme}: available levels ${row.levels.join(', ') || 'none'}` })),
+            ...courseUnitConflictRows.slice(0, 10).map(row => ({
+                severity: 'high',
+                area: 'Course units',
+                message: `${row.programme || 'Unknown'} ${row.level_label || ''} ${row.semester_label || ''}: ${row.course_code} ${row.course_title || ''} has conflicting units (${row.credit_units || 'blank'})`.trim(),
+                action: {
+                    table: 'academic_courses',
+                    q: row.course_code || row.course_title || row.programme || '',
+                    label: 'Review rows'
+                }
+            })),
             ...invalidCourseRows.slice(0, 10).map(row => ({ severity: 'medium', area: 'Course codes', message: `${row.programme || 'Unknown'} ${row.level_label || ''}: ${row.course_code} ${row.course_title || ''}`.trim() }))
         ];
 
@@ -3509,6 +3547,8 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
                 programmeCount: courseCoverage.length,
                 invalidCodeCount: Number(invalidCourseCountRows?.[0]?.count || 0),
                 invalidCodeSamples: invalidCourseRows,
+                unitConflictCount: courseUnitConflictRows.length,
+                unitConflictSamples: courseUnitConflictRows,
                 incompleteLevelSamples: courseCoverage.filter(row => row.likelyIncomplete).slice(0, 25)
             },
             programmes: {
