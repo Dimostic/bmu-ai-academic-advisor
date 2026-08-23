@@ -21,15 +21,15 @@ function checkEnvVar(key, required) {
     return false;
 }
 
-async function checkHealth(url) {
+async function checkHealth(url, label = 'Health') {
     const response = await axios.get(url, { timeout: 5000 });
     const ok = response.status >= 200 && response.status < 300;
     if (!ok) {
-        throw new Error(`Health check failed with status ${response.status}`);
+        throw new Error(`${label} check failed with status ${response.status}`);
     }
     if (typeof response.data === 'object' && response.data !== null) {
         if (response.data.success === false) {
-            throw new Error('Health check returned success=false');
+            throw new Error(`${label} check returned success=false`);
         }
     }
 }
@@ -79,14 +79,27 @@ async function main() {
         }
     }
 
-    console.log('\n[3] Health endpoint');
+    console.log('\n[3] Health endpoints');
     const healthUrl = process.env.SMOKE_TEST_URL;
     if (!healthUrl) {
         console.log('  SKIP: Set SMOKE_TEST_URL to run an HTTP health check');
     } else {
         try {
-            await checkHealth(healthUrl);
-            console.log('  OK: Health check passed');
+            await checkHealth(healthUrl, 'App health');
+            console.log('  OK: App health check passed');
+        } catch (error) {
+            console.log('  ERROR:', error.message);
+            hasFailure = true;
+        }
+    }
+
+    const advisorHealthUrl = process.env.SMOKE_TEST_ADVISOR_URL;
+    if (!advisorHealthUrl) {
+        console.log('  SKIP: Set SMOKE_TEST_ADVISOR_URL to run advisor health check');
+    } else {
+        try {
+            await checkHealth(advisorHealthUrl, 'Advisor health');
+            console.log('  OK: Advisor health check passed');
         } catch (error) {
             console.log('  ERROR:', error.message);
             hasFailure = true;
