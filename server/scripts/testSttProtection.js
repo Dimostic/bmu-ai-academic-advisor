@@ -6,6 +6,7 @@ const {
     enforceGuestDemoVoiceAccess,
     recordGuestDemoUsage
 } = require('../middleware/usageLimits');
+const { pool } = require('../../config/db');
 
 function mockReq({ user = null, guestId = '', body = {} } = {}) {
     return {
@@ -44,7 +45,13 @@ function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
 
-function main() {
+async function closeDbPool() {
+    if (pool && typeof pool.end === 'function') {
+        await new Promise(resolve => pool.end(resolve));
+    }
+}
+
+async function main() {
     const anonymous = runMiddleware(mockReq());
     assert(!anonymous.nextCalled, 'Anonymous STT request should not pass');
     assert(anonymous.res.statusCode === 401, 'Anonymous STT request should return 401');
@@ -87,9 +94,13 @@ function main() {
     }, null, 2));
 }
 
-try {
-    main();
-} catch (error) {
-    console.error(error.message || error);
-    process.exit(1);
-}
+main()
+    .then(async () => {
+        await closeDbPool();
+        process.exit(0);
+    })
+    .catch(async (error) => {
+        console.error(error.message || error);
+        await closeDbPool().catch(() => {});
+        process.exit(1);
+    });
