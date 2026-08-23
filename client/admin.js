@@ -2280,6 +2280,7 @@
             <div id="structuredTableInfo" class="stat-row"></div>
             <div id="structuredImportResult"></div>
             <div id="structuredRecordsBody"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+            <div id="structuredPagination" class="admin-actions structured-pagination"></div>
             <dialog id="structuredEditDialog" class="modal modal--wide structured-edit-dialog"></dialog>
         `;
 
@@ -2287,6 +2288,8 @@
         let currentTable = '';
         let currentRecords = [];
         let currentTableInfo = null;
+        let currentOffset = 0;
+        const pageSize = 120;
         try {
             const r = await api('/api/admin/structured-records/tables');
             tables = r.tables || [];
@@ -2296,19 +2299,29 @@
 
             select.addEventListener('change', () => {
                 currentTable = select.value;
+                currentOffset = 0;
                 const ruleFilter = document.getElementById('structuredRuleCategoryFilter');
                 if (ruleFilter) ruleFilter.value = '';
                 loadStructuredRecords();
             });
             document.getElementById('structuredRefreshBtn')?.addEventListener('click', loadStructuredRecords);
-            document.getElementById('structuredStatusFilter')?.addEventListener('change', loadStructuredRecords);
-            document.getElementById('structuredRuleCategoryFilter')?.addEventListener('change', loadStructuredRecords);
+            document.getElementById('structuredStatusFilter')?.addEventListener('change', () => {
+                currentOffset = 0;
+                loadStructuredRecords();
+            });
+            document.getElementById('structuredRuleCategoryFilter')?.addEventListener('change', () => {
+                currentOffset = 0;
+                loadStructuredRecords();
+            });
             document.getElementById('structuredAddBtn')?.addEventListener('click', () => {
                 if (!currentTable || !currentTableInfo) return;
                 openStructuredRecordDialog(currentTable, currentTableInfo, createBlankStructuredRecord(currentTableInfo), loadStructuredRecords, { isNew: true });
             });
             document.getElementById('structuredSearchInput')?.addEventListener('keydown', e => {
-                if (e.key === 'Enter') loadStructuredRecords();
+                if (e.key === 'Enter') {
+                    currentOffset = 0;
+                    loadStructuredRecords();
+                }
             });
             document.getElementById('structuredTemplateBtn')?.addEventListener('click', () => downloadStructuredTemplate(currentTable));
             document.getElementById('structuredImportInput')?.addEventListener('change', e => importStructuredRecords(currentTable, e.target.files?.[0]));
@@ -2332,27 +2345,62 @@
             ].join('');
             document.getElementById('structuredRecordsBody').innerHTML = '<div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading records…</div>';
             try {
-                const params = new URLSearchParams({ limit: '120' });
+                const params = new URLSearchParams({ limit: String(pageSize), offset: String(currentOffset) });
                 if (q) params.set('q', q);
                 if (status) params.set('status', status);
                 if (currentTable === 'academic_rules' && requirementCategory) params.set('requirement_category', requirementCategory);
                 const r = await api(`/api/admin/structured-records/${encodeURIComponent(currentTable)}?${params.toString()}`);
                 const records = r.records || [];
                 const tableInfo = r.table || info;
+                const pagination = r.pagination || { offset: currentOffset, limit: pageSize, total: records.length, returned: records.length };
                 currentRecords = records;
                 currentTableInfo = tableInfo;
                 document.getElementById('structuredTableInfo').innerHTML = [
                     stat('Selected table', tableInfo.label || currentTable),
-                    stat('Loaded', records.length),
+                    stat('Showing', structuredPaginationRange(pagination)),
+                    stat('Total matched', pagination.total ?? records.length),
                     stat('Required', (tableInfo.required || []).join(', ') || '—')
                 ].join('');
                 document.getElementById('structuredRecordsBody').innerHTML = records.length
                     ? renderStructuredRecordsGrid(tableInfo, records)
                     : '<p class="empty">No records found. Download the template and import new records.</p>';
                 document.getElementById('structuredRecordsBody').onclick = handleStructuredRecordClick;
+                renderStructuredPagination(pagination);
             } catch (err) {
                 document.getElementById('structuredRecordsBody').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+                document.getElementById('structuredPagination').innerHTML = '';
             }
+        }
+
+        function structuredPaginationRange(pagination) {
+            const total = Number(pagination.total || 0);
+            if (!total) return '0';
+            const start = Number(pagination.offset || 0) + 1;
+            const end = Math.min(total, Number(pagination.offset || 0) + Number(pagination.returned || 0));
+            return `${start}-${end}`;
+        }
+
+        function renderStructuredPagination(pagination = {}) {
+            const holder = document.getElementById('structuredPagination');
+            if (!holder) return;
+            const total = Number(pagination.total || 0);
+            const offset = Number(pagination.offset || 0);
+            const limit = Number(pagination.limit || pageSize);
+            const hasPrevious = offset > 0;
+            const hasNext = offset + Number(pagination.returned || 0) < total;
+            holder.innerHTML = total > limit ? `
+                <button class="btn btn-ghost" id="structuredPrevPageBtn" ${hasPrevious ? '' : 'disabled'}><i class="fa-solid fa-chevron-left"></i> Previous</button>
+                <span class="lede">Showing ${escapeHtml(structuredPaginationRange(pagination))} of ${escapeHtml(total)}</span>
+                <button class="btn btn-ghost" id="structuredNextPageBtn" ${hasNext ? '' : 'disabled'}>Next <i class="fa-solid fa-chevron-right"></i></button>
+            ` : '';
+            document.getElementById('structuredPrevPageBtn')?.addEventListener('click', () => {
+                currentOffset = Math.max(0, currentOffset - limit);
+                loadStructuredRecords();
+            });
+            document.getElementById('structuredNextPageBtn')?.addEventListener('click', () => {
+                currentOffset += limit;
+                loadStructuredRecords();
+            });
         }
 
         async function handleStructuredRecordClick(e) {

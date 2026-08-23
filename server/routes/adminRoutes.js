@@ -394,6 +394,196 @@ function _extractOfficerNameFromText(text) {
         .trim();
 }
 
+function _requirementCategoryFromText(text, fallback = '') {
+    const value = `${fallback || ''} ${text || ''}`.toLowerCase();
+    if (/\b(admission|entry requirement|eligibility|utme|direct entry|o'?level|waec|neco|jamb)\b/.test(value)) return 'admission';
+    if (/\b(graduation|graduate|minimum credit|credit units|project|research)\b/.test(value)) return 'graduation';
+    if (/\b(progression|probation|withdrawal|carry over|cgpa|gpa)\b/.test(value)) return 'progression';
+    if (/\b(exam|examination|pass mark|grade|professional examination)\b/.test(value)) return 'examination';
+    if (/\b(course registration|registration)\b/.test(value)) return 'course_registration';
+    if (/\b(transfer|readmission|re-admission)\b/.test(value)) return 'transfer';
+    if (/\b(accreditation|mdcn|nuc|professional body|regulation)\b/.test(value)) return 'regulation';
+    return fallback || '';
+}
+
+function _ruleTypeFromCategory(category) {
+    const key = String(category || '').trim().toLowerCase();
+    const map = {
+        admission: 'admission_requirement',
+        graduation: 'graduation_requirement',
+        progression: 'progression_rule',
+        examination: 'examination_rule',
+        course_registration: 'course_registration_rule',
+        transfer: 'transfer_rule',
+        regulation: 'professional_requirement'
+    };
+    return map[key] || 'programme_requirement';
+}
+
+function _programmeFromRequirementRecord(record, value = {}) {
+    return String(record.programme || value.programme || value.program || '').trim();
+}
+
+async function _syncProgrammeRequirementRecord(tableName, record) {
+    if (!record || (tableName !== 'structured_facts' && tableName !== 'academic_rules')) return;
+
+    let ruleType = '';
+    let category = '';
+    let subject = '';
+    let programme = '';
+    let entryMode = '';
+    let levelLabel = '';
+    let semesterLabel = '';
+    let requirementText = '';
+    let minimumValue = '';
+    let authorityType = '';
+    let scopeLabel = '';
+    let currentnessLabel = '';
+    let sourcePath = '';
+    let rawText = '';
+    let value = {};
+
+    if (tableName === 'structured_facts') {
+        value = _parseJsonObject(record.value_json);
+        const haystack = `${record.fact_type || ''} ${record.predicate_name || ''} ${record.subject || ''} ${record.human_text || ''}`;
+        category = _requirementCategoryFromText(haystack, String(value.requirement_category || ''));
+        if (!category && !/\brequirement|rule|admission|graduation|progression|examination\b/i.test(haystack)) return;
+        ruleType = String(value.rule_type || _ruleTypeFromCategory(category)).trim();
+        subject = String(record.subject || value.subject || category || 'Programme requirement').trim();
+        programme = _programmeFromRequirementRecord(record, value);
+        entryMode = String(value.entry_mode || '').trim();
+        levelLabel = String(value.level_label || '').trim();
+        semesterLabel = String(value.semester_label || '').trim();
+        requirementText = String(value.requirement_text || record.human_text || '').trim();
+        minimumValue = String(value.minimum_value || '').trim();
+        authorityType = String(record.authority_type || value.authority_type || '').trim();
+        scopeLabel = String(record.scope_label || value.scope_label || '').trim();
+        currentnessLabel = String(record.currentness_label || value.currentness_label || 'current').trim();
+        sourcePath = String(record.source_path || value.source_path || '').trim();
+        rawText = requirementText;
+    } else {
+        category = String(record.requirement_category || '').trim() || _requirementCategoryFromText(`${record.rule_type || ''} ${record.requirement_text || ''} ${record.raw_text || ''}`);
+        ruleType = String(record.rule_type || _ruleTypeFromCategory(category)).trim();
+        subject = String(record.subject || category || 'Programme requirement').trim();
+        programme = String(record.programme || '').trim();
+        entryMode = String(record.entry_mode || '').trim();
+        levelLabel = String(record.level_label || '').trim();
+        semesterLabel = String(record.semester_label || '').trim();
+        requirementText = String(record.requirement_text || record.raw_text || '').trim();
+        minimumValue = String(record.minimum_value || '').trim();
+        authorityType = String(record.authority_type || '').trim();
+        scopeLabel = String(record.scope_label || '').trim();
+        currentnessLabel = String(record.currentness_label || 'current').trim();
+        sourcePath = String(record.source_path || '').trim();
+        rawText = String(record.raw_text || requirementText).trim();
+        value = _parseJsonObject(record.row_json);
+    }
+
+    if (!ruleType || !requirementText) return;
+    value = {
+        ...value,
+        rule_type: ruleType,
+        requirement_category: category || 'general',
+        subject,
+        programme,
+        entry_mode: entryMode,
+        level_label: levelLabel,
+        semester_label: semesterLabel,
+        requirement_text: requirementText,
+        minimum_value: minimumValue
+    };
+    const rowJson = JSON.stringify(value);
+    const ruleHash = _recordHash('academic_rules', {
+        rule_type: ruleType,
+        subject,
+        programme,
+        requirement_text: requirementText,
+        source_path: sourcePath
+    });
+
+    const updatedRules = await query(
+        `UPDATE academic_rules
+         SET rule_type = ?,
+             requirement_category = ?,
+             subject = ?,
+             programme = ?,
+             entry_mode = ?,
+             level_label = ?,
+             semester_label = ?,
+             requirement_text = ?,
+             minimum_value = ?,
+             authority_type = ?,
+             scope_label = ?,
+             currentness_label = ?,
+             source_path = ?,
+             raw_text = ?,
+             row_json = ?,
+             status = 'active',
+             updated_at = NOW()
+         WHERE ${tableName === 'structured_facts' && record.id ? 'source_fact_id = ? OR ' : ''}(rule_type = ? AND COALESCE(programme, '') = ? AND subject = ? AND source_path <=> ?)`,
+        [
+            ruleType, category || 'general', subject, programme || null, entryMode || null,
+            levelLabel || null, semesterLabel || null, requirementText, minimumValue || null,
+            authorityType || null, scopeLabel || null, currentnessLabel || 'current',
+            sourcePath || null, rawText || requirementText, rowJson,
+            ...(tableName === 'structured_facts' && record.id ? [record.id] : []),
+            ruleType, programme || '', subject, sourcePath || null
+        ]
+    );
+    if (!Number(updatedRules?.affectedRows || 0)) {
+        await query(
+            `INSERT INTO academic_rules
+                (record_hash, source_fact_id, rule_type, requirement_category, subject, programme,
+                 entry_mode, level_label, semester_label, requirement_text, minimum_value,
+                 authority_type, scope_label, currentness_label, source_path, raw_text, row_json, status)
+             VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+            [
+                ruleHash, tableName === 'structured_facts' ? (record.id || null) : null,
+                ruleType, category || 'general', subject, programme || null,
+                entryMode || null, levelLabel || null, semesterLabel || null,
+                requirementText, minimumValue || null, authorityType || null, scopeLabel || null,
+                currentnessLabel || 'current', sourcePath || null, rawText || requirementText, rowJson
+            ]
+        );
+    }
+
+    const factType = category ? `${category}_requirement` : 'programme_requirement';
+    const factSubject = programme ? `${programme} - ${subject}` : subject;
+    const updatedFacts = await query(
+        `UPDATE structured_facts
+         SET fact_type = ?,
+             predicate_name = 'requirement',
+             value_json = ?,
+             human_text = ?,
+             authority_type = ?,
+             scope_label = ?,
+             source_path = ?,
+             status = 'active',
+             currentness_label = ?,
+             updated_at = NOW()
+         WHERE fact_type IN ('programme_requirement', 'admission_requirement', 'graduation_requirement', 'progression_requirement', 'examination_requirement', 'course_registration_requirement', 'transfer_requirement', 'regulation_requirement')
+           AND subject = ?`,
+        [
+            factType, rowJson, requirementText, authorityType || null, scopeLabel || null,
+            sourcePath || null, currentnessLabel || 'current', factSubject
+        ]
+    );
+    if (!Number(updatedFacts?.affectedRows || 0)) {
+        await query(
+            `INSERT INTO structured_facts
+                (fact_type, subject, predicate_name, value_json, human_text, authority_type,
+                 scope_label, source_path, status, currentness_label, authority_rank)
+             VALUES
+                (?, ?, 'requirement', ?, ?, ?, ?, ?, 'active', ?, 85)`,
+            [
+                factType, factSubject, rowJson, requirementText,
+                authorityType || null, scopeLabel || null, sourcePath || null, currentnessLabel || 'current'
+            ]
+        );
+    }
+}
+
 async function _syncPrincipalOfficerRecord(tableName, record) {
     if (!record || (tableName !== 'structured_facts' && tableName !== 'academic_officers')) return;
 
@@ -3084,6 +3274,7 @@ router.get('/structured-records/:table', authenticateToken, requireAdmin, async 
         if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
 
         const limit = Math.max(1, Math.min(300, parseInt(req.query.limit, 10) || 100));
+        const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
         const q = String(req.query.q || '').trim();
         const status = String(req.query.status || '').trim().toLowerCase();
         const requirementCategory = String(req.query.requirement_category || '').trim();
@@ -3103,12 +3294,25 @@ router.get('/structured-records/:table', authenticateToken, requireAdmin, async 
         }
         const where = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
 
+        const countRows = await query(
+            `SELECT COUNT(*) AS count FROM ${config.name} ${where}`,
+            params
+        );
+        const total = Number(countRows?.[0]?.count || 0);
         const rows = await query(
-            `SELECT * FROM ${config.name} ${where} ORDER BY updated_at DESC, id DESC LIMIT ?`,
-            [...params, limit]
+            `SELECT * FROM ${config.name} ${where} ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
+            [...params, limit, offset]
         );
         res.json({
             success: true,
+            pagination: {
+                limit,
+                offset,
+                total,
+                returned: rows.length,
+                hasPrevious: offset > 0,
+                hasNext: offset + rows.length < total
+            },
             table: {
                 name: config.name,
                 label: config.label,
@@ -3156,7 +3360,9 @@ router.post('/structured-records/:table', authenticateToken, requireAdmin, async
         const config = _structuredTableConfig(req.params.table);
         if (!config) return res.status(404).json({ success: false, error: 'Unknown structured table' });
         const result = await _upsertStructuredRecord(config.name, config, req.body || {});
-        await _syncPrincipalOfficerRecord(config.name, req.body || {});
+        const record = { ...(req.body || {}), id: result.id || req.body?.id };
+        await _syncPrincipalOfficerRecord(config.name, record);
+        await _syncProgrammeRequirementRecord(config.name, record);
         await AuditTrail.log({
             userId: req.user.id,
             action: 'STRUCTURED_RECORD_CREATED',
@@ -3181,6 +3387,7 @@ router.put('/structured-records/:table/:id', authenticateToken, requireAdmin, as
         const record = { ...req.body, id: req.params.id };
         const result = await _upsertStructuredRecord(config.name, config, record);
         await _syncPrincipalOfficerRecord(config.name, record);
+        await _syncProgrammeRequirementRecord(config.name, record);
         await AuditTrail.log({
             userId: req.user.id,
             action: 'STRUCTURED_RECORD_UPDATED',
@@ -3249,7 +3456,9 @@ router.post('/structured-records/:table/import', authenticateToken, requireAdmin
             }
             try {
                 const result = await _upsertStructuredRecord(config.name, config, normalized);
-                await _syncPrincipalOfficerRecord(config.name, normalized);
+                const synced = { ...normalized, id: result.id || normalized.id };
+                await _syncPrincipalOfficerRecord(config.name, synced);
+                await _syncProgrammeRequirementRecord(config.name, synced);
                 if (result.mode === 'updated') updated += 1;
                 else created += 1;
             } catch (error) {
