@@ -18,7 +18,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const { optionalAuth, authenticateToken } = require('../middleware/auth');
-const { enforceLimits, recordUsage, getUsage, enforceGuestDemoLimit, enforceGuestDemoAccess, recordGuestDemoUsage } = require('../middleware/usageLimits');
+const { enforceLimits, recordUsage, getUsage, enforceGuestDemoLimit, enforceGuestDemoAccess, enforceGuestDemoVoiceAccess, recordGuestDemoUsage } = require('../middleware/usageLimits');
 const { query } = require('../../config/db');
 const Advisor = require('../models/Advisor');
 const advisorService = require('../services/advisorService');
@@ -65,20 +65,44 @@ async function _resolveAdvisorEscalationEmail() {
 // 8 MB cap for short voice clips (Whisper recommends <25 MB).
 const audioUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 8 * 1024 * 1024 }
+    limits: { fileSize: 8 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        const mimetype = String(file?.mimetype || '').toLowerCase();
+        const ok = mimetype.startsWith('audio/')
+            || mimetype === 'video/webm'
+            || mimetype === 'application/octet-stream';
+        if (!ok) {
+            return cb(new Error('Only short audio recordings can be transcribed.'));
+        }
+        return cb(null, true);
+    }
 });
+const sttAudioUpload = audioUpload.single('audio');
+
+function handleSttAudioUpload(req, res, next) {
+    sttAudioUpload(req, res, (err) => {
+        if (!err) return next();
+        const isTooLarge = err.code === 'LIMIT_FILE_SIZE';
+        return res.status(isTooLarge ? 413 : 400).json({
+            success: false,
+            code: isTooLarge ? 'STT_AUDIO_TOO_LARGE' : 'STT_AUDIO_INVALID',
+            error: isTooLarge
+                ? 'Voice recording is too large. Please try a shorter question.'
+                : (err.message || 'Voice recording could not be accepted.')
+        });
+    });
+}
 
 const sttLimiter = rateLimit({
     windowMs: parseInt(process.env.ADVISOR_STT_RATE_WINDOW_MS || '60000', 10),
-    max: parseInt(process.env.ADVISOR_STT_RATE_LIMIT || '20', 10),
+    max: parseInt(process.env.ADVISOR_STT_RATE_LIMIT || '10', 10),
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => {
-        const guestId = String(req.get?.('x-advisor-guest-demo-id') || '').trim();
         const ipKey = typeof rateLimit.ipKeyGenerator === 'function'
             ? rateLimit.ipKeyGenerator(req.ip)
             : req.ip;
-        return req.user?.id ? `user:${req.user.id}` : `guest:${guestId || ipKey}`;
+        return req.user?.id ? `user:${req.user.id}` : `ip:${ipKey}`;
     },
     message: {
         success: false,
@@ -493,7 +517,7 @@ router.post('/feedback', authenticateToken, async (req, res) => {
 // POST /api/advisor/stt
 // multipart/form-data with field "audio"; optional "language" form field.
 // ---------------------------------------------------------------------------
-router.post('/stt', optionalAuth, enforceLimits, sttLimiter, audioUpload.single('audio'), enforceGuestDemoAccess, async (req, res) => {
+router.post('/stt', optionalAuth, enforceLimits, sttLimiter, enforceGuestDemoVoiceAccess, handleSttAudioUpload, enforceGuestDemoAccess, async (req, res) => {
     try {
         if (!sttService.isConfigured()) {
             return res.status(503).json({

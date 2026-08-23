@@ -23,6 +23,7 @@
     "test:course-retrieval": "node server/scripts/testCourseRetrieval.js",
     "test:advisor-golden": "node server/scripts/testAdvisorGolden.js",
     "test:advisor-policy": "node server/scripts/testAdvisorPromptPolicy.js",
+    "test:stt-protection": "node server/scripts/testSttProtection.js",
     "test:structured-facts": "node server/scripts/testStructuredFactCoverage.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
