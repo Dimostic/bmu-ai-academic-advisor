@@ -66,6 +66,28 @@ function aggregateProgrammeCounts(rows) {
     return { counts, names };
 }
 
+function aggregateProgrammeIdentities(rows) {
+    const byKey = new Map();
+    for (const row of rows || []) {
+        const key = canonicalProgrammeKey(row.programme);
+        if (!key) continue;
+        if (!byKey.has(key)) {
+            byKey.set(key, {
+                programme: row.programme,
+                canonicalProgramme: key,
+                programmeAliases: []
+            });
+        }
+        const item = byKey.get(key);
+        if (row.programme !== item.programme && !item.programmeAliases.includes(row.programme)) {
+            item.programmeAliases.push(row.programme);
+        }
+    }
+    return [...byKey.values()]
+        .map(item => ({ ...item, programmeAliases: item.programmeAliases.sort() }))
+        .sort((a, b) => a.programme.localeCompare(b.programme));
+}
+
 function roleIsPresent(rows, role) {
     const target = normalise(role);
     return rows.some(row => {
@@ -211,8 +233,9 @@ async function main() {
     const courseCounts = aggregateProgrammeCounts(courseCountRows);
     const feeCounts = aggregateProgrammeCounts(feeCountRows);
     const ruleCounts = aggregateProgrammeCounts(ruleCountRows);
-    const programmeGapRows = programmeRows.map(row => {
-        const key = canonicalProgrammeKey(row.programme);
+    const programmeIdentities = aggregateProgrammeIdentities(programmeRows);
+    const programmeGapRows = programmeIdentities.map(row => {
+        const key = row.canonicalProgramme;
         const linkedNames = new Set([
             ...(courseCounts.names.get(key) || []),
             ...(feeCounts.names.get(key) || []),
@@ -221,7 +244,10 @@ async function main() {
         return {
             programme: row.programme,
             canonicalProgramme: key,
-            linkedProgrammeNames: [...linkedNames].filter(name => name !== row.programme).sort(),
+            programmeAliases: row.programmeAliases,
+            linkedProgrammeNames: [...linkedNames]
+                .filter(name => name !== row.programme && !row.programmeAliases.includes(name))
+                .sort(),
             course_count: courseCounts.counts.get(key) || 0,
             fee_count: feeCounts.counts.get(key) || 0,
             rule_count: ruleCounts.counts.get(key) || 0
@@ -231,6 +257,7 @@ async function main() {
         .map(row => ({
             programme: row.programme,
             canonicalProgramme: row.canonicalProgramme,
+            programmeAliases: row.programmeAliases,
             linkedProgrammeNames: row.linkedProgrammeNames,
             courseCount: Number(row.course_count || 0),
             feeCount: Number(row.fee_count || 0),
@@ -300,7 +327,7 @@ async function main() {
             coverageSamples: courseCoverage.slice(0, 30)
         },
         programmes: {
-            totalChecked: programmeGapRows.length,
+            totalChecked: programmeIdentities.length,
             gapCount: programmeGaps.length,
             gapSamples: programmeGaps.slice(0, 25)
         },
