@@ -670,8 +670,14 @@ class RetrievalService {
             {
                 type: 'programme',
                 table: 'academic_programmes',
-                fields: ['programme', 'faculty', 'department', 'degree', 'entry_mode', 'scope_label', 'source_path', 'raw_text'],
-                select: 'id, programme, faculty, department, degree, duration_years, entry_mode, authority_type, scope_label, source_path, raw_text'
+                fields: [
+                    'programme', 'faculty', 'department', 'degree', 'entry_mode',
+                    'available_entry_modes', 'programme_status', 'professional_regulatory_body',
+                    'session_label', 'version_label', 'scope_label', 'source_path', 'raw_text'
+                ],
+                select: `id, programme, faculty, department, degree, duration_years, entry_mode,
+                         available_entry_modes, programme_status, professional_regulatory_body,
+                         session_label, version_label, authority_type, scope_label, source_path, raw_text`
             },
             {
                 type: 'course',
@@ -703,11 +709,21 @@ class RetrievalService {
                 fields: [
                     'rule_type', 'requirement_category', 'subject', 'programme',
                     'entry_mode', 'level_label', 'semester_label', 'requirement_text',
-                    'minimum_value', 'scope_label', 'currentness_label', 'source_path', 'raw_text'
+                    'minimum_value', 'required_subjects', 'minimum_grades', 'olevel_sittings_rule',
+                    'jamb_subjects', 'post_utme_rule', 'special_conditions',
+                    'minimum_credit_units', 'required_courses', 'elective_requirements',
+                    'cgpa_requirement', 'clinical_posting_requirement', 'project_requirement',
+                    'professional_exam_requirement', 'duration_limits', 'approval_condition',
+                    'scope_label', 'currentness_label', 'source_path', 'raw_text'
                 ],
                 select: `id, rule_type, requirement_category, subject, programme,
                          entry_mode, level_label, semester_label, requirement_text,
-                         minimum_value, authority_type, scope_label, currentness_label,
+                         minimum_value, required_subjects, minimum_grades, olevel_sittings_rule,
+                         jamb_subjects, post_utme_rule, special_conditions,
+                         minimum_credit_units, required_courses, elective_requirements,
+                         cgpa_requirement, clinical_posting_requirement, project_requirement,
+                         professional_exam_requirement, duration_limits, approval_condition,
+                         authority_type, scope_label, currentness_label,
                          source_path, raw_text`
             }
         ];
@@ -867,7 +883,7 @@ class RetrievalService {
         for (const record of records) {
             const data = record.data || {};
             if (record.type === 'programme') {
-                lines.push(`- Programme: ${data.programme}${data.duration_years ? ` | Duration: ${data.duration_years} years` : ''}${data.entry_mode ? ` | Entry: ${data.entry_mode}` : ''}${record.scope ? ` [${record.scope}]` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+                lines.push(`- Programme: ${data.programme}${data.faculty ? ` | Faculty/college: ${data.faculty}` : ''}${data.department ? ` | Department: ${data.department}` : ''}${data.degree ? ` | Degree: ${data.degree}` : ''}${data.duration_years ? ` | Duration: ${data.duration_years} years` : ''}${data.entry_mode ? ` | Entry: ${data.entry_mode}` : ''}${data.available_entry_modes ? ` | Available entry modes: ${data.available_entry_modes}` : ''}${data.programme_status ? ` | Programme status: ${data.programme_status}` : ''}${data.professional_regulatory_body ? ` | Regulator: ${data.professional_regulatory_body}` : ''}${data.session_label ? ` | Session: ${data.session_label}` : ''}${data.version_label ? ` | Version: ${data.version_label}` : ''}${record.scope ? ` [${record.scope}]` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             } else if (record.type === 'course') {
                 lines.push(`- Course: ${data.course_code || 'Uncoded'}${data.course_title ? ` | ${data.course_title}` : ''}${data.credit_units ? ` | Units: ${data.credit_units}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             } else if (record.type === 'fee') {
@@ -877,7 +893,24 @@ class RetrievalService {
             } else if (record.type === 'officer') {
                 lines.push(`- Officer: ${data.office}${data.officer_name ? ` | Name: ${data.officer_name}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             } else {
-                lines.push(`- Rule: ${data.rule_type}${data.requirement_category ? ` | Category: ${data.requirement_category}` : ''}${data.subject ? ` | ${data.subject}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}${data.entry_mode ? ` | Entry: ${data.entry_mode}` : ''}${data.level_label ? ` | Level: ${data.level_label}` : ''}${data.semester_label ? ` | Semester: ${data.semester_label}` : ''}${data.minimum_value ? ` | Minimum: ${data.minimum_value}` : ''}: ${data.requirement_text || record.rawText || ''}${data.currentness_label ? ` [${data.currentness_label}]` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+                const details = [
+                    data.required_subjects && `Required subjects: ${data.required_subjects}`,
+                    data.minimum_grades && `Minimum grades: ${data.minimum_grades}`,
+                    data.olevel_sittings_rule && `O'Level sittings: ${data.olevel_sittings_rule}`,
+                    data.jamb_subjects && `JAMB/UTME subjects: ${data.jamb_subjects}`,
+                    data.post_utme_rule && `Post-UTME/interview: ${data.post_utme_rule}`,
+                    data.special_conditions && `Special conditions: ${data.special_conditions}`,
+                    data.minimum_credit_units && `Minimum credit units: ${data.minimum_credit_units}`,
+                    data.required_courses && `Required/core courses: ${data.required_courses}`,
+                    data.elective_requirements && `Electives: ${data.elective_requirements}`,
+                    data.cgpa_requirement && `CGPA/GPA: ${data.cgpa_requirement}`,
+                    data.clinical_posting_requirement && `Clinical posting: ${data.clinical_posting_requirement}`,
+                    data.project_requirement && `Project/research: ${data.project_requirement}`,
+                    data.professional_exam_requirement && `Professional exam: ${data.professional_exam_requirement}`,
+                    data.duration_limits && `Duration limits: ${data.duration_limits}`,
+                    data.approval_condition && `Approval condition: ${data.approval_condition}`
+                ].filter(Boolean).join(' | ');
+                lines.push(`- Rule: ${data.rule_type}${data.requirement_category ? ` | Category: ${data.requirement_category}` : ''}${data.subject ? ` | ${data.subject}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}${data.entry_mode ? ` | Entry: ${data.entry_mode}` : ''}${data.level_label ? ` | Level: ${data.level_label}` : ''}${data.semester_label ? ` | Semester: ${data.semester_label}` : ''}${data.minimum_value ? ` | Minimum: ${data.minimum_value}` : ''}${details ? ` | ${details}` : ''}: ${data.requirement_text || record.rawText || ''}${data.currentness_label ? ` [${data.currentness_label}]` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             }
         }
 

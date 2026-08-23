@@ -1139,6 +1139,11 @@ class DocumentLabService {
                 degree VARCHAR(120) NULL,
                 duration_years DECIMAL(4,1) NULL,
                 entry_mode VARCHAR(120) NULL,
+                available_entry_modes TEXT NULL,
+                programme_status VARCHAR(80) NULL,
+                professional_regulatory_body VARCHAR(160) NULL,
+                session_label VARCHAR(80) NULL,
+                version_label VARCHAR(120) NULL,
                 authority_type VARCHAR(80) NULL,
                 scope_label VARCHAR(160) NULL,
                 source_path TEXT NULL,
@@ -1154,6 +1159,12 @@ class DocumentLabService {
                 INDEX idx_academic_programmes_source_table (source_table_id)
             ) ENGINE=InnoDB
         `);
+        await this._ensureColumn('academic_programmes', 'available_entry_modes', 'TEXT NULL');
+        await this._ensureColumn('academic_programmes', 'programme_status', 'VARCHAR(80) NULL');
+        await this._ensureColumn('academic_programmes', 'professional_regulatory_body', 'VARCHAR(160) NULL');
+        await this._ensureColumn('academic_programmes', 'session_label', 'VARCHAR(80) NULL');
+        await this._ensureColumn('academic_programmes', 'version_label', 'VARCHAR(120) NULL');
+        await this._ensureIndex('academic_programmes', 'idx_academic_programmes_status_label', 'programme_status');
 
         await query(`
             CREATE TABLE IF NOT EXISTS academic_courses (
@@ -1275,6 +1286,21 @@ class DocumentLabService {
                 semester_label VARCHAR(80) NULL,
                 requirement_text TEXT NULL,
                 minimum_value VARCHAR(160) NULL,
+                required_subjects TEXT NULL,
+                minimum_grades TEXT NULL,
+                olevel_sittings_rule VARCHAR(160) NULL,
+                jamb_subjects TEXT NULL,
+                post_utme_rule TEXT NULL,
+                special_conditions TEXT NULL,
+                minimum_credit_units VARCHAR(80) NULL,
+                required_courses TEXT NULL,
+                elective_requirements TEXT NULL,
+                cgpa_requirement VARCHAR(160) NULL,
+                clinical_posting_requirement TEXT NULL,
+                project_requirement TEXT NULL,
+                professional_exam_requirement TEXT NULL,
+                duration_limits TEXT NULL,
+                approval_condition TEXT NULL,
                 authority_type VARCHAR(80) NULL,
                 scope_label VARCHAR(160) NULL,
                 currentness_label VARCHAR(80) NULL,
@@ -1297,6 +1323,21 @@ class DocumentLabService {
         await this._ensureColumn('academic_rules', 'semester_label', 'VARCHAR(80) NULL');
         await this._ensureColumn('academic_rules', 'requirement_text', 'TEXT NULL');
         await this._ensureColumn('academic_rules', 'minimum_value', 'VARCHAR(160) NULL');
+        await this._ensureColumn('academic_rules', 'required_subjects', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'minimum_grades', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'olevel_sittings_rule', 'VARCHAR(160) NULL');
+        await this._ensureColumn('academic_rules', 'jamb_subjects', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'post_utme_rule', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'special_conditions', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'minimum_credit_units', 'VARCHAR(80) NULL');
+        await this._ensureColumn('academic_rules', 'required_courses', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'elective_requirements', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'cgpa_requirement', 'VARCHAR(160) NULL');
+        await this._ensureColumn('academic_rules', 'clinical_posting_requirement', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'project_requirement', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'professional_exam_requirement', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'duration_limits', 'TEXT NULL');
+        await this._ensureColumn('academic_rules', 'approval_condition', 'TEXT NULL');
         await this._ensureColumn('academic_rules', 'currentness_label', 'VARCHAR(80) NULL');
         await this._ensureIndex('academic_rules', 'idx_academic_rules_category', 'requirement_category');
         await this._ensureIndex('academic_rules', 'idx_academic_rules_entry_mode', 'entry_mode');
@@ -2092,6 +2133,9 @@ class DocumentLabService {
                 programme: programme || subject || 'Unspecified programme',
                 duration_years: durationYears,
                 entry_mode: findField(safeJson(fact.value_json, {}), [/entry/, /mode/]),
+                available_entry_modes: findField(safeJson(fact.value_json, {}), [/available entry/, /entry modes/]),
+                professional_regulatory_body: findField(safeJson(fact.value_json, {}), [/regulator/, /regulatory/, /professional body/]),
+                session_label: (text.match(/\b20\d{2}\s*\/\s*20\d{2}\b/) || [null])[0],
                 authority_type: authorityType,
                 scope_label: scopeLabel,
                 source_path: sourcePath,
@@ -2179,6 +2223,21 @@ class DocumentLabService {
                 semester_label: extractSemesterLabel(text),
                 requirement_text: text,
                 minimum_value: extractMinimumValue(text),
+                required_subjects: findField(safeJson(fact.value_json, {}), [/subject/]),
+                minimum_grades: findField(safeJson(fact.value_json, {}), [/grade/, /credit pass/]),
+                olevel_sittings_rule: findField(safeJson(fact.value_json, {}), [/sitting/]),
+                jamb_subjects: findField(safeJson(fact.value_json, {}), [/jamb/, /utme subject/]),
+                post_utme_rule: findField(safeJson(fact.value_json, {}), [/post utme/, /screening/]),
+                special_conditions: findField(safeJson(fact.value_json, {}), [/condition/, /special/]),
+                minimum_credit_units: findField(safeJson(fact.value_json, {}), [/minimum credit/, /credit units/]),
+                required_courses: findField(safeJson(fact.value_json, {}), [/required course/, /core course/]),
+                elective_requirements: findField(safeJson(fact.value_json, {}), [/elective/]),
+                cgpa_requirement: findField(safeJson(fact.value_json, {}), [/cgpa/, /gpa/]),
+                clinical_posting_requirement: findField(safeJson(fact.value_json, {}), [/clinical/, /posting/]),
+                project_requirement: findField(safeJson(fact.value_json, {}), [/project/, /research/]),
+                professional_exam_requirement: findField(safeJson(fact.value_json, {}), [/professional exam/]),
+                duration_limits: findField(safeJson(fact.value_json, {}), [/duration limit/, /maximum duration/]),
+                approval_condition: findField(safeJson(fact.value_json, {}), [/approval/, /senate/]),
                 authority_type: authorityType,
                 scope_label: scopeLabel,
                 currentness_label: 'current',
@@ -2258,6 +2317,10 @@ class DocumentLabService {
                     programme,
                     duration_years: durationYears,
                     entry_mode: findField(row, [/entry/, /mode/]),
+                    available_entry_modes: findField(row, [/available entry/, /entry modes/]),
+                    professional_regulatory_body: findField(row, [/regulator/, /regulatory/, /professional body/]),
+                    session_label: findField(row, [/session/]),
+                    programme_status: findField(row, [/programme status/, /^status$/]),
                     authority_type: authorityType,
                     scope_label: scopeLabel,
                     source_path: sourcePath,
@@ -2312,6 +2375,21 @@ class DocumentLabService {
                     semester_label: findField(row, [/semester/]) || extractSemesterLabel(text),
                     requirement_text: findField(row, [/requirement/, /rule/, /description/, /condition/]) || text,
                     minimum_value: findField(row, [/minimum/, /min/, /threshold/, /grade/, /score/]) || extractMinimumValue(text),
+                    required_subjects: findField(row, [/required subject/, /subject combination/, /subjects/]),
+                    minimum_grades: findField(row, [/minimum grade/, /grade/, /credit pass/]),
+                    olevel_sittings_rule: findField(row, [/sitting/]),
+                    jamb_subjects: findField(row, [/jamb/, /utme subject/]),
+                    post_utme_rule: findField(row, [/post utme/, /screening/, /interview/]),
+                    special_conditions: findField(row, [/special condition/, /condition/]),
+                    minimum_credit_units: findField(row, [/minimum credit/, /credit units/]),
+                    required_courses: findField(row, [/required course/, /core course/]),
+                    elective_requirements: findField(row, [/elective/]),
+                    cgpa_requirement: findField(row, [/cgpa/, /gpa/]),
+                    clinical_posting_requirement: findField(row, [/clinical/, /posting/]),
+                    project_requirement: findField(row, [/project/, /research/]),
+                    professional_exam_requirement: findField(row, [/professional exam/]),
+                    duration_limits: findField(row, [/duration limit/, /maximum duration/]),
+                    approval_condition: findField(row, [/approval/, /senate/, /professional body/]),
                     authority_type: authorityType,
                     scope_label: scopeLabel,
                     currentness_label: 'current',

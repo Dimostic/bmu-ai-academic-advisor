@@ -38,13 +38,27 @@ const STRUCTURED_TABLES = {
     academic_programmes: {
         label: 'Programmes',
         description: 'Programme, faculty, department, duration and entry-mode facts.',
-        columns: ['programme', 'faculty', 'department', 'degree', 'duration_years', 'entry_mode', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        columns: [
+            'programme', 'faculty', 'department', 'degree', 'duration_years',
+            'entry_mode', 'available_entry_modes', 'programme_status',
+            'professional_regulatory_body', 'session_label', 'version_label',
+            'authority_type', 'scope_label', 'source_path', 'raw_text', 'row_json', 'status'
+        ],
         required: ['programme'],
-        textColumns: ['programme', 'faculty', 'department', 'degree', 'entry_mode', 'authority_type', 'scope_label', 'source_path', 'raw_text', 'status'],
+        textColumns: [
+            'programme', 'faculty', 'department', 'degree', 'entry_mode',
+            'available_entry_modes', 'programme_status', 'professional_regulatory_body',
+            'session_label', 'version_label', 'authority_type', 'scope_label',
+            'source_path', 'raw_text', 'status'
+        ],
         jsonColumns: ['row_json'],
         numericColumns: ['duration_years'],
-        defaults: { status: 'active', authority_type: 'institution' },
-        search: ['programme', 'faculty', 'department', 'degree', 'entry_mode', 'source_path', 'raw_text']
+        defaults: { status: 'active', authority_type: 'institution', programme_status: 'active' },
+        search: [
+            'programme', 'faculty', 'department', 'degree', 'entry_mode',
+            'available_entry_modes', 'programme_status', 'professional_regulatory_body',
+            'session_label', 'version_label', 'source_path', 'raw_text'
+        ]
     },
     academic_courses: {
         label: 'Courses',
@@ -96,6 +110,11 @@ const STRUCTURED_TABLES = {
         columns: [
             'rule_type', 'requirement_category', 'subject', 'programme', 'entry_mode',
             'level_label', 'semester_label', 'requirement_text', 'minimum_value',
+            'required_subjects', 'minimum_grades', 'olevel_sittings_rule',
+            'jamb_subjects', 'post_utme_rule', 'special_conditions',
+            'minimum_credit_units', 'required_courses', 'elective_requirements',
+            'cgpa_requirement', 'clinical_posting_requirement', 'project_requirement',
+            'professional_exam_requirement', 'duration_limits', 'approval_condition',
             'authority_type', 'scope_label', 'currentness_label', 'source_path',
             'raw_text', 'row_json', 'status'
         ],
@@ -103,6 +122,11 @@ const STRUCTURED_TABLES = {
         textColumns: [
             'rule_type', 'requirement_category', 'subject', 'programme', 'entry_mode',
             'level_label', 'semester_label', 'requirement_text', 'minimum_value',
+            'required_subjects', 'minimum_grades', 'olevel_sittings_rule',
+            'jamb_subjects', 'post_utme_rule', 'special_conditions',
+            'minimum_credit_units', 'required_courses', 'elective_requirements',
+            'cgpa_requirement', 'clinical_posting_requirement', 'project_requirement',
+            'professional_exam_requirement', 'duration_limits', 'approval_condition',
             'authority_type', 'scope_label', 'currentness_label', 'source_path',
             'raw_text', 'status'
         ],
@@ -112,6 +136,11 @@ const STRUCTURED_TABLES = {
         search: [
             'rule_type', 'requirement_category', 'subject', 'programme', 'entry_mode',
             'level_label', 'semester_label', 'requirement_text', 'minimum_value',
+            'required_subjects', 'minimum_grades', 'olevel_sittings_rule',
+            'jamb_subjects', 'post_utme_rule', 'special_conditions',
+            'minimum_credit_units', 'required_courses', 'elective_requirements',
+            'cgpa_requirement', 'clinical_posting_requirement', 'project_requirement',
+            'professional_exam_requirement', 'duration_limits', 'approval_condition',
             'source_path', 'raw_text'
         ]
     }
@@ -302,6 +331,22 @@ function _structuredTemplateRows(configName, config) {
     if (configName === 'academic_fees') {
         return [{ ...base, programme: 'Medicine and Surgery (MBBS)', fee_category: 'official_total_payable', amount_label: 'N1,230,000', amount_value: 1230000, student_category: 'non-indigene', source_path: 'bmu fee structures new.docx' }];
     }
+    if (configName === 'academic_programmes') {
+        return [{
+            ...base,
+            programme: 'Medicine and Surgery (MBBS)',
+            faculty: 'Faculty of Clinical Sciences',
+            degree: 'MBBS',
+            duration_years: 6,
+            entry_mode: 'UTME',
+            available_entry_modes: 'UTME; Direct Entry',
+            programme_status: 'active',
+            professional_regulatory_body: 'MDCN',
+            session_label: '2025/2026',
+            version_label: 'BMU current',
+            source_path: 'Approved source document'
+        }];
+    }
     if (configName === 'academic_courses') {
         return [{ ...base, programme: 'Medical Laboratory Science', level_label: '300 level', semester_label: 'First semester', course_code: 'MLS 313', course_title: 'Basic Hematology', credit_units: 2, source_path: 'ALL COURSES FOR BMU.xlsx' }];
     }
@@ -313,6 +358,11 @@ function _structuredTemplateRows(configName, config) {
             subject: 'Graduation requirements',
             programme: 'Medical Laboratory Science',
             requirement_text: 'Enter the exact approved requirement here.',
+            minimum_credit_units: 'Enter minimum credit units if stated',
+            required_courses: 'Enter required/core courses if stated',
+            cgpa_requirement: 'Enter CGPA/GPA rule if stated',
+            professional_exam_requirement: 'Enter professional examination rule if stated',
+            approval_condition: 'Enter Senate/professional-body approval condition if stated',
             raw_text: 'Enter the exact approved rule text here.',
             source_path: 'Approved source document'
         }];
@@ -424,6 +474,24 @@ function _programmeFromRequirementRecord(record, value = {}) {
     return String(record.programme || value.programme || value.program || '').trim();
 }
 
+const REQUIREMENT_DETAIL_FIELDS = [
+    'required_subjects',
+    'minimum_grades',
+    'olevel_sittings_rule',
+    'jamb_subjects',
+    'post_utme_rule',
+    'special_conditions',
+    'minimum_credit_units',
+    'required_courses',
+    'elective_requirements',
+    'cgpa_requirement',
+    'clinical_posting_requirement',
+    'project_requirement',
+    'professional_exam_requirement',
+    'duration_limits',
+    'approval_condition'
+];
+
 async function _syncProgrammeRequirementRecord(tableName, record) {
     if (!record || (tableName !== 'structured_facts' && tableName !== 'academic_rules')) return;
 
@@ -442,6 +510,7 @@ async function _syncProgrammeRequirementRecord(tableName, record) {
     let sourcePath = '';
     let rawText = '';
     let value = {};
+    const details = {};
 
     if (tableName === 'structured_facts') {
         value = _parseJsonObject(record.value_json);
@@ -461,6 +530,9 @@ async function _syncProgrammeRequirementRecord(tableName, record) {
         currentnessLabel = String(record.currentness_label || value.currentness_label || 'current').trim();
         sourcePath = String(record.source_path || value.source_path || '').trim();
         rawText = requirementText;
+        for (const field of REQUIREMENT_DETAIL_FIELDS) {
+            details[field] = String(value[field] || '').trim();
+        }
     } else {
         category = String(record.requirement_category || '').trim() || _requirementCategoryFromText(`${record.rule_type || ''} ${record.requirement_text || ''} ${record.raw_text || ''}`);
         ruleType = String(record.rule_type || _ruleTypeFromCategory(category)).trim();
@@ -477,6 +549,9 @@ async function _syncProgrammeRequirementRecord(tableName, record) {
         sourcePath = String(record.source_path || '').trim();
         rawText = String(record.raw_text || requirementText).trim();
         value = _parseJsonObject(record.row_json);
+        for (const field of REQUIREMENT_DETAIL_FIELDS) {
+            details[field] = String(record[field] || value[field] || '').trim();
+        }
     }
 
     if (!ruleType || !requirementText) return;
@@ -490,7 +565,8 @@ async function _syncProgrammeRequirementRecord(tableName, record) {
         level_label: levelLabel,
         semester_label: semesterLabel,
         requirement_text: requirementText,
-        minimum_value: minimumValue
+        minimum_value: minimumValue,
+        ...details
     };
     const rowJson = JSON.stringify(value);
     const ruleHash = _recordHash('academic_rules', {
@@ -512,6 +588,21 @@ async function _syncProgrammeRequirementRecord(tableName, record) {
              semester_label = ?,
              requirement_text = ?,
              minimum_value = ?,
+             required_subjects = ?,
+             minimum_grades = ?,
+             olevel_sittings_rule = ?,
+             jamb_subjects = ?,
+             post_utme_rule = ?,
+             special_conditions = ?,
+             minimum_credit_units = ?,
+             required_courses = ?,
+             elective_requirements = ?,
+             cgpa_requirement = ?,
+             clinical_posting_requirement = ?,
+             project_requirement = ?,
+             professional_exam_requirement = ?,
+             duration_limits = ?,
+             approval_condition = ?,
              authority_type = ?,
              scope_label = ?,
              currentness_label = ?,
@@ -524,6 +615,7 @@ async function _syncProgrammeRequirementRecord(tableName, record) {
         [
             ruleType, category || 'general', subject, programme || null, entryMode || null,
             levelLabel || null, semesterLabel || null, requirementText, minimumValue || null,
+            ...REQUIREMENT_DETAIL_FIELDS.map(field => details[field] || null),
             authorityType || null, scopeLabel || null, currentnessLabel || 'current',
             sourcePath || null, rawText || requirementText, rowJson,
             ...(tableName === 'structured_facts' && record.id ? [record.id] : []),
@@ -535,14 +627,21 @@ async function _syncProgrammeRequirementRecord(tableName, record) {
             `INSERT INTO academic_rules
                 (record_hash, source_fact_id, rule_type, requirement_category, subject, programme,
                  entry_mode, level_label, semester_label, requirement_text, minimum_value,
+                 required_subjects, minimum_grades, olevel_sittings_rule, jamb_subjects,
+                 post_utme_rule, special_conditions, minimum_credit_units, required_courses,
+                 elective_requirements, cgpa_requirement, clinical_posting_requirement,
+                 project_requirement, professional_exam_requirement, duration_limits,
+                 approval_condition,
                  authority_type, scope_label, currentness_label, source_path, raw_text, row_json, status)
              VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
             [
                 ruleHash, tableName === 'structured_facts' ? (record.id || null) : null,
                 ruleType, category || 'general', subject, programme || null,
                 entryMode || null, levelLabel || null, semesterLabel || null,
-                requirementText, minimumValue || null, authorityType || null, scopeLabel || null,
+                requirementText, minimumValue || null,
+                ...REQUIREMENT_DETAIL_FIELDS.map(field => details[field] || null),
+                authorityType || null, scopeLabel || null,
                 currentnessLabel || 'current', sourcePath || null, rawText || requirementText, rowJson
             ]
         );

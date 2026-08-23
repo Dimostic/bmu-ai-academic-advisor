@@ -42,6 +42,24 @@ function ruleTypeFromCategory(category) {
     return map[String(category || '').toLowerCase()] || 'programme_requirement';
 }
 
+const DETAIL_FIELDS = [
+    'required_subjects',
+    'minimum_grades',
+    'olevel_sittings_rule',
+    'jamb_subjects',
+    'post_utme_rule',
+    'special_conditions',
+    'minimum_credit_units',
+    'required_courses',
+    'elective_requirements',
+    'cgpa_requirement',
+    'clinical_posting_requirement',
+    'project_requirement',
+    'professional_exam_requirement',
+    'duration_limits',
+    'approval_condition'
+];
+
 async function main() {
     await documentLabService.ensureSchema();
     const rows = await query(`
@@ -74,17 +92,23 @@ async function main() {
             requirement_category: category,
             subject,
             programme,
-            requirement_text: requirementText
+            requirement_text: requirementText,
+            ...Object.fromEntries(DETAIL_FIELDS.map(field => [field, value[field] || null]))
         });
         const recordHash = hash(`academic_rules|structured_fact|${row.id}`);
 
         await query(`
             INSERT INTO academic_rules
-                (record_hash, source_fact_id, rule_type, requirement_category, subject, programme,
+                 (record_hash, source_fact_id, rule_type, requirement_category, subject, programme,
                  entry_mode, level_label, semester_label, requirement_text, minimum_value,
+                 required_subjects, minimum_grades, olevel_sittings_rule, jamb_subjects,
+                 post_utme_rule, special_conditions, minimum_credit_units, required_courses,
+                 elective_requirements, cgpa_requirement, clinical_posting_requirement,
+                 project_requirement, professional_exam_requirement, duration_limits,
+                 approval_condition,
                  authority_type, scope_label, currentness_label, source_path, raw_text, row_json, status)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
             ON DUPLICATE KEY UPDATE
                 rule_type = VALUES(rule_type),
                 requirement_category = VALUES(requirement_category),
@@ -95,6 +119,21 @@ async function main() {
                 semester_label = VALUES(semester_label),
                 requirement_text = VALUES(requirement_text),
                 minimum_value = VALUES(minimum_value),
+                required_subjects = VALUES(required_subjects),
+                minimum_grades = VALUES(minimum_grades),
+                olevel_sittings_rule = VALUES(olevel_sittings_rule),
+                jamb_subjects = VALUES(jamb_subjects),
+                post_utme_rule = VALUES(post_utme_rule),
+                special_conditions = VALUES(special_conditions),
+                minimum_credit_units = VALUES(minimum_credit_units),
+                required_courses = VALUES(required_courses),
+                elective_requirements = VALUES(elective_requirements),
+                cgpa_requirement = VALUES(cgpa_requirement),
+                clinical_posting_requirement = VALUES(clinical_posting_requirement),
+                project_requirement = VALUES(project_requirement),
+                professional_exam_requirement = VALUES(professional_exam_requirement),
+                duration_limits = VALUES(duration_limits),
+                approval_condition = VALUES(approval_condition),
                 authority_type = VALUES(authority_type),
                 scope_label = VALUES(scope_label),
                 currentness_label = VALUES(currentness_label),
@@ -115,6 +154,7 @@ async function main() {
             value.semester_label || null,
             requirementText,
             value.minimum_value || null,
+            ...DETAIL_FIELDS.map(field => value[field] || null),
             row.authority_type || value.authority_type || null,
             row.scope_label || value.scope_label || null,
             row.currentness_label || value.currentness_label || 'current',
