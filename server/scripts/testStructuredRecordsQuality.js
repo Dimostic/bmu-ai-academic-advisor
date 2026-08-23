@@ -9,6 +9,8 @@ const REQUIRED_TABLES = [
     'academic_programmes',
     'academic_courses',
     'academic_fees',
+    'academic_admission_cutoffs',
+    'academic_registration_requirements',
     'academic_calendar_events',
     'academic_officers',
     'academic_rules'

@@ -49,6 +49,8 @@ const NORMALIZED_TABLES = [
     'academic_programmes',
     'academic_courses',
     'academic_fees',
+    'academic_admission_cutoffs',
+    'academic_registration_requirements',
     'academic_calendar_events',
     'academic_officers',
     'academic_rules'
@@ -1243,6 +1245,69 @@ class DocumentLabService {
                 UNIQUE KEY uq_academic_calendar_hash (record_hash),
                 INDEX idx_academic_calendar_status (status),
                 INDEX idx_academic_calendar_title (event_title)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS academic_admission_cutoffs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_fact_id INT NULL,
+                source_table_id INT NULL,
+                source_document_id INT NULL,
+                programme VARCHAR(255) NOT NULL,
+                admission_cycle VARCHAR(80) NOT NULL,
+                entry_mode VARCHAR(120) NULL,
+                merit_cutoff DECIMAL(8,2) NULL,
+                cutoff_label VARCHAR(120) NULL,
+                eligibility_text TEXT NULL,
+                application_process TEXT NULL,
+                contact_text TEXT NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                currentness_label VARCHAR(80) NULL,
+                source_path TEXT NULL,
+                raw_text TEXT NULL,
+                row_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_academic_cutoffs_hash (record_hash),
+                INDEX idx_academic_cutoffs_status (status),
+                INDEX idx_academic_cutoffs_programme (programme),
+                INDEX idx_academic_cutoffs_cycle (admission_cycle)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS academic_registration_requirements (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_fact_id INT NULL,
+                source_table_id INT NULL,
+                source_document_id INT NULL,
+                student_category VARCHAR(120) NULL,
+                programme VARCHAR(255) NULL,
+                level_label VARCHAR(80) NULL,
+                semester_label VARCHAR(80) NULL,
+                session_label VARCHAR(80) NULL,
+                requirement_type VARCHAR(120) NOT NULL,
+                requirement_text TEXT NOT NULL,
+                deadline_label VARCHAR(160) NULL,
+                portal_url TEXT NULL,
+                authority_type VARCHAR(80) NULL,
+                scope_label VARCHAR(160) NULL,
+                currentness_label VARCHAR(80) NULL,
+                source_path TEXT NULL,
+                raw_text TEXT NULL,
+                row_json LONGTEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_academic_registration_hash (record_hash),
+                INDEX idx_academic_registration_status (status),
+                INDEX idx_academic_registration_category (student_category),
+                INDEX idx_academic_registration_session (session_label)
             ) ENGINE=InnoDB
         `);
 

@@ -82,6 +82,28 @@ const STRUCTURED_TABLES = {
         defaults: { status: 'active', authority_type: 'institution' },
         search: ['programme', 'fee_category', 'amount_label', 'session_label', 'student_category', 'source_path', 'raw_text']
     },
+    academic_admission_cutoffs: {
+        label: 'Admission cutoffs',
+        description: 'Admission-cycle cutoff marks, eligibility notes and application-process details.',
+        columns: ['programme', 'admission_cycle', 'entry_mode', 'merit_cutoff', 'cutoff_label', 'eligibility_text', 'application_process', 'contact_text', 'authority_type', 'scope_label', 'currentness_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        required: ['programme', 'admission_cycle'],
+        textColumns: ['programme', 'admission_cycle', 'entry_mode', 'cutoff_label', 'eligibility_text', 'application_process', 'contact_text', 'authority_type', 'scope_label', 'currentness_label', 'source_path', 'raw_text', 'status'],
+        jsonColumns: ['row_json'],
+        numericColumns: ['merit_cutoff'],
+        defaults: { status: 'active', authority_type: 'institution', currentness_label: 'current' },
+        search: ['programme', 'admission_cycle', 'entry_mode', 'cutoff_label', 'eligibility_text', 'application_process', 'contact_text', 'source_path', 'raw_text']
+    },
+    academic_registration_requirements: {
+        label: 'Registration requirements',
+        description: 'Session or semester registration requirements for new and returning students.',
+        columns: ['student_category', 'programme', 'level_label', 'semester_label', 'session_label', 'requirement_type', 'requirement_text', 'deadline_label', 'portal_url', 'authority_type', 'scope_label', 'currentness_label', 'source_path', 'raw_text', 'row_json', 'status'],
+        required: ['requirement_type', 'requirement_text'],
+        textColumns: ['student_category', 'programme', 'level_label', 'semester_label', 'session_label', 'requirement_type', 'requirement_text', 'deadline_label', 'portal_url', 'authority_type', 'scope_label', 'currentness_label', 'source_path', 'raw_text', 'status'],
+        jsonColumns: ['row_json'],
+        numericColumns: [],
+        defaults: { status: 'active', authority_type: 'institution', currentness_label: 'current' },
+        search: ['student_category', 'programme', 'level_label', 'semester_label', 'session_label', 'requirement_type', 'requirement_text', 'deadline_label', 'portal_url', 'source_path', 'raw_text']
+    },
     academic_calendar_events: {
         label: 'Calendar',
         description: 'Academic calendar events and date labels.',
@@ -387,6 +409,12 @@ function _structuredTemplateRows(configName, config) {
     }
     if (configName === 'academic_fees') {
         return [{ ...base, programme: 'Medicine and Surgery (MBBS)', fee_category: 'official_total_payable', amount_label: 'N1,230,000', amount_value: 1230000, student_category: 'non-indigene', source_path: 'bmu fee structures new.docx' }];
+    }
+    if (configName === 'academic_admission_cutoffs') {
+        return [{ ...base, programme: 'Medicine and Surgery (MBBS)', admission_cycle: '2026/2027', entry_mode: 'UTME', merit_cutoff: 279, cutoff_label: 'Merit - 279', source_path: 'BMU 2026/2027 Admissions Cutoff Marks and Application Details' }];
+    }
+    if (configName === 'academic_registration_requirements') {
+        return [{ ...base, student_category: 'new student', session_label: '2026/2027', requirement_type: 'online_application', requirement_text: 'Create an account, verify the account, log in, search for the programme, apply, complete the form, upload required documents, update application and pay the application fee.', portal_url: 'https://bmu.edu.ng/accounts/login/?next=/admissions/apply/?program=6', source_path: 'BMU admissions portal' }];
     }
     if (configName === 'academic_programmes') {
         return [{

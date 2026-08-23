@@ -859,6 +859,144 @@ function _buildGovernorVisitorReply() {
     };
 }
 
+function _isAdmissionCutoffQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    return /\b(cut\s*off|cutoff|cut-off|mark|score|merit)\b/i.test(q)
+        && /\b(admission|admissions|apply|application|utme|programme|program|mbbs|medicine|pharmacy|nursing|laboratory|optometry|radiography|physio|community|public\s+health)\b/i.test(q);
+}
+
+function _normaliseAdmissionProgramme(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function _admissionProgrammeMatchesQuestion(programme, question) {
+    const p = _normaliseAdmissionProgramme(programme);
+    const q = _normaliseAdmissionProgramme(question);
+    if (!p || !q) return false;
+    if (p.includes('medicine') && (/\bmbbs\b|\bmedicine\b/.test(q))) return true;
+    if (p.includes('pharmacy') && /\b(pharmacy|pharmd|pharm d)\b/.test(q)) return true;
+    if (p.includes('nursing') && /\bnursing\b/.test(q)) return true;
+    if (p.includes('medical laboratory') && /\b(medical laboratory|med lab|mls|bmls|laboratory)\b/.test(q)) return true;
+    if (p.includes('optometry') && /\boptometry\b/.test(q)) return true;
+    if (p.includes('radiography') && /\bradiography\b/.test(q)) return true;
+    if (p.includes('physiotherapy') && /\b(physiotherapy|physio)\b/.test(q)) return true;
+    if ((p.includes('community') || p.includes('public health')) && /\b(community health|public health)\b/.test(q)) return true;
+    if (p.includes('other') && /\b(other|others|general|minimum)\b/.test(q)) return true;
+    return p.split(' ').filter(Boolean).some(term => term.length > 4 && q.includes(term));
+}
+
+async function _buildAdmissionCutoffReply(question) {
+    if (!_isAdmissionCutoffQuestion(question)) return null;
+    try {
+        const rows = await query(`
+            SELECT programme, admission_cycle, entry_mode, merit_cutoff, cutoff_label,
+                   eligibility_text, application_process, contact_text, source_path
+            FROM academic_admission_cutoffs
+            WHERE status = 'active'
+            ORDER BY admission_cycle DESC, merit_cutoff DESC, programme ASC
+            LIMIT 100
+        `);
+        if (!rows?.length) return null;
+        const matched = rows.filter(row => _admissionProgrammeMatchesQuestion(row.programme, question));
+        const selected = matched.length ? matched : rows;
+        const cycle = selected[0]?.admission_cycle || rows[0]?.admission_cycle || 'current admission cycle';
+        const sourcePath = selected.find(row => row.source_path)?.source_path || 'BMU admission cutoff structured records';
+        const eligibility = selected.find(row => row.eligibility_text)?.eligibility_text || '';
+        const application = selected.find(row => row.application_process)?.application_process || '';
+        const contact = selected.find(row => row.contact_text)?.contact_text || '';
+        const tableRows = selected.map(row => `| ${row.programme} | ${row.cutoff_label || (row.merit_cutoff ? `Merit - ${Number(row.merit_cutoff).toString()}` : 'Not stated')} |`);
+        const table = ['| Programme | Cutoff mark |', '| --- | ---: |', ...tableRows].join('\n');
+        const single = matched.length === 1 ? matched[0] : null;
+        return {
+            speech_text: single
+                ? `For the ${cycle} admission cycle, the merit cutoff for ${single.programme} is ${Number(single.merit_cutoff || 0).toString()}. Cutoff marks can change each admission cycle, so use the current BMU admission notice.`
+                : `For the ${cycle} admission cycle, BMU cutoff marks vary by programme. Medicine and Surgery is 279, Pharmacy is 238, Nursing Science is 234, Medical Laboratory Sciences is 223, and other listed programmes have their own marks. Cutoff marks can change each admission cycle.`,
+            display_markdown: `For the **${cycle} admission cycle**, the structured BMU cutoff records show:\n\n${table}${eligibility ? `\n\n**Eligibility:** ${eligibility}` : ''}${application ? `\n\n**Application process:** ${application}` : ''}${contact ? `\n\n**Further inquiries:** ${contact}` : ''}\n\nCutoff marks are **admission-cycle specific** and should be treated as current only for the stated cycle.`,
+            topic_slug: 'admission_cutoff_marks',
+            citations: [{ title: sourcePath, source: 'BMU admission cutoff structured table' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.99,
+            _source: 'structured_facts'
+        };
+    } catch (err) {
+        if (!/academic_admission_cutoffs/i.test(err.message || '')) {
+            console.warn('[advisorStreamService] admission cutoff lookup failed:', err.message);
+        }
+        return null;
+    }
+}
+
+function _isRegistrationRequirementQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    return /\b(register|registration|clearance|new\s+student|returning\s+student|fresh(?:er|ers)?|apply|application|admission\s+portal|upload\s+documents?|application\s+fee)\b/i.test(q)
+        && /\b(student|students|bmu|bayelsa|admission|admissions|semester|session|portal|programme|program|applicant|applicants)\b/i.test(q);
+}
+
+function _registrationRowSortValue(row) {
+    const type = String(row.requirement_type || '').toLowerCase();
+    if (/online_application/.test(type)) return 1;
+    if (/admission_eligibility/.test(type)) return 2;
+    return 9;
+}
+
+async function _buildRegistrationRequirementReply(question) {
+    if (!_isRegistrationRequirementQuestion(question)) return null;
+    try {
+        const rows = await query(`
+            SELECT student_category, programme, level_label, semester_label, session_label,
+                   requirement_type, requirement_text, deadline_label, portal_url,
+                   source_path, currentness_label
+            FROM academic_registration_requirements
+            WHERE status = 'active'
+            ORDER BY session_label DESC, student_category ASC, requirement_type ASC
+            LIMIT 50
+        `);
+        if (!rows?.length) return null;
+        const q = String(question || '').toLowerCase();
+        const wantsReturning = /\breturning\b/.test(q);
+        const wantsNew = /\b(new\s+student|fresh(?:er|ers)?|applicant|apply|application|admission)\b/.test(q);
+        const scoped = rows.filter(row => {
+            const category = String(row.student_category || '').toLowerCase();
+            if (wantsReturning) return category.includes('returning');
+            if (wantsNew) return category.includes('new') || category.includes('applicant');
+            return true;
+        });
+        const selected = (scoped.length ? scoped : rows).sort((a, b) => _registrationRowSortValue(a) - _registrationRowSortValue(b));
+        const session = selected.find(row => row.session_label)?.session_label || 'current session';
+        const lines = selected.map(row => {
+            const scope = [row.student_category, row.programme, row.level_label, row.semester_label].filter(Boolean).join(' / ') || 'BMU students';
+            const deadline = row.deadline_label ? ` Deadline: ${row.deadline_label}.` : '';
+            const portal = row.portal_url ? ` Portal: ${row.portal_url}` : '';
+            return `- **${scope}**: ${row.requirement_text}${deadline}${portal}`;
+        });
+        const firstPortal = selected.find(row => row.portal_url)?.portal_url || '';
+        const sourcePath = selected.find(row => row.source_path)?.source_path || 'BMU registration structured records';
+        return {
+            speech_text: `For ${session}, BMU registration and application requirements should be checked from the current structured records. For new applicants, create and verify an account, log in, choose the programme, apply, complete the form, upload the required documents, update the application, and pay the application fee. These requirements can change by session, semester, programme or level.`,
+            display_markdown: `For **${session}**, the current BMU structured records show:\n\n${lines.join('\n')}${firstPortal ? `\n\n**Portal:** ${firstPortal}` : ''}\n\nRegistration requirements can change by **session, semester, programme, and level**, so admins should update this table whenever BMU issues a refined instruction.`,
+            topic_slug: 'registration_requirements',
+            citations: [{ title: sourcePath, source: 'BMU registration requirements structured table' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.98,
+            _source: 'structured_facts'
+        };
+    } catch (err) {
+        if (!/academic_registration_requirements/i.test(err.message || '')) {
+            console.warn('[advisorStreamService] registration requirement lookup failed:', err.message);
+        }
+        return null;
+    }
+}
+
 async function _getProfileDocumentContent() {
     try {
         const rows = await query(
@@ -1502,6 +1640,10 @@ async function _buildFastIntentReply(question) {
     if (_isGovernorVisitorQuestion(q)) return _buildGovernorVisitorReply();
 
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply(q);
+    const admissionCutoffReply = await _buildAdmissionCutoffReply(q);
+    if (admissionCutoffReply) return admissionCutoffReply;
+    const registrationRequirementReply = await _buildRegistrationRequirementReply(q);
+    if (registrationRequirementReply) return registrationRequirementReply;
     const programmeFeeReply = await _buildStructuredProgrammeFeeReply(q) || _buildProgrammeFeeReply(q);
     if (programmeFeeReply) return programmeFeeReply;
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();

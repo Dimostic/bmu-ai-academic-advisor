@@ -58,6 +58,48 @@ const REQUIRED_FEES = [
     }
 ];
 
+const REQUIRED_ADMISSION_CUTOFFS = [
+    {
+        name: '2026/2027 MBBS cutoff',
+        programmePatterns: ['medicine', 'mbbs'],
+        cyclePatterns: ['2026/2027'],
+        amountFragments: ['279']
+    },
+    {
+        name: '2026/2027 Pharmacy cutoff',
+        programmePatterns: ['pharmacy'],
+        cyclePatterns: ['2026/2027'],
+        amountFragments: ['238']
+    },
+    {
+        name: '2026/2027 Nursing cutoff',
+        programmePatterns: ['nursing'],
+        cyclePatterns: ['2026/2027'],
+        amountFragments: ['234']
+    },
+    {
+        name: '2026/2027 other programmes cutoff',
+        programmePatterns: ['other'],
+        cyclePatterns: ['2026/2027'],
+        amountFragments: ['150']
+    }
+];
+
+const REQUIRED_REGISTRATION_REQUIREMENTS = [
+    {
+        name: 'new student online application flow',
+        categoryPatterns: ['applicant', 'new student'],
+        typePatterns: ['online application'],
+        textPatterns: ['create an account', 'verify', 'upload', 'application fee']
+    },
+    {
+        name: 'new student admission eligibility',
+        categoryPatterns: ['new student'],
+        typePatterns: ['admission eligibility'],
+        textPatterns: ['150', '16', 'o level', 'english language', 'biology', 'chemistry', 'physics', 'mathematics']
+    }
+];
+
 function normalise(value) {
     return String(value || '')
         .toLowerCase()
@@ -121,14 +163,65 @@ async function checkFees() {
     });
 }
 
+async function checkAdmissionCutoffs() {
+    const rows = await query(`
+        SELECT programme, admission_cycle, merit_cutoff, cutoff_label, eligibility_text, application_process, source_path
+        FROM academic_admission_cutoffs
+        WHERE status = 'active'
+    `);
+    return REQUIRED_ADMISSION_CUTOFFS.map(required => {
+        const match = rows.find(row => {
+            const programme = normalise(row.programme);
+            const cycle = normalise(row.admission_cycle);
+            const amount = normalise(`${row.merit_cutoff || ''} ${row.cutoff_label || ''}`);
+            return containsAny(programme, required.programmePatterns)
+                && containsAny(cycle, required.cyclePatterns)
+                && containsAny(amount, required.amountFragments);
+        });
+        return {
+            name: required.name,
+            ok: Boolean(match),
+            matched: match ? `${match.programme}: ${match.admission_cycle} ${match.cutoff_label || match.merit_cutoff}` : null
+        };
+    });
+}
+
+async function checkRegistrationRequirements() {
+    const rows = await query(`
+        SELECT student_category, requirement_type, requirement_text, portal_url, source_path
+        FROM academic_registration_requirements
+        WHERE status = 'active'
+    `);
+    return REQUIRED_REGISTRATION_REQUIREMENTS.map(required => {
+        const match = rows.find(row => {
+            const category = normalise(row.student_category);
+            const type = normalise(row.requirement_type);
+            const text = normalise(`${row.requirement_text || ''} ${row.portal_url || ''}`);
+            return containsAny(category, required.categoryPatterns)
+                && containsAny(type, required.typePatterns)
+                && containsAll(text, required.textPatterns);
+        });
+        return {
+            name: required.name,
+            ok: Boolean(match),
+            matched: match ? `${match.student_category}: ${match.requirement_type}` : null
+        };
+    });
+}
+
 async function main() {
-    const [officers, fees] = await Promise.all([checkOfficers(), checkFees()]);
-    const results = { officers, fees };
-    const failed = [...officers, ...fees].filter(item => !item.ok);
+    const [officers, fees, admissionCutoffs, registrationRequirements] = await Promise.all([
+        checkOfficers(),
+        checkFees(),
+        checkAdmissionCutoffs(),
+        checkRegistrationRequirements()
+    ]);
+    const results = { officers, fees, admissionCutoffs, registrationRequirements };
+    const failed = [...officers, ...fees, ...admissionCutoffs, ...registrationRequirements].filter(item => !item.ok);
 
     console.log(JSON.stringify({
         ok: failed.length === 0,
-        checked: officers.length + fees.length,
+        checked: officers.length + fees.length + admissionCutoffs.length + registrationRequirements.length,
         failed: failed.length,
         results
     }, null, 2));

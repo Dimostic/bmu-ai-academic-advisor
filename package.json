@@ -29,7 +29,8 @@
     "test:structured-quality": "node server/scripts/testStructuredRecordsQuality.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
-    "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js"
+    "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js",
+    "seed:admission-cycle-facts": "node server/scripts/seedAdmissionCycleFacts.js"
   },
   "keywords": [
     "ai",

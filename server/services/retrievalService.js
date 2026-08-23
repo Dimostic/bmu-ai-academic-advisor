@@ -692,6 +692,23 @@ class RetrievalService {
                 select: 'id, programme, fee_category, amount_label, amount_value, session_label, student_category, authority_type, scope_label, source_path, raw_text'
             },
             {
+                type: 'admission_cutoff',
+                table: 'academic_admission_cutoffs',
+                fields: ['programme', 'admission_cycle', 'entry_mode', 'cutoff_label', 'eligibility_text', 'application_process', 'contact_text', 'scope_label', 'currentness_label', 'source_path', 'raw_text'],
+                select: `id, programme, admission_cycle, entry_mode, merit_cutoff, cutoff_label,
+                         eligibility_text, application_process, contact_text, authority_type,
+                         scope_label, currentness_label, source_path, raw_text`
+            },
+            {
+                type: 'registration_requirement',
+                table: 'academic_registration_requirements',
+                fields: ['student_category', 'programme', 'level_label', 'semester_label', 'session_label', 'requirement_type', 'requirement_text', 'deadline_label', 'portal_url', 'scope_label', 'currentness_label', 'source_path', 'raw_text'],
+                select: `id, student_category, programme, level_label, semester_label,
+                         session_label, requirement_type, requirement_text, deadline_label,
+                         portal_url, authority_type, scope_label, currentness_label,
+                         source_path, raw_text`
+            },
+            {
                 type: 'calendar',
                 table: 'academic_calendar_events',
                 fields: ['event_title', 'event_date_label', 'session_label', 'scope_label', 'source_path', 'raw_text'],
@@ -888,6 +905,10 @@ class RetrievalService {
                 lines.push(`- Course: ${data.course_code || 'Uncoded'}${data.course_title ? ` | ${data.course_title}` : ''}${data.credit_units ? ` | Units: ${data.credit_units}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             } else if (record.type === 'fee') {
                 lines.push(`- Fee: ${data.fee_category || 'Fee record'}${data.programme ? ` | Programme: ${data.programme}` : ''}${data.amount_label ? ` | Amount: ${data.amount_label}` : ''}${data.session_label ? ` | Session: ${data.session_label}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+            } else if (record.type === 'admission_cutoff') {
+                lines.push(`- Admission cutoff: ${data.programme}${data.admission_cycle ? ` | Cycle: ${data.admission_cycle}` : ''}${data.entry_mode ? ` | Entry: ${data.entry_mode}` : ''}${data.cutoff_label ? ` | Cutoff: ${data.cutoff_label}` : data.merit_cutoff ? ` | Merit cutoff: ${data.merit_cutoff}` : ''}${data.eligibility_text ? ` | Eligibility: ${data.eligibility_text}` : ''}${data.application_process ? ` | Application process: ${data.application_process}` : ''}${data.contact_text ? ` | Contact: ${data.contact_text}` : ''}${data.currentness_label ? ` [${data.currentness_label}]` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
+            } else if (record.type === 'registration_requirement') {
+                lines.push(`- Registration requirement: ${data.requirement_type}${data.student_category ? ` | Student: ${data.student_category}` : ''}${data.programme ? ` | Programme: ${data.programme}` : ''}${data.level_label ? ` | Level: ${data.level_label}` : ''}${data.semester_label ? ` | Semester: ${data.semester_label}` : ''}${data.session_label ? ` | Session: ${data.session_label}` : ''}${data.deadline_label ? ` | Deadline: ${data.deadline_label}` : ''}${data.portal_url ? ` | Portal: ${data.portal_url}` : ''}: ${data.requirement_text || record.rawText || ''}${data.currentness_label ? ` [${data.currentness_label}]` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             } else if (record.type === 'calendar') {
                 lines.push(`- Calendar: ${data.event_title}${data.event_date_label ? ` | Date: ${data.event_date_label}` : ''}${data.session_label ? ` | Session: ${data.session_label}` : ''}${record.sourcePath ? ` Source path: ${record.sourcePath}` : ''}`);
             } else if (record.type === 'officer') {
