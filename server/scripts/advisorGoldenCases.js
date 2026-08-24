@@ -2,7 +2,8 @@ module.exports = [
     {
         name: 'principal-officer-vc',
         question: 'Who is the Vice-Chancellor of BMU?',
-        mustContain: ['dimie ogoina', 'vice-chancellor']
+        mustContain: ['dimie ogoina', 'vice-chancellor'],
+        mustNotContain: ['principal officers are']
     },
     {
         name: 'principal-officer-vc-name-variant',
@@ -22,7 +23,8 @@ module.exports = [
     {
         name: 'principal-officer-bursar',
         question: 'Who is the Bursar of BMU?',
-        mustContain: ['ebipuado ombu', 'bursar']
+        mustContain: ['ebipuado ombu', 'bursar'],
+        mustNotContain: ['principal officers are']
     },
     {
         name: 'principal-officer-bursar-accent-boss',

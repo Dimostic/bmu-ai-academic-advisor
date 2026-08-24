@@ -193,7 +193,7 @@ function _buildPrincipalOfficerReply(position) {
         speech_text: `The ${officer.position} of Bayelsa Medical University is ${officer.name}${note}.`,
         display_markdown: `The **${officer.position}** of Bayelsa Medical University is **${officer.name}**${note}.`,
         topic_slug: 'bmu_principal_officer',
-        citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+        citations: [{ title: `${officer.position} record`, source: 'BMU Brief Institutional Profile (May 2025)' }],
         suggested_actions: [],
         follow_up_questions: [],
         needs_escalation: false,

@@ -835,7 +835,7 @@ function _buildPrincipalOfficerReply(position, officers = BMU_PRINCIPAL_OFFICERS
         speech_text: `The ${officer.position} of Bayelsa Medical University is ${officer.name}${note}.`,
         display_markdown: `The **${officer.position}** of Bayelsa Medical University is **${officer.name}**${note}.`,
         topic_slug: 'bmu_principal_officer',
-        citations: [{ title: officer.sourcePath || _formatOfficerSource(officers), source: 'Approved BMU officer record' }],
+        citations: [{ title: `${officer.position} record`, source: officer.sourcePath || 'Approved BMU officer record' }],
         suggested_actions: [],
         follow_up_questions: [],
         needs_escalation: false,

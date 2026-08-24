@@ -91,8 +91,13 @@ async function main() {
 
     const silenceArtefacts = [
         'do you translate',
+        'Can you translate?',
+        'Translate to English.',
         'Thank you for watching.',
+        'Please like and subscribe',
         'subscribe to my channel',
+        '[Music]',
+        'this is a foreign language',
         'hmm'
     ];
     for (const phrase of silenceArtefacts) {
