@@ -781,6 +781,7 @@
         const speaking = phase === 'speaking';
         document.body.classList.toggle('is-speaking', speaking);
         document.body.classList.toggle('is-thinking', phase === 'thinking' || phase === 'transcribing');
+        document.body.classList.toggle('is-transcribing', phase === 'transcribing');
         document.body.classList.toggle('is-listening', phase === 'listening');
         document.body.classList.toggle('is-paused', phase === 'paused');
 
@@ -3559,7 +3560,7 @@
                     scheduleWakeWordListener(900);
                     return;
                 }
-                setAvatarState('thinking', 'Transcribing');
+                setAvatarState('transcribing', 'Transcribing');
                 const blobType = recorder.mimeType || preferredMime || 'audio/webm';
                 const blob = new Blob(chunks, { type: blobType });
                 const form = new FormData();
@@ -3665,7 +3666,7 @@
                         return;
                     }
                     if (heardSpeech && now - lastSpeechAt >= LISTENING_SILENCE_MS) {
-                        setAvatarState('idle', 'Processing');
+                        setAvatarState('transcribing', 'Transcribing');
                         stopRecorder(false);
                         return;
                     }

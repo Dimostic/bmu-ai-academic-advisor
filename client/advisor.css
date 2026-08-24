@@ -409,7 +409,8 @@ html[data-theme="dark"] .avatar-stage-controls {
 }
 .avatar-status[data-state="listening"] .dot { background: #ff7a59; animation-duration: .8s; }
 .avatar-status[data-state="thinking"] .dot { background: #ffd66e; }
-.avatar-status[data-state="talking"]  .dot { background: #4cc6a3; animation-duration: .35s; }
+.avatar-status[data-state="transcribing"] .dot { background: #63b3ff; }
+.avatar-status[data-state="speaking"]  .dot { background: #4cc6a3; animation-duration: .35s; }
 @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: .5; } }
 .avatar-meta { text-align: center; }
 .avatar-meta strong { display: block; font-size: 1.05rem; }
@@ -1475,6 +1476,14 @@ body.advisor-full-view.is-thinking .avatar-meta::before {
     font-size: .78rem;
     font-weight: 800;
     animation: avatar-thinking-label 1.25s ease-in-out infinite;
+}
+
+body.advisor-full-view.is-transcribing .avatar-meta::before {
+    content: "Dr. Tari is transcribing";
+    border-color: rgba(99,179,255,.58);
+    background:
+        radial-gradient(circle at 14px 50%, #63b3ff 0 4px, transparent 5px),
+        rgba(11,37,40,.92);
 }
 
 @keyframes avatar-thinking-label {
