@@ -163,7 +163,7 @@ function normalizeCourseCode(value) {
 function formatCourseCodeDisplay(value) {
     let text = String(value || '')
         .toUpperCase()
-        .replace(/^BMU\?\s*/i, 'BMU-')
+        .replace(/^BMU[?\s-]+/i, 'BMU-')
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/^BMU\s*[-\s]\s*/i, 'BMU-')
