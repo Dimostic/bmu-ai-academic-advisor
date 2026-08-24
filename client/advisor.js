@@ -2006,9 +2006,14 @@
             enableSpeechOutput();
             if (source === 'wake') {
                 stopWakeWordListener();
-                speakWithBrowser('Hello, I am listening.').finally(() => {
+                let wakeStartedListening = false;
+                const startAfterWake = () => {
+                    if (wakeStartedListening) return;
+                    wakeStartedListening = true;
                     if (!state.voicePaused && !state.recording && !document.hidden) startListening();
-                });
+                };
+                setTimeout(startAfterWake, 2200);
+                speakWithBrowser('Hello, I am listening.').finally(startAfterWake);
                 return true;
             }
             if (!state.recording) startListening();
@@ -2869,7 +2874,8 @@
             .replace(/\s+/g, ' ')
             .trim()
             .toLowerCase();
-        if (!remainder) return { command: 'listen', remainder: '' };
+        const greetingOnly = /^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening)|please)+$/i;
+        if (!remainder || greetingOnly.test(remainder)) return { command: 'listen', remainder: '' };
         if (/^(?:please\s+)?(?:listen|start\s+listening|wake\s+up|hear\s+me)\b/.test(remainder)) {
             return { command: 'listen', remainder: remainder.replace(/^(?:please\s+)?(?:listen|start\s+listening|wake\s+up|hear\s+me)\b/, '').trim() };
         }
