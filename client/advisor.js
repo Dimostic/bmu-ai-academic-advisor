@@ -166,7 +166,7 @@
             try { saved = localStorage.getItem('bmu_advisor_wake_commands'); } catch (_) { saved = null; }
             if (saved === '1') return true;
             if (saved === '0') return false;
-            return !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+            return false;
         })(),
         voicePaused: false,
         cancelVoiceListening: false,
@@ -2748,7 +2748,7 @@
     }
 
     function shouldUseWakeWordRecognition() {
-        return hasWebSpeech();
+        return hasWebSpeech() && !isMobileSpeechDevice();
     }
 
     // Server-side STT capability is only known after /api/advisor/health
@@ -2961,6 +2961,7 @@
     let wakeSuspendedUntil = 0;
     let wakeNeedsUserGesture = true;
     let wakeGestureArmerBound = false;
+    let wakeStartFailedCount = 0;
 
     function armWakeWordFromUserGesture() {
         if (!state.wakeWordEnabled || !shouldUseWakeWordRecognition()) return;
@@ -2991,26 +2992,33 @@
             rec.onend = null;
             rec.stop();
         } catch (_) { /* ignore */ }
+        syncWakeCommandUi();
     }
 
     function syncWakeCommandUi() {
         const available = shouldUseWakeWordRecognition();
         const active = Boolean(state.wakeWordEnabled && available);
+        const armed = Boolean(active && wakeRecognition);
         const title = !available
-            ? 'Voice wake command is not supported in this browser'
+            ? 'Wake command is only available on desktop Chrome or Edge. Use the mic button on mobile.'
             : state.wakeWordEnabled
-                ? 'Wake command on. Say Dr. Tari or Hello Dr. Tari'
+                ? armed
+                    ? 'Wake command armed. Say Dr. Tari or Hello Dr. Tari'
+                    : 'Wake command on. Tap to re-arm, then say Dr. Tari'
                 : 'Turn on wake command. Say Dr. Tari to activate listening';
         [wakeCommandBtn, avatarWakeCommandBtn].filter(Boolean).forEach((btn) => {
             btn.disabled = !available;
             btn.classList.toggle('is-active', active);
+            btn.classList.toggle('is-armed', armed);
             btn.setAttribute('aria-pressed', active ? 'true' : 'false');
             btn.title = title;
             btn.setAttribute('aria-label', title);
         });
         if (wakeCommandBtn) {
             wakeCommandBtn.innerHTML = active
-                ? '<i class="fa-solid fa-ear-listen"></i><span>Wake on</span>'
+                ? armed
+                    ? '<i class="fa-solid fa-ear-listen"></i><span>Wake armed</span>'
+                    : '<i class="fa-solid fa-ear-listen"></i><span>Wake on</span>'
                 : '<i class="fa-solid fa-ear-listen"></i><span>Wake</span>';
         }
         if (avatarWakeCommandBtn) {
@@ -3020,7 +3028,7 @@
 
     function toggleWakeCommand() {
         if (!shouldUseWakeWordRecognition()) {
-            toast('Voice wake command is not supported in this browser. Please use Chrome or Edge.', 'error');
+            toast('Wake command is not reliable on this device. Please tap the mic or Continue.', 'error');
             syncWakeCommandUi();
             return;
         }
@@ -3098,12 +3106,14 @@
             wakeRecognition.onerror = (e) => {
                 const code = String(e?.error || '').toLowerCase();
                 wakeRecognition = null;
+                syncWakeCommandUi();
                 if (code === 'not-allowed' || code === 'service-not-allowed') {
                     // Most browsers require a recent user gesture before
                     // background recognition can start. Re-arm after any
                     // click/tap/key press instead of disabling wake word.
                     wakeNeedsUserGesture = true;
                     wakeSuspendedUntil = Date.now() + 1800;
+                    setAvatarState('idle', 'Tap Wake to arm');
                     return;
                 }
                 scheduleWakeWordListener(code === 'no-speech' ? 700 : 1400);
@@ -3111,12 +3121,23 @@
 
             wakeRecognition.onend = () => {
                 wakeRecognition = null;
+                syncWakeCommandUi();
                 if (!state.recording) scheduleWakeWordListener(900);
             };
 
             wakeRecognition.start();
+            wakeStartFailedCount = 0;
+            setAvatarState('idle', 'Wake armed');
+            syncWakeCommandUi();
         } catch (_) {
             wakeRecognition = null;
+            wakeStartFailedCount += 1;
+            syncWakeCommandUi();
+            if (wakeStartFailedCount >= 2) {
+                wakeNeedsUserGesture = true;
+                setAvatarState('idle', 'Tap Wake to arm');
+                return;
+            }
             scheduleWakeWordListener(1800);
         }
     }
