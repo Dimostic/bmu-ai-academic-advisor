@@ -252,15 +252,15 @@
     }
 
     function normaliseAdvisorAvatar(value) {
-        return ['medical', 'female', 'male'].includes(value) ? value : 'medical';
+        return ['medical', 'academic-male', 'female', 'male'].includes(value) ? value : 'medical';
     }
 
     function voiceGenderForAvatar(value) {
-        return value === 'male' ? 'male' : 'female';
+        return value === 'male' || value === 'academic-male' ? 'male' : 'female';
     }
 
     function nextAdvisorAvatar(value) {
-        const order = ['medical', 'female', 'male'];
+        const order = ['medical', 'academic-male', 'female', 'male'];
         const current = normaliseAdvisorAvatar(value);
         return order[(order.indexOf(current) + 1) % order.length];
     }
@@ -269,10 +269,12 @@
         if (!avatarGenderToggleBtn) return;
         const gender = getAdvisorGender();
         const next = nextAdvisorAvatar(gender);
-        const labels = { medical: 'Dr. Tari medical avatar', female: 'female avatar', male: 'male avatar' };
+        const labels = { medical: 'Dr. Tari medical avatar', 'academic-male': 'academic male avatar', female: 'female avatar', male: 'male avatar' };
         avatarGenderToggleBtn.title = `Switch to ${labels[next]}`;
         avatarGenderToggleBtn.setAttribute('aria-label', avatarGenderToggleBtn.title);
         avatarGenderToggleBtn.innerHTML = gender === 'medical'
+            ? '<i class="fa-solid fa-user-tie"></i>'
+            : gender === 'academic-male'
             ? '<i class="fa-solid fa-person-dress"></i>'
             : gender === 'male'
             ? '<i class="fa-solid fa-person-dress"></i>'
@@ -830,7 +832,7 @@
     // Dr. Tari they're used to.
     function getAdvisorGender() {
         const cached = localStorage.getItem('bmu_advisor_gender');
-        if (cached === 'male' || cached === 'female' || cached === 'medical') return cached;
+        if (cached === 'male' || cached === 'female' || cached === 'medical' || cached === 'academic-male') return cached;
         try {
             const u = JSON.parse(localStorage.getItem('bmu_user') || 'null');
             if (u?.advisorGender === 'male' || u?.advisorGender === 'female') return u.advisorGender;
@@ -3822,7 +3824,7 @@
     avatarGenderToggleBtn?.addEventListener('click', async () => {
         const next = nextAdvisorAvatar(getAdvisorGender());
         await saveAdvisorGender(next);
-        toast(`Switched to ${next === 'medical' ? 'Dr. Tari medical' : next} avatar`);
+        toast(`Switched to ${next === 'medical' ? 'Dr. Tari medical' : next === 'academic-male' ? 'academic male' : next} avatar`);
     });
 
     // ---------- Escalation ----------
