@@ -3424,7 +3424,7 @@
     }
 
     async function startServerRecording(options = {}) {
-        const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : SERVER_STT_NO_SPEECH_MS;
+        const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : getConversationListenWindowMs();
         const autoFollowup = Boolean(options.autoFollowup);
         if (!serverSttAvailable) {
             updateMicAvailability();
@@ -3572,12 +3572,13 @@
                     if (!heardSpeech) {
                         noiseFloor = (noiseFloor * 0.92) + (Math.min(rms, 0.035) * 0.08);
                     }
-                    const speechThreshold = Math.max(0.006, Math.min(0.024, noiseFloor * 1.8));
-                    const softSpeechThreshold = Math.max(0.0045, speechThreshold * 0.68);
+                    const thresholdFactor = autoFollowup ? 1.35 : 1.8;
+                    const speechThreshold = Math.max(autoFollowup ? 0.0048 : 0.006, Math.min(0.024, noiseFloor * thresholdFactor));
+                    const softSpeechThreshold = Math.max(autoFollowup ? 0.0038 : 0.0045, speechThreshold * 0.62);
                     if (rms > speechThreshold) {
                         if (!speechCandidateAt) speechCandidateAt = now;
                         const sustainedSpeechMs = now - speechCandidateAt;
-                        if (!autoFollowup || sustainedSpeechMs >= 420) {
+                        if (!autoFollowup || sustainedSpeechMs >= 180) {
                             heardSpeech = true;
                             lastSpeechAt = now;
                             setAvatarState('listening', 'Listening');
@@ -3597,7 +3598,7 @@
                             setAvatarState('listening', 'Listening... 4s');
                             return;
                         }
-                        stopRecorder(autoFollowup || peakRms < 0.0035);
+                        stopRecorder(peakRms < (autoFollowup ? 0.0048 : 0.0035));
                         return;
                     }
                     if (heardSpeech && now - lastSpeechAt >= LISTENING_SILENCE_MS) {
