@@ -123,6 +123,8 @@
     const SERVER_STT_TRANSCRIPT_PREVIEW_MS = 1800;
     const CONVERSATION_LISTEN_MS = 30000;
     const COMPACT_CONVERSATION_LISTEN_MS = 20000;
+    const MOBILE_AUTO_FOLLOWUP_LISTEN_MS = 12000;
+    const AUTO_FOLLOWUP_GESTURE_WINDOW_MS = 90000;
     const SERVER_STT_MAX_RECORDING_MS = 45000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
@@ -162,6 +164,8 @@
         askCancelled: false,
         speakingFocusTimer: null,
         autoFollowupTimer: null,
+        lastVoiceGestureAt: 0,
+        autoFollowupTurnsRemaining: 0,
         lastSpeakingFocusAt: 0,
         wakeWordEnabled: (() => {
             let saved = null;
@@ -1979,6 +1983,10 @@
         if (!questionInput || questionInput.value.trim()) return;
         if (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable) return;
         if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) return;
+        if (isMobileSpeechDevice()) {
+            const recentManualMicTap = Date.now() - Number(state.lastVoiceGestureAt || 0) <= AUTO_FOLLOWUP_GESTURE_WINDOW_MS;
+            if (!recentManualMicTap || Number(state.autoFollowupTurnsRemaining || 0) <= 0) return;
+        }
         state.autoFollowupTimer = window.setTimeout(() => {
             state.autoFollowupTimer = null;
             if (state.voicePaused) return;
@@ -1988,15 +1996,25 @@
                 return;
             }
             if (questionInput?.value.trim()) return;
+            if (isMobileSpeechDevice()) {
+                const recentManualMicTap = Date.now() - Number(state.lastVoiceGestureAt || 0) <= AUTO_FOLLOWUP_GESTURE_WINDOW_MS;
+                if (!recentManualMicTap || Number(state.autoFollowupTurnsRemaining || 0) <= 0) return;
+                state.autoFollowupTurnsRemaining = Math.max(0, Number(state.autoFollowupTurnsRemaining || 0) - 1);
+            }
             startListening({
                 autoFollowup: true,
-                noSpeechMs: getConversationListenWindowMs()
+                noSpeechMs: isMobileSpeechDevice() ? MOBILE_AUTO_FOLLOWUP_LISTEN_MS : getConversationListenWindowMs()
             });
         }, 250);
     }
 
     function getConversationListenWindowMs() {
         return advisorFullView ? CONVERSATION_LISTEN_MS : COMPACT_CONVERSATION_LISTEN_MS;
+    }
+
+    function noteManualVoiceGesture() {
+        state.lastVoiceGestureAt = Date.now();
+        state.autoFollowupTurnsRemaining = 1;
     }
 
     function clearAutoFollowupTimer() {
@@ -2497,6 +2515,7 @@
         const askInputMode = state.pendingAskInputMode === 'voice' ? 'voice' : 'text';
         state.pendingAskInputMode = 'text';
         state.lastAskInputMode = askInputMode;
+        if (askInputMode !== 'voice') state.autoFollowupTurnsRemaining = 0;
         if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) {
             showGuestDemoLimit();
             updateGuestDemoUi();
@@ -3615,13 +3634,13 @@
                     if (!heardSpeech) {
                         noiseFloor = (noiseFloor * 0.92) + (Math.min(rms, 0.035) * 0.08);
                     }
-                    const thresholdFactor = autoFollowup ? 1.35 : 1.8;
-                    const speechThreshold = Math.max(autoFollowup ? 0.0048 : 0.006, Math.min(0.024, noiseFloor * thresholdFactor));
-                    const softSpeechThreshold = Math.max(autoFollowup ? 0.0038 : 0.0045, speechThreshold * 0.62);
+                    const thresholdFactor = autoFollowup ? 2.15 : 1.8;
+                    const speechThreshold = Math.max(autoFollowup ? 0.012 : 0.006, Math.min(0.032, noiseFloor * thresholdFactor));
+                    const softSpeechThreshold = Math.max(autoFollowup ? 0.008 : 0.0045, speechThreshold * (autoFollowup ? 0.72 : 0.62));
                     if (rms > speechThreshold) {
                         if (!speechCandidateAt) speechCandidateAt = now;
                         const sustainedSpeechMs = now - speechCandidateAt;
-                        if (!autoFollowup || sustainedSpeechMs >= 180) {
+                        if (!autoFollowup || sustainedSpeechMs >= 420) {
                             heardSpeech = true;
                             lastSpeechAt = now;
                             setAvatarState('listening', 'Listening');
@@ -3641,7 +3660,7 @@
                             setAvatarState('listening', 'Listening... 4s');
                             return;
                         }
-                        stopRecorder(peakRms < (autoFollowup ? 0.0048 : 0.0035));
+                        stopRecorder(peakRms < (autoFollowup ? 0.012 : 0.0035));
                         return;
                     }
                     if (heardSpeech && now - lastSpeechAt >= LISTENING_SILENCE_MS) {
@@ -3700,6 +3719,7 @@
             stopListening();
         } else {
             enableSpeechOutput();
+            noteManualVoiceGesture();
             startListening();
         }
     });
@@ -3710,6 +3730,7 @@
             stopListening();
         } else {
             enableSpeechOutput();
+            noteManualVoiceGesture();
             startListening();
         }
     });
