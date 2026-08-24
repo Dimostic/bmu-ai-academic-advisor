@@ -83,9 +83,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 /* -------- Layout -------- */
 .advisor-grid {
-    display: grid; grid-template-columns: 320px 1fr 280px;
-    gap: 20px; padding: 20px; max-width: 1240px; margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(360px, 1.08fr) minmax(420px, .92fr);
+    gap: 20px; padding: 20px; max-width: 1360px; margin: 0 auto;
     width: 100%;
+    align-items: start;
+    transition: max-width .22s ease;
+}
+.advisor-grid.history-open {
+    grid-template-columns: minmax(320px, .9fr) minmax(420px, 1fr) minmax(260px, 280px);
+    max-width: 1240px;
 }
 .guest-demo-banner {
     grid-column: 1 / -1;
@@ -190,6 +197,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 @media (max-width: 1024px) {
     .advisor-grid { grid-template-columns: 1fr; }
+    .advisor-grid.history-open { grid-template-columns: 1fr; }
     .avatar-pane { order: -1; }
     .guest-demo-banner {
         align-items: flex-start;
@@ -203,9 +211,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
     box-shadow: var(--shadow); display: flex; flex-direction: column;
     align-items: center; gap: 14px;
     position: sticky; top: 90px; align-self: flex-start;
+    min-width: 0;
+    width: 100%;
 }
 .avatar-stage {
-    position: relative; width: 240px; height: 280px;
+    position: relative;
+    width: min(100%, 440px);
+    height: clamp(320px, 42vw, 520px);
     border-radius: var(--radius);
     /* Softer, dimmer background so the cartoon reads as the focal point.
        Was a bright #d9f1e7 → #f4f7f8 mint gradient that washed everything
@@ -216,6 +228,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
     overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     border: 1px solid rgba(255,255,255,.06);
+}
+.advisor-grid.history-open .avatar-stage {
+    width: min(100%, 300px);
+    height: clamp(280px, 26vw, 360px);
 }
 .avatar-stage-controls {
     position: static;

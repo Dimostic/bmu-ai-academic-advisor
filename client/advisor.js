@@ -72,6 +72,7 @@
     const historyClose  = $('historyCloseBtn');
     const historyList   = $('historyList');
     const advisorStatus = $('avatarStatus');
+    const advisorGrid   = document.querySelector('.advisor-grid');
     const avatarPane    = document.querySelector('.avatar-pane');
     const avatarStage   = $('avatarStage');
     const avatarMicBtn  = $('avatarMicBtn');
@@ -197,6 +198,7 @@
             id: ''
         }
     };
+    state.historyDesktopOpen = true;
 
     if (state.sessionToken && !state.localSessionTokens.includes(state.sessionToken)) {
         state.localSessionTokens = [state.sessionToken, ...state.localSessionTokens].slice(0, 80);
@@ -392,6 +394,14 @@
         document.documentElement.style.setProperty('--mobile-topbar-h', `${topH}px`);
         document.documentElement.style.setProperty('--mobile-avatar-h', `${avatarH}px`);
         syncViewportModeClasses();
+    }
+
+    function syncHistoryLayout() {
+        if (!advisorGrid || !historyPane) return;
+        const historyOpen = !advisorFullView
+            && !isMobileLayout()
+            && !historyPane.classList.contains('hidden');
+        advisorGrid.classList.toggle('history-open', historyOpen);
     }
 
     function setActiveResponseBubble(el) {
@@ -3943,17 +3953,23 @@
             historyPane.classList.remove('hidden');
             historyPane.classList.toggle('is-open');
             if (historyPane.classList.contains('is-open')) await loadHistoryList();
+            syncHistoryLayout();
             return;
         }
         historyPane.classList.toggle('hidden');
+        state.historyDesktopOpen = !historyPane.classList.contains('hidden');
+        syncHistoryLayout();
         if (!historyPane.classList.contains('hidden')) await loadHistoryList();
     });
     historyClose?.addEventListener('click', () => {
         if (isMobileLayout()) {
             historyPane.classList.remove('is-open');
+            syncHistoryLayout();
             return;
         }
         historyPane.classList.add('hidden');
+        state.historyDesktopOpen = false;
+        syncHistoryLayout();
     });
     if (state.token) {
         historyToggle?.classList.remove('hidden');
@@ -3964,10 +3980,12 @@
             historyPane.classList.remove('hidden');
             historyPane.classList.remove('is-open');
         } else {
-            historyPane.classList.remove('hidden');
+            historyPane.classList.toggle('hidden', !state.historyDesktopOpen);
+            syncHistoryLayout();
             loadHistoryList().catch(() => {});
         }
     }
+    syncHistoryLayout();
 
     window.addEventListener('resize', () => {
         if (!state.token) return;
@@ -3976,8 +3994,9 @@
             historyPane.classList.remove('hidden');
             historyPane.classList.remove('is-open');
         } else {
-            historyPane.classList.remove('hidden');
+            historyPane.classList.toggle('hidden', !state.historyDesktopOpen);
         }
+        syncHistoryLayout();
     });
 
     // ---------- Form ----------
