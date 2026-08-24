@@ -79,6 +79,7 @@
     const avatarPauseBtn= $('avatarPauseBtn');
     const hardRefreshBtn = $('hardRefreshBtn');
     const avatarHardRefreshBtn = $('avatarHardRefreshBtn');
+    const avatarWakeCommandBtn = $('avatarWakeCommandBtn');
     // The SVG element is rendered inside #avatarSvgHost by applyAvatar().
     // We re-resolve advisorSvg / mouthShape / brow / hand handles every
     // time we render so they always point at the live nodes.
@@ -2945,19 +2946,28 @@
     }
 
     function syncWakeCommandUi() {
-        if (!wakeCommandBtn) return;
         const available = shouldUseWakeWordRecognition();
-        wakeCommandBtn.disabled = !available;
-        wakeCommandBtn.classList.toggle('is-active', Boolean(state.wakeWordEnabled && available));
-        wakeCommandBtn.setAttribute('aria-pressed', state.wakeWordEnabled && available ? 'true' : 'false');
-        wakeCommandBtn.title = !available
+        const active = Boolean(state.wakeWordEnabled && available);
+        const title = !available
             ? 'Voice wake command is not supported in this browser'
             : state.wakeWordEnabled
                 ? 'Wake command on. Say Dr. Tari or Hello Dr. Tari'
                 : 'Turn on wake command. Say Dr. Tari to activate listening';
-        wakeCommandBtn.innerHTML = state.wakeWordEnabled && available
-            ? '<i class="fa-solid fa-ear-listen"></i><span>Wake on</span>'
-            : '<i class="fa-solid fa-ear-listen"></i><span>Wake</span>';
+        [wakeCommandBtn, avatarWakeCommandBtn].filter(Boolean).forEach((btn) => {
+            btn.disabled = !available;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            btn.title = title;
+            btn.setAttribute('aria-label', title);
+        });
+        if (wakeCommandBtn) {
+            wakeCommandBtn.innerHTML = active
+                ? '<i class="fa-solid fa-ear-listen"></i><span>Wake on</span>'
+                : '<i class="fa-solid fa-ear-listen"></i><span>Wake</span>';
+        }
+        if (avatarWakeCommandBtn) {
+            avatarWakeCommandBtn.innerHTML = '<i class="fa-solid fa-ear-listen"></i>';
+        }
     }
 
     function toggleWakeCommand() {
@@ -3705,6 +3715,7 @@
         });
     });
     wakeCommandBtn?.addEventListener('click', toggleWakeCommand);
+    avatarWakeCommandBtn?.addEventListener('click', toggleWakeCommand);
     updateClearInputButton();
 
     // ---------- Handbook (FAQ) browser ----------
