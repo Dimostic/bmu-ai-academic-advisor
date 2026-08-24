@@ -353,46 +353,42 @@
                 <ellipse cx="158" cy="138" rx="6" ry="9" fill="url(#skinA)"/>
                 <ellipse cx="110" cy="128" rx="46" ry="56" fill="url(#skinA)"/>
 
-                <path id="avHair" d="M64 112 Q78 86 110 85 Q143 86 156 112 Q146 99 110 98 Q74 99 64 112 Z"
-                      fill="${HAIR_MALE}" stroke="${HAIR_EDGE}" stroke-width="1.2"/>
-                <path id="avHairLine" d="M69 105 Q88 94 110 94 Q132 94 151 105"
-                      fill="none" stroke="#000" stroke-opacity=".42" stroke-width="2"/>
-
-                <path d="M64 86 Q110 66 156 86 Q149 98 110 100 Q71 98 64 86 Z"
+                <path id="avHair" d="M60 109 Q71 76 110 73 Q149 76 160 109 Q145 119 110 119 Q75 119 60 109 Z"
+                      fill="url(#hatA)" stroke="#0c0a0f" stroke-width="1.4"/>
+                <path id="avHairLine" d="M67 108 Q88 114 110 114 Q132 114 153 108"
+                      fill="none" stroke="#0c0a0f" stroke-opacity=".85" stroke-width="2.2"/>
+                <path d="M64 101 Q74 71 110 68 Q146 71 156 101 Q145 111 110 112 Q75 111 64 101 Z"
                       fill="url(#hatA)" stroke="#0c0a0f" stroke-width="1.5"/>
-                <ellipse cx="110" cy="76" rx="37" ry="18" fill="url(#hatA)" stroke="#0c0a0f" stroke-width="1.5"/>
-                <path d="M78 85 Q110 94 142 85" fill="none" stroke="#d8b657" stroke-width="2.2" opacity=".9"/>
-                <path d="M81 80 Q110 90 139 80" fill="none" stroke="#0b6f73" stroke-width="2.4" opacity=".95"/>
-
-                <g stroke="#172033" stroke-width="2.3" fill="none">
-                    <rect x="78"  y="120" width="21" height="16" rx="4"/>
-                    <rect x="121" y="120" width="21" height="16" rx="4"/>
-                    <line x1="99" y1="128" x2="121" y2="128"/>
-                </g>
+                <ellipse cx="110" cy="72" rx="39" ry="19" fill="url(#hatA)" stroke="#0c0a0f" stroke-width="1.5"/>
+                <path d="M57 106 Q75 98 110 99 Q145 98 163 106 Q150 116 110 117 Q70 116 57 106 Z"
+                      fill="#15121a" stroke="#0c0a0f" stroke-width="1.4"/>
+                <path d="M76 103 Q110 112 144 103" fill="none" stroke="#d8b657" stroke-width="2.1" opacity=".92"/>
+                <path d="M82 96 Q110 104 138 96" fill="none" stroke="#0b6f73" stroke-width="2.5" opacity=".95"/>
 
                 <g id="avBrows" stroke="${HAIR_MALE}" stroke-width="4.2" fill="none" stroke-linecap="round">
-                    <path id="avBrowL" d="M80 116 Q90 112 100 116"/>
-                    <path id="avBrowR" d="M120 116 Q130 112 140 116"/>
+                    <path id="avBrowL" d="M78 119 Q90 114 102 117"/>
+                    <path id="avBrowR" d="M118 117 Q130 114 142 119"/>
                 </g>
 
                 <g id="avEyes">
-                    <ellipse class="eye-white" cx="90"  cy="128" rx="7.5" ry="5.8" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
-                    <ellipse class="eye-white" cx="130" cy="128" rx="7.5" ry="5.8" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
+                    <ellipse class="eye-white" cx="89"  cy="129" rx="8.4" ry="5.1" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
+                    <ellipse class="eye-white" cx="131" cy="129" rx="8.4" ry="5.1" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
                     <g id="avPupils">
-                        <circle id="avIrisL" cx="90"  cy="129" r="4.7" fill="${IRIS_M}" opacity=".98"/>
-                        <circle id="avIrisR" cx="130" cy="129" r="4.7" fill="${IRIS_M}" opacity=".98"/>
-                        <circle id="avPupilL" cx="90"  cy="129" r="3" fill="${HAIR}"/>
-                        <circle id="avPupilR" cx="130" cy="129" r="3" fill="${HAIR}"/>
-                        <circle cx="91"  cy="127.5" r=".9" fill="#fff" opacity=".9"/>
-                        <circle cx="131" cy="127.5" r=".9" fill="#fff" opacity=".9"/>
+                        <circle id="avIrisL" cx="89"  cy="129" r="4.5" fill="${IRIS_M}" opacity=".98"/>
+                        <circle id="avIrisR" cx="131" cy="129" r="4.5" fill="${IRIS_M}" opacity=".98"/>
+                        <circle id="avPupilL" cx="89"  cy="129" r="2.8" fill="${HAIR}"/>
+                        <circle id="avPupilR" cx="131" cy="129" r="2.8" fill="${HAIR}"/>
+                        <circle cx="90"  cy="127.4" r=".85" fill="#fff" opacity=".9"/>
+                        <circle cx="132" cy="127.4" r=".85" fill="#fff" opacity=".9"/>
                     </g>
-                    <rect id="avLidL" x="83" y="115" width="14" height="0" fill="url(#skinA)"/>
-                    <rect id="avLidR" x="123" y="115" width="14" height="0" fill="url(#skinA)"/>
+                    <rect id="avLidL" x="81" y="116" width="16" height="0" fill="url(#skinA)"/>
+                    <rect id="avLidR" x="123" y="116" width="16" height="0" fill="url(#skinA)"/>
                 </g>
 
-                <path d="M110 134 Q107 150 104 154 Q110 158 116 154 Q113 150 110 134 Z"
-                      fill="#4d2f1d" opacity=".4"/>
-                <path d="M96 162 Q110 158 124 162" stroke="${HAIR}" stroke-width="2" fill="none"/>
+                <path d="M111 134 Q106 148 102 154 Q110 160 119 154 Q114 148 111 134 Z"
+                      fill="#4d2f1d" opacity=".38"/>
+                <path d="M91 159 Q102 154 110 160 Q118 154 130 159 Q122 166 110 166 Q99 166 91 159 Z"
+                      fill="#21130c" opacity=".9"/>
 
                 <g id="avMouthGroup" transform="translate(110 170)">
                     <path id="avMouthCavity" d="M -15 0 Q 0 0 15 0 Q 0 0 -15 0 Z" fill="#2a0d05"/>
@@ -641,21 +637,18 @@
                     <path d="M40 95 L55 110 L70 95 Z" fill="#0b6f73"/>
                     <rect x="48" y="69" width="14" height="14" fill="${SKIN_M}"/>
                     <ellipse cx="55" cy="53" rx="22" ry="26" fill="${SKIN_M}"/>
-                    <path d="M32 42 Q55 31 78 42 Q72 50 55 51 Q38 50 32 42 Z" fill="#15121a"/>
-                    <ellipse cx="55" cy="35" rx="24" ry="11" fill="#15121a"/>
-                    <path d="M37 43 Q55 48 73 43" fill="none" stroke="#d8b657" stroke-width="1.7"/>
-                    <g stroke="#172033" stroke-width="1.5" fill="none">
-                        <rect x="38" y="49" width="12" height="9" rx="2"/>
-                        <rect x="60" y="49" width="12" height="9" rx="2"/>
-                        <line x1="50" y1="53" x2="60" y2="53"/>
-                    </g>
+                    <path d="M30 45 Q36 28 55 27 Q74 28 80 45 Q70 52 55 52 Q40 52 30 45 Z" fill="#15121a"/>
+                    <ellipse cx="55" cy="31" rx="25" ry="12" fill="#15121a"/>
+                    <path d="M28 45 Q38 40 55 41 Q72 40 82 45 Q73 53 55 53 Q37 53 28 45 Z" fill="#111018"/>
+                    <path d="M37 44 Q55 49 73 44" fill="none" stroke="#d8b657" stroke-width="1.6"/>
+                    <path d="M40 39 Q55 43 70 39" fill="none" stroke="#0b6f73" stroke-width="1.7"/>
                     <g id="thumbEyes">
                         <circle id="thumbEyeFlashL" class="thumb-eye-flash" cx="45" cy="54" r="4.8" fill="#7bdcb5" fill-opacity=".12" stroke="#cffff0" stroke-width="1.45" opacity="0"/>
                         <circle id="thumbEyeFlashR" class="thumb-eye-flash" cx="65" cy="54" r="4.8" fill="#7bdcb5" fill-opacity=".12" stroke="#cffff0" stroke-width="1.45" opacity="0"/>
-                        <circle cx="45" cy="54" r="1.5" fill="${HAIR}"/>
-                        <circle cx="65" cy="54" r="1.5" fill="${HAIR}"/>
+                        <ellipse cx="45" cy="54" rx="2.1" ry="1.45" fill="${HAIR}"/>
+                        <ellipse cx="65" cy="54" rx="2.1" ry="1.45" fill="${HAIR}"/>
                     </g>
-                    <path d="M47 62 Q55 60 63 62" stroke="${HAIR}" stroke-width="1.4" fill="none"/>
+                    <path d="M46 62 Q53 59 55 62 Q57 59 64 62 Q60 65 55 65 Q50 65 46 62 Z" fill="${HAIR}" opacity=".9"/>
                     <path id="thumbMouth" d="M46 66 Q55 70 64 66" fill="none" stroke="#3a1f12" stroke-width="1.6" stroke-linecap="round"/>
                 </svg>`;
             }
