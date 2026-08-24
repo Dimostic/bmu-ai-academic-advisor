@@ -31,14 +31,16 @@ async function main() {
         const reply = await resolveReply(item.question);
         const text = textFromReply(reply);
         const missing = item.mustContain.filter(fragment => !text.includes(fragment.toLowerCase()));
-        const ok = Boolean(reply) && missing.length === 0;
+        const forbidden = (item.mustNotContain || []).filter(fragment => text.includes(fragment.toLowerCase()));
+        const ok = Boolean(reply) && missing.length === 0 && forbidden.length === 0;
         if (!ok) failed += 1;
         results.push({
             name: item.name,
             ok,
             question: item.question,
             source: reply?.source || reply?.topic_slug || 'none',
-            missing
+            missing,
+            forbidden
         });
     }
 

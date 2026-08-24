@@ -45,6 +45,12 @@ module.exports = [
         mustContain: ['tarila tebepah', 'pro-chancellor']
     },
     {
+        name: 'principal-officer-chancellor-vacant',
+        question: 'Who is the Chancellor of BMU?',
+        mustContain: ['no appointed chancellor'],
+        mustNotContain: ['dimie ogoina']
+    },
+    {
         name: 'principal-officer-registrar',
         question: 'Who is the Registrar of BMU?',
         mustContain: ['felicia akusu', 'registrar']

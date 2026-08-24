@@ -55,6 +55,16 @@ const BMU_VISITOR = {
     name: 'Senator Douye Diri',
     office: 'Governor of Bayelsa State'
 };
+const BMU_CHANCELLOR_VACANCY = {
+    speech_text: 'Bayelsa Medical University currently has no appointed Chancellor in the active BMU officer records.',
+    display_markdown: 'Bayelsa Medical University currently has **no appointed Chancellor** in the active BMU officer records.',
+    topic_slug: 'bmu_chancellor_vacant',
+    citations: [{ title: 'BMU structured officers table / BMU Brief Institutional Profile', source: 'Approved BMU officer record' }],
+    suggested_actions: [],
+    follow_up_questions: [],
+    needs_escalation: false,
+    confidence: 0.99
+};
 const PROGRAMME_FEES = {
     'MEDICINE': { table: 'TABLE 1: MEDICINE', display: 'Medicine and Surgery (MBBS)', indigene: { '100': '600,000', '200_de': '730,000', '200': '730,000', '300': '475,000', '400': '510,000', '500': '510,000', '600': '540,000' }, non_indigene: { '100': '1,230,000', '200_de': '1,360,000', '200': '1,360,000', '300': '1,015,000', '400': '1,110,000', '500': '1,090,000', '600': '1,195,000' } },
     'DENTISTRY': { table: 'TABLE 2: DENTISTRY', display: 'Dentistry', indigene: { '100': '600,000', '200_de': '730,000', '200': '730,000', '300': '475,000', '400': '510,000', '500': '510,000', '600': '540,000' }, non_indigene: { '100': '1,230,000', '200_de': '1,360,000', '200': '1,360,000', '300': '1,015,000', '400': '1,110,000', '500': '1,090,000', '600': '1,195,000' } },
@@ -131,7 +141,8 @@ function _detectPrincipalOfficerRole(question) {
         return null;
     }
     if (/pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman)/i.test(q)) return 'Pro-Chancellor / Chairman of Governing Council';
-    if (/vice[-\s]?chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)|(?:^|\W)v\s*c(?:\W|$)|(^|\W)vc(\W|$)|wise\s+chancellor|first\s+chancellor/i.test(q)) return 'Vice-Chancellor';
+    if (/\bchancellor\b/i.test(q) && !/(vice[-\s]?chancellor|pro[-\s]?chancellor|deputy\s+vice[-\s]?chancellor|\bvc\b)/i.test(q)) return 'Chancellor';
+    if (/vice[-\s]?chancellor|vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)|(?:^|\W)v\s*c(?:\W|$)|(^|\W)vc(\W|$)|wise\s+chancellor/i.test(q)) return 'Vice-Chancellor';
     if (/registrar|registerer/i.test(q)) return 'Registrar';
     if (/bursar/i.test(q)) return 'Bursar';
     if (/\b(?:boss|bossa|bosa|busa|bussa|bursah)\b/i.test(q)) return 'Bursar';
@@ -174,6 +185,7 @@ function _buildPrincipalOfficersReply() {
 }
 
 function _buildPrincipalOfficerReply(position) {
+    if (String(position || '').trim().toLowerCase() === 'chancellor') return BMU_CHANCELLOR_VACANCY;
     const officer = BMU_PRINCIPAL_OFFICERS.find(item => item.position === position);
     if (!officer) return null;
     const note = officer.note ? `, ${officer.note}` : '';
@@ -579,6 +591,7 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        if (normalizedRole === 'chancellor' && /(?:vice|pro|deputy\s+vice)[-\s]?chancellor/i.test(line)) continue;
         if (!roleToken.test(line)) continue;
 
         const bulletStripped = line.replace(/^\s*[-•]\s*/, '').trim();
@@ -844,10 +857,10 @@ function _detectOfficeRoleLabel(question) {
     const q = String(question || '').toLowerCase();
     if (/pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman)/.test(q)) return 'Pro-Chancellor / Chairman of Governing Council';
     if (/vice[-\s]?chancellor|\bvc\b/.test(q)) return 'Vice-Chancellor';
+    if (/\bchancellor\b/.test(q)) return 'Chancellor';
     if (/registrar/.test(q)) return 'Registrar';
     if (/bursar/.test(q)) return 'Bursar';
     if (/dean/.test(q)) return 'Dean';
-    if (/chancellor/.test(q)) return 'Chancellor';
     if (/librarian|university\s+librarian/.test(q)) return 'Librarian';
     return 'office holder';
 }
@@ -944,6 +957,7 @@ function _extractRoleExcerptFromContext(roleLabel, ragContext) {
 
 function _buildOfficeHolderSafeReply(question, ragContext) {
     const roleLabel = _detectOfficeRoleLabel(question);
+    if (roleLabel === 'Chancellor') return BMU_CHANCELLOR_VACANCY;
     const extractedName = _extractRoleNameFromContext(roleLabel, ragContext);
     const roleExcerpt = _extractRoleExcerptFromContext(roleLabel, ragContext);
     const citations = _extractCitationsFromContext(ragContext);

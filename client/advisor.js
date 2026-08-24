@@ -2868,7 +2868,7 @@
             : '<i class="fa-solid fa-microphone"></i>';
     }
 
-    const LISTENING_SILENCE_MS = 5000;
+    const LISTENING_SILENCE_MS = 3000;
     const VOICE_SUBMIT_RE = /\b(?:send it|submit|that's all|that is all|go ahead|please answer|answer now|done|deal)\s*[\.\?!]*$/i;
     const VOICE_RESTART_RE = /\b(?:start over|restart|try again)\s*[\.\?!]*$/i;
     const VOICE_CANCEL_RE = /\b(?:cancel listening|stop listening|never mind|nevermind)\s*[\.\?!]*$/i;
@@ -2929,6 +2929,7 @@
     function looksLikeBadVoiceTranscript(text) {
         const value = String(text || '').trim();
         if (!value) return true;
+        if (/^(?:do\s+you\s+translate|do\s+not\s+translate|please\s+translate|translate(?:\s+this)?|thank\s+you\s+for\s+watching|thanks\s+for\s+watching|subscribe(?:\s+to\s+my\s+channel)?|you\s+you|hello\s+hello)\s*[\.\?!]*$/i.test(value)) return true;
         const letters = value.match(/\p{L}/gu) || [];
         if (!letters.length) return true;
         const latinLetters = value.match(/\p{Script=Latin}/gu) || [];

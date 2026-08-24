@@ -1022,6 +1022,12 @@ ${officialUpdates}
                 referencedDocuments: []
             };
         }
+        if (officer.key === 'chancellor') {
+            return {
+                response: 'Bayelsa Medical University currently has no appointed Chancellor in the active BMU officer records.',
+                referencedDocuments: []
+            };
+        }
 
         const lookup = await this._lookupPrincipalOfficer(officer);
         const name = this._normalizeOfficerName(officer, lookup.name);
@@ -1165,10 +1171,16 @@ ${officialUpdates}
     _principalOfficerDefinitions() {
         return [
             {
+                key: 'chancellor',
+                label: 'Chancellor',
+                officeTerms: ['chancellor'],
+                patterns: [/\bchancellor\b/i]
+            },
+            {
                 key: 'vice_chancellor',
                 label: 'Vice-Chancellor',
                 officeTerms: ['vice-chancellor', 'vice chancellor', 'vc'],
-                patterns: [/vice[-\s]?chancellor/i, /vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)/i, /\bv\s*c\b/i, /\bvc\b/i, /wise\s+chancellor/i, /first\s+chancellor/i]
+                patterns: [/vice[-\s]?chancellor/i, /vice\s+(?:counsell?or|cancellor|cancel(?:l)?or)/i, /\bv\s*c\b/i, /\bvc\b/i, /wise\s+chancellor/i]
             },
             {
                 key: 'deputy_vice_chancellor_sampou',
@@ -1226,7 +1238,10 @@ ${officialUpdates}
 
         const hasNameIntent = nameIntent.some(pattern => pattern.test(text));
         const definitions = this._principalOfficerDefinitions();
-        const match = definitions.find(def => def.patterns.some(pattern => pattern.test(text)));
+        const match = definitions.find(def => {
+            if (def.key === 'chancellor' && /(?:vice|pro|deputy\s+vice)[-\s]?chancellor|\bvc\b/i.test(text)) return false;
+            return def.patterns.some(pattern => pattern.test(text));
+        });
         if (!match) return null;
 
         // Role-only queries such as "bursar" and "VC" should still resolve.
