@@ -6,6 +6,7 @@ const {
     enforceGuestDemoVoiceAccess,
     recordGuestDemoUsage
 } = require('../middleware/usageLimits');
+const { assessTranscriptQuality } = require('../services/sttService');
 const { pool } = require('../../config/db');
 
 function mockReq({ user = null, guestId = '', body = {} } = {}) {
@@ -88,9 +89,23 @@ async function main() {
         'STT rate limiter should key anonymous calls by IP'
     );
 
+    const silenceArtefacts = [
+        'do you translate',
+        'Thank you for watching.',
+        'subscribe to my channel',
+        'hmm'
+    ];
+    for (const phrase of silenceArtefacts) {
+        const quality = assessTranscriptQuality(phrase);
+        assert(!quality.ok, `STT should reject silence artefact: ${phrase}`);
+    }
+
+    const validQuestion = assessTranscriptQuality('Who is the Chancellor of BMU?');
+    assert(validQuestion.ok, 'STT should accept a clear advisor question');
+
     console.log(JSON.stringify({
         ok: true,
-        checked: 'advisor STT access, guest quota, rate-key, and upload-order protection'
+        checked: 'advisor STT access, guest quota, rate-key, upload-order, and transcript-quality protection'
     }, null, 2));
 }
 

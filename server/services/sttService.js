@@ -11,6 +11,8 @@ const FormData = require('form-data');
 
 const GROQ_BASE  = 'https://api.groq.com/openai/v1';
 const GROQ_MODEL = process.env.GROQ_STT_MODEL || 'whisper-large-v3-turbo';
+const SILENCE_ARTEFACT_RE = /^(?:do\s+you\s+translate|do\s+not\s+translate|please\s+translate|translate(?:\s+this)?|thank\s+you\s+for\s+watching|thanks\s+for\s+watching|subscribe(?:\s+to\s+my\s+channel)?|you\s+you|hello\s+hello|uh\s+huh|mm\s+hmm|hmm)\s*[\.\?!]*$/i;
+const ADVISOR_INTENT_RE = /\b(?:bmu|bayelsa|medical|university|course|courses|programme|program|fees?|admission|student|handbook|ccmas|aspire|vc|vice\s+chancellor|chancellor|bursar|registrar|officer|calendar|hostel|graduation|credit|level|semester|department|faculty|law|who|what|when|where|why|how|tell|show|list|name|explain|give|check|can|could|should|does|do|is|are)\b/i;
 
 function isConfigured() {
     return Boolean(process.env.GROQ_API_KEY);
@@ -20,6 +22,9 @@ function assessTranscriptQuality(text) {
     const value = String(text || '').trim();
     if (!value) {
         return { ok: false, reason: 'empty' };
+    }
+    if (SILENCE_ARTEFACT_RE.test(value)) {
+        return { ok: false, reason: 'silence_artefact' };
     }
     const letters = value.match(/\p{L}/gu) || [];
     if (!letters.length) {
@@ -35,6 +40,9 @@ function assessTranscriptQuality(text) {
     if (latinRatio < 0.92) return { ok: false, reason: 'non_latin_script', latinRatio, asciiRatio, markRatio };
     if (markRatio > 0.02) return { ok: false, reason: 'too_many_tone_marks', latinRatio, asciiRatio, markRatio };
     if (asciiRatio < 0.82) return { ok: false, reason: 'low_ascii_ratio', latinRatio, asciiRatio, markRatio };
+    if (value.length > 24 && !ADVISOR_INTENT_RE.test(value)) {
+        return { ok: false, reason: 'no_advisor_intent', latinRatio, asciiRatio, markRatio };
+    }
     return { ok: true, reason: null, latinRatio, asciiRatio, markRatio };
 }
 
