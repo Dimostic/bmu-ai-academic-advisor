@@ -126,6 +126,7 @@
     const MOBILE_AUTO_FOLLOWUP_LISTEN_MS = 12000;
     const AUTO_FOLLOWUP_GESTURE_WINDOW_MS = 90000;
     const SERVER_STT_MAX_RECORDING_MS = 45000;
+    const SERVER_STT_UPLOAD_TIMEOUT_MS = 25000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
     // ---------- State ----------
@@ -161,6 +162,7 @@
         lastCaptionSyncAt: 0,
         lastCaptionSentenceIndex: -1,
         currentAskController: null,
+        currentSttController: null,
         askCancelled: false,
         speakingFocusTimer: null,
         autoFollowupTimer: null,
@@ -2055,10 +2057,18 @@
         }
     }
 
+    function cancelActiveStt() {
+        if (state.currentSttController) {
+            try { state.currentSttController.abort(); } catch (_) { /* ignore */ }
+            state.currentSttController = null;
+        }
+    }
+
     function cancelActiveListening({ clearText = false, label = 'Ready' } = {}) {
         clearAutoFollowupTimer();
         state.cancelVoiceListening = true;
         state.discardVoiceRecording = true;
+        cancelActiveStt();
         clearPendingVoiceSubmit();
         if (clearText && questionInput) {
             questionInput.value = '';
@@ -2083,6 +2093,7 @@
 
     function stopAdvisorActivity({ clearText = false, label = 'Stopped', keepWake = true } = {}) {
         cancelActiveAsk();
+        cancelActiveStt();
         stopCurrentAudio();
         if (state.recording || recognition || state.mediaRecorder) {
             cancelActiveListening({ clearText, label });
@@ -3567,8 +3578,18 @@
                 const ext = /mp4|aac/i.test(blobType) ? 'm4a' : 'webm';
                 form.append('audio', blob, `voice.${ext}`);
                 form.append('language', 'en');
+                const sttController = typeof AbortController === 'function' ? new AbortController() : null;
+                state.currentSttController = sttController;
+                const sttTimeout = sttController ? setTimeout(() => {
+                    try { sttController.abort(); } catch (_) { /* ignore */ }
+                }, SERVER_STT_UPLOAD_TIMEOUT_MS) : null;
                 try {
-                    const res = await fetch('/api/advisor/stt', { method: 'POST', headers: { ...authHeaders(), ...guestDemoHeaders() }, body: form });
+                    const res = await fetch('/api/advisor/stt', {
+                        method: 'POST',
+                        signal: sttController?.signal,
+                        headers: { ...authHeaders(), ...guestDemoHeaders() },
+                        body: form
+                    });
                     const data = await res.json();
                     if (handleAuthFailure(res.status, data)) return;
                     if (data?.success && data.text) {
@@ -3602,8 +3623,17 @@
                         setAvatarState('idle', 'Ready');
                     }
                 } catch (err) {
-                    toast('Could not transcribe audio. Please type your question or try again.', 'error');
+                    const timedOut = err?.name === 'AbortError';
+                    toast(
+                        timedOut
+                            ? 'Transcription took too long. Please tap the mic and try again, or type your question.'
+                            : 'Could not transcribe audio. Please type your question or try again.',
+                        'error'
+                    );
                     setAvatarState('idle', 'Ready');
+                } finally {
+                    if (sttTimeout) clearTimeout(sttTimeout);
+                    if (state.currentSttController === sttController) state.currentSttController = null;
                 }
                 scheduleWakeWordListener(900);
             };
