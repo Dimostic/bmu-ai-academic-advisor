@@ -739,6 +739,7 @@
     // for normalising and tracking those transitions.
     let currentState = 'idle';
     let currentExpression = 'neutral';
+    let currentGesture = 'none';
     let browAnchors = null;
     let recognition = null;
     const VOICE_PHASES = new Set(['idle', 'listening', 'transcribing', 'thinking', 'speaking', 'paused', 'error']);
@@ -825,6 +826,24 @@
             advisorSvg.classList.toggle('av-speaking',  speaking);
             advisorSvg.classList.remove('listening');
         }
+    }
+
+    function applyAvatarGesture(gesture = 'none', durationMs = 1600) {
+        if (!advisorSvg) return;
+        const safeGesture = ['nod', 'shake', 'emphasize', 'none'].includes(gesture) ? gesture : 'none';
+        advisorSvg.classList.remove('av-gesture-nod', 'av-gesture-shake', 'av-gesture-emphasize');
+        currentGesture = safeGesture;
+        if (safeGesture === 'none') return;
+        const className = `av-gesture-${safeGesture}`;
+        void advisorSvg.offsetWidth;
+        advisorSvg.classList.add(className);
+        clearTimeout(window._avGestureTimer);
+        window._avGestureTimer = setTimeout(() => {
+            if (currentGesture === safeGesture) {
+                advisorSvg?.classList.remove(className);
+                currentGesture = 'none';
+            }
+        }, durationMs);
     }
 
     // ---------- Avatar gender ----------
@@ -1004,8 +1023,11 @@
 
         // Lip corner offset for expression. Smile pulls corners up (-3),
         // concerned pulls them down (+2.5), neutral stays flat.
-        const cornerY = currentExpression === 'smile'     ? -3
-                      : currentExpression === 'concerned' ?  2.5
+        const cornerY = currentExpression === 'joy'       ? -4
+                      : currentExpression === 'smile'     ? -3
+                      : currentExpression === 'concerned' ?  2.8
+                      : currentExpression === 'disagree'  ?  2.2
+                      : currentExpression === 'serious'   ?  0.8
                       : currentExpression === 'surprised' ? -1
                       : 0;
 
@@ -1081,7 +1103,7 @@
     }
 
     function setExpression(mood) {
-        currentExpression = ['neutral','smile','concerned','thinking','surprised'].includes(mood)
+        currentExpression = ['neutral','smile','joy','concerned','serious','thinking','surprised','disagree'].includes(mood)
             ? mood : 'neutral';
         if (!browL || !browR) return;
         if (!browAnchors) _captureBrowAnchors();
@@ -1094,9 +1116,12 @@
         const moods = {
             neutral:    { dy:  0,  cv:  0,  asym: 0 },
             smile:      { dy: -2,  cv: -3,  asym: 0 },
+            joy:        { dy: -4,  cv: -5,  asym: 0 },
             concerned:  { dy:  3,  cv:  3,  asym: 0 },
+            serious:    { dy:  2,  cv: -1,  asym: 0 },
             thinking:   { dy:  1,  cv:  0,  asym: 3 },   // right brow lifts
-            surprised:  { dy: -7,  cv: -5,  asym: 0 }
+            surprised:  { dy: -7,  cv: -5,  asym: 0 },
+            disagree:   { dy:  4,  cv:  1,  asym: -2 }
         };
         const m = moods[currentExpression];
         const renderBrow = (anchor, side) => {
@@ -1115,7 +1140,7 @@
     setExpression('neutral');
 
     // Expose for any future caller (auto-mood from chat replies):
-    window.advisorAvatar = { setExpression, applyAvatar, getAdvisorGender };
+    window.advisorAvatar = { setExpression, applyAvatarGesture, applyAvatar, getAdvisorGender };
 
     // ---------- API ----------
     async function api(path, opts = {}) {
@@ -2762,10 +2787,12 @@
                 // Heuristic-only (no extra tokens needed): escalation =>
                 // concerned; otherwise look at the speech text for cues.
                 const mood = pickMood({
+                    question: q,
                     needsEscalation: !!final.reply?.needs_escalation,
                     speech: final.reply?.speech_text || ''
                 });
-                setExpression(mood);
+                setExpression(mood.expression);
+                applyAvatarGesture(mood.gesture, mood.durationMs);
                 // Drop back to neutral after a few seconds so the avatar
                 // doesn't keep grinning forever.
                 clearTimeout(window._avMoodTimer);
@@ -4175,15 +4202,36 @@
         return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
     }
 
-    /** Pick a mood for the avatar from a finished reply. */
-    function pickMood({ needsEscalation, speech }) {
-        if (needsEscalation) return 'concerned';
+    /** Pick an expression and gesture from the user's question + finished reply. */
+    function pickMood({ question, needsEscalation, speech }) {
+        const q = String(question || '').toLowerCase();
         const s = String(speech || '').toLowerCase();
-        if (/\b(congratulations|well done|great|excellent|nice|welcome|happy|good (job|news))\b/.test(s)) return 'smile';
-        if (/\b(sorry|unfortunately|cannot|can't|trouble|problem|fail(ed)?)\b/.test(s)) return 'concerned';
-        if (/\?\s*$/.test(s.trim())) return 'thinking';
-        if (/\b(here|sure|certainly|absolutely)\b/.test(s)) return 'smile';
-        return 'neutral';
+        const text = `${q} ${s}`;
+        const mood = (expression, gesture = 'none', durationMs = 1600) => ({ expression, gesture, durationMs });
+
+        if (needsEscalation) return mood('concerned', 'emphasize', 2200);
+        if (/\b(no|not currently|not available|not occupied|cannot confirm|do not have|don't have|no record|not stated|not found)\b/.test(s)) {
+            return mood('disagree', 'shake', 1700);
+        }
+        if (/\b(sorry|unfortunately|concern|urgent|withdrawal|probation|failed|failure|risk|deadline missed|problem|trouble|appeal|disciplinary)\b/.test(text)) {
+            return mood('concerned', 'emphasize', 2200);
+        }
+        if (/\b(fee|fees|tuition|admission|cut[- ]?off|eligibility|requirement|graduation|credit load|probation|withdrawal|exam|senate|regulation|law|policy|deadline|registration)\b/.test(text)) {
+            return mood('serious', 'emphasize', 1800);
+        }
+        if (/\b(congratulations|well done|excellent|great news|good news|approved|eligible|welcome|happy to help)\b/.test(s)) {
+            return mood('joy', 'nod', 1900);
+        }
+        if (/\b(yes|correct|sure|certainly|absolutely|you can|that is right|here is|the answer is)\b/.test(s)) {
+            return mood('smile', 'nod', 1500);
+        }
+        if (/\?\s*$/.test(s.trim()) || /\b(may i clarify|which programme|which level|which session)\b/.test(s)) {
+            return mood('thinking', 'emphasize', 1500);
+        }
+        if (/^\s*(hello|hi|good morning|good afternoon|good evening)\b/.test(q)) {
+            return mood('smile', 'nod', 1500);
+        }
+        return mood('neutral', 'none', 1200);
     }
 
     // -----------------------------------------------------------------
