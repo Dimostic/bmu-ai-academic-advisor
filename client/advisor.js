@@ -120,8 +120,9 @@
     const THINKING_MIN_VISIBLE_MS = 850;
     const TRANSCRIPT_PREVIEW_MS = 650;
     const SERVER_STT_TRANSCRIPT_PREVIEW_MS = 1800;
-    const AUTO_FOLLOWUP_LISTEN_MS = 5000;
-    const ANDROID_AUTO_FOLLOWUP_LISTEN_MS = 5000;
+    const CONVERSATION_LISTEN_MS = 30000;
+    const COMPACT_CONVERSATION_LISTEN_MS = 20000;
+    const SERVER_STT_MAX_RECORDING_MS = 45000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
 
     // ---------- State ----------
@@ -1950,9 +1951,13 @@
             if (questionInput?.value.trim()) return;
             startListening({
                 autoFollowup: true,
-                noSpeechMs: isAndroidSpeechDevice() ? ANDROID_AUTO_FOLLOWUP_LISTEN_MS : AUTO_FOLLOWUP_LISTEN_MS
+                noSpeechMs: getConversationListenWindowMs()
             });
         }, 250);
+    }
+
+    function getConversationListenWindowMs() {
+        return advisorFullView ? CONVERSATION_LISTEN_MS : COMPACT_CONVERSATION_LISTEN_MS;
     }
 
     function clearAutoFollowupTimer() {
@@ -2804,8 +2809,6 @@
     }
 
     const LISTENING_SILENCE_MS = 5000;
-    const LISTENING_NO_SPEECH_MS = 3000;
-    const SERVER_STT_NO_SPEECH_MS = 8000;
     const VOICE_SUBMIT_RE = /\b(?:send it|submit|that's all|that is all|go ahead|please answer|answer now|done|deal)\s*[\.\?!]*$/i;
     const VOICE_RESTART_RE = /\b(?:start over|restart|try again)\s*[\.\?!]*$/i;
     const VOICE_CANCEL_RE = /\b(?:cancel listening|stop listening|never mind|nevermind)\s*[\.\?!]*$/i;
@@ -3157,9 +3160,7 @@
         const browserSpeechOk = shouldUseBrowserSpeechRecognition();
         const noSpeechMs = Number(options.noSpeechMs) > 0
             ? Number(options.noSpeechMs)
-            : browserSpeechOk
-                ? LISTENING_NO_SPEECH_MS
-                : SERVER_STT_NO_SPEECH_MS;
+            : getConversationListenWindowMs();
         const autoFollowup = Boolean(options.autoFollowup);
         clearPendingVoiceSubmit();
         wakeNeedsUserGesture = false;
@@ -3171,7 +3172,7 @@
             toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
             return;
         }
-        setAvatarState('listening', autoFollowup ? `Listening... ${Math.ceil(noSpeechMs / 1000)}s` : 'Listening');
+        setAvatarState('listening', `Listening... ${Math.ceil(noSpeechMs / 1000)}s`);
         if (browserSpeechOk) {
             const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new Rec();
@@ -3304,15 +3305,13 @@
                     cancelListening(isAndroidSpeechDevice() ? 'Tap mic or Continue' : 'Ready');
                 }
             }, noSpeechMs);
-            if (autoFollowup) {
-                const autoStartedAt = Date.now();
-                countdownTimer = setInterval(() => {
-                    if (heardSpeech || submitting) return;
-                    const remaining = Math.max(0, noSpeechMs - (Date.now() - autoStartedAt));
-                    const seconds = Math.max(1, Math.ceil(remaining / 1000));
-                    setAvatarState('listening', `Listening... ${seconds}s`);
-                }, 250);
-            }
+            const autoStartedAt = Date.now();
+            countdownTimer = setInterval(() => {
+                if (heardSpeech || submitting) return;
+                const remaining = Math.max(0, noSpeechMs - (Date.now() - autoStartedAt));
+                const seconds = Math.max(1, Math.ceil(remaining / 1000));
+                setAvatarState('listening', `Listening... ${seconds}s`);
+            }, 250);
             recognition.onresult = (ev) => {
                 let interim = '';
                 let finalText = '';
@@ -3548,8 +3547,8 @@
             state.mediaRecorder = recorder;
             state.recording = true;
             syncMicButtonsUi(true);
-            setAvatarState('listening', autoFollowup ? `Listening... ${Math.ceil(noSpeechMs / 1000)}s` : 'Listening');
-            maxRecordingTimer = setTimeout(() => stopRecorder(false), 30000);
+            setAvatarState('listening', `Listening... ${Math.ceil(noSpeechMs / 1000)}s`);
+            maxRecordingTimer = setTimeout(() => stopRecorder(false), Math.max(SERVER_STT_MAX_RECORDING_MS, noSpeechMs + LISTENING_SILENCE_MS + 5000));
 
             try {
                 captureCtx = new (window.AudioContext || window.webkitAudioContext)();
