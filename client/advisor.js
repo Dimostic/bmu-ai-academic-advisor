@@ -101,6 +101,7 @@
     const fullPageAnswer = $('fullPageAnswer');
     const clearAnswerBtn = $('clearAnswerBtn');
     const voiceCommandBar = $('voiceCommandBar');
+    const wakeCommandBtn = $('wakeCommandBtn');
 
     // Handbook (FAQ) browser
     const handbookBtn       = $('handbookBtn');
@@ -2002,6 +2003,13 @@
         if (action === 'listen' || action === 'continue') {
             state.voicePaused = false;
             enableSpeechOutput();
+            if (source === 'wake') {
+                stopWakeWordListener();
+                speakWithBrowser('Hello, I am listening.').finally(() => {
+                    if (!state.voicePaused && !state.recording && !document.hidden) startListening();
+                });
+                return true;
+            }
             if (!state.recording) startListening();
             toast(action === 'continue' ? 'Continuing voice listening' : 'Listening');
             return true;
@@ -2692,6 +2700,10 @@
         return hasWebSpeech() && !isAndroidSpeechDevice();
     }
 
+    function shouldUseWakeWordRecognition() {
+        return hasWebSpeech();
+    }
+
     // Server-side STT capability is only known after /api/advisor/health
     // resolves at boot. Start disabled so iPad/Safari cannot fall into a
     // broken upload path before production tells us STT is configured.
@@ -2731,6 +2743,7 @@
                 avatarMicBtn.setAttribute('aria-label', micBtn.title);
             }
         }
+        syncWakeCommandUi();
     }
 
     function syncMicButtonsUi(recording) {
@@ -2880,7 +2893,7 @@
     function handleWakePhrase(text) {
         const parsed = detectWakeCommand(text);
         if (!parsed) return false;
-        if (parsed.command) return runVoiceControl(parsed.command, 'voice');
+        if (parsed.command) return runVoiceControl(parsed.command, 'wake');
         if (parsed.remainder.length >= 3) {
             stopWakeWordListener();
             wakeSuspendedUntil = Date.now() + 1700;
@@ -2898,14 +2911,17 @@
     let wakeRestartTimer = null;
     let wakeSuspendedUntil = 0;
     let wakeNeedsUserGesture = true;
+    let wakeGestureArmerBound = false;
 
     function armWakeWordFromUserGesture() {
-        if (!state.wakeWordEnabled || !shouldUseBrowserSpeechRecognition()) return;
+        if (!state.wakeWordEnabled || !shouldUseWakeWordRecognition()) return;
         wakeNeedsUserGesture = false;
         scheduleWakeWordListener(240);
     }
 
     function bindWakeWordGestureArmer() {
+        if (wakeGestureArmerBound) return;
+        wakeGestureArmerBound = true;
         const opts = { passive: true };
         window.addEventListener('pointerdown', armWakeWordFromUserGesture, opts);
         window.addEventListener('keydown', armWakeWordFromUserGesture, opts);
@@ -2928,8 +2944,47 @@
         } catch (_) { /* ignore */ }
     }
 
+    function syncWakeCommandUi() {
+        if (!wakeCommandBtn) return;
+        const available = shouldUseWakeWordRecognition();
+        wakeCommandBtn.disabled = !available;
+        wakeCommandBtn.classList.toggle('is-active', Boolean(state.wakeWordEnabled && available));
+        wakeCommandBtn.setAttribute('aria-pressed', state.wakeWordEnabled && available ? 'true' : 'false');
+        wakeCommandBtn.title = !available
+            ? 'Voice wake command is not supported in this browser'
+            : state.wakeWordEnabled
+                ? 'Wake command on. Say Dr. Tari or Hello Dr. Tari'
+                : 'Turn on wake command. Say Dr. Tari to activate listening';
+        wakeCommandBtn.innerHTML = state.wakeWordEnabled && available
+            ? '<i class="fa-solid fa-ear-listen"></i><span>Wake on</span>'
+            : '<i class="fa-solid fa-ear-listen"></i><span>Wake</span>';
+    }
+
+    function toggleWakeCommand() {
+        if (!shouldUseWakeWordRecognition()) {
+            toast('Voice wake command is not supported in this browser. Please use Chrome or Edge.', 'error');
+            syncWakeCommandUi();
+            return;
+        }
+        state.wakeWordEnabled = !state.wakeWordEnabled;
+        try { localStorage.setItem('bmu_advisor_wake_commands', state.wakeWordEnabled ? '1' : '0'); } catch (_) { /* ignore */ }
+        wakeNeedsUserGesture = false;
+        if (state.wakeWordEnabled) {
+            enableSpeechOutput();
+            bindWakeWordGestureArmer();
+            scheduleWakeWordListener(120);
+            setAvatarState('idle', 'Wake on');
+            toast('Wake command on. Say “Dr. Tari” or “Hello Dr. Tari”.');
+        } else {
+            stopWakeWordListener();
+            setAvatarState('idle', 'Wake off');
+            toast('Wake command off');
+        }
+        syncWakeCommandUi();
+    }
+
     function scheduleWakeWordListener(delay = 900) {
-        if (!state.wakeWordEnabled || !shouldUseBrowserSpeechRecognition()) return;
+        if (!state.wakeWordEnabled || !shouldUseWakeWordRecognition()) return;
         if (wakeNeedsUserGesture) return;
         if (wakeRestartTimer) clearTimeout(wakeRestartTimer);
         wakeRestartTimer = setTimeout(() => {
@@ -2939,7 +2994,7 @@
     }
 
     function startWakeWordListener() {
-        if (!state.wakeWordEnabled || !shouldUseBrowserSpeechRecognition()) return;
+        if (!state.wakeWordEnabled || !shouldUseWakeWordRecognition()) return;
         if (wakeNeedsUserGesture) return;
         if (wakeRecognition || state.recording || document.hidden) {
             scheduleWakeWordListener(1000);
@@ -3649,6 +3704,7 @@
             runVoiceControl(btn.dataset.voiceCommand, 'button');
         });
     });
+    wakeCommandBtn?.addEventListener('click', toggleWakeCommand);
     updateClearInputButton();
 
     // ---------- Handbook (FAQ) browser ----------
@@ -4017,6 +4073,7 @@
         }
         updateMicAvailability();
         updateGuestDemoUi();
+        syncWakeCommandUi();
         if (state.wakeWordEnabled) {
             bindWakeWordGestureArmer();
             scheduleWakeWordListener(1100);

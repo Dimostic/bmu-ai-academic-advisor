@@ -659,6 +659,11 @@ html[data-theme="dark"] .avatar-stage-controls {
 .voice-command-bar button[data-voice-command="stop"] {
     color: var(--danger);
 }
+.voice-command-bar .wake-command-btn.is-active {
+    border-color: var(--accent);
+    background: rgba(17, 153, 142, 0.12);
+    color: var(--accent);
+}
 .voice-command-bar button[disabled] {
     opacity: .45;
     cursor: not-allowed;

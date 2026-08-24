@@ -207,6 +207,9 @@
                 <button type="button" data-voice-command="continue" title="Resume listening">
                     <i class="fa-solid fa-play"></i><span>Continue</span>
                 </button>
+                <button type="button" id="wakeCommandBtn" class="wake-command-btn" aria-pressed="false" title="Enable voice wake command">
+                    <i class="fa-solid fa-ear-listen"></i><span>Wake</span>
+                </button>
             </div>
 
             <!-- Composer -->
@@ -306,7 +309,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260817-advisor-accuracy" defer></script>
-    <script src="/advisor.js?v=20260824-voice-silence-5s" defer></script>
+    <script src="/advisor.js?v=20260824-wake-command-toggle" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>
