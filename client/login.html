@@ -12,8 +12,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="advisor.css" />
-    <link rel="stylesheet" href="pages.css" />
-    <script src="avatars-svg.js"></script>
+    <link rel="stylesheet" href="pages.css?v=20260824-medical-avatar" />
+    <script src="avatars-svg.js?v=20260824-medical-avatar"></script>
 </head>
 <body>
     <header class="top-bar">
@@ -59,7 +59,12 @@
                 <fieldset class="advisor-pick" aria-label="Choose your advisor">
                     <legend>Choose your advisor</legend>
                     <label class="advisor-pick-card">
-                        <input type="radio" name="advisorGender" value="female" checked />
+                        <input type="radio" name="advisorGender" value="medical" checked />
+                        <div class="advisor-pick-thumb" data-gender="medical"></div>
+                        <span>Dr. Tari</span>
+                    </label>
+                    <label class="advisor-pick-card">
+                        <input type="radio" name="advisorGender" value="female" />
                         <div class="advisor-pick-thumb" data-gender="female"></div>
                         <span>Female</span>
                     </label>
@@ -89,7 +94,7 @@
         // Login & register both use this same hook; the SVGs come from
         // avatars-svg.js so the markup stays in one place.
         document.querySelectorAll('.advisor-pick-thumb').forEach(host => {
-            const g = host.dataset.gender === 'male' ? 'male' : 'female';
+            const g = ['medical', 'male', 'female'].includes(host.dataset.gender) ? host.dataset.gender : 'medical';
             host.innerHTML = window.BMUAvatars ? window.BMUAvatars.thumb(g) : '';
         });
 
@@ -200,7 +205,8 @@
             submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Signing in…';
 
             const fd = new FormData(form);
-            const advisorGender = (fd.get('advisorGender') === 'male') ? 'male' : 'female';
+            const advisorGender = ['medical', 'male', 'female'].includes(fd.get('advisorGender')) ? fd.get('advisorGender') : 'medical';
+            const serverAdvisorGender = advisorGender === 'male' ? 'male' : 'female';
             const payload = { email: fd.get('email'), password: fd.get('password') };
 
             try {
@@ -241,7 +247,7 @@
                         'Content-Type': 'application/json',
                         Authorization: 'Bearer ' + data.token
                     },
-                    body: JSON.stringify({ gender: advisorGender })
+                    body: JSON.stringify({ gender: serverAdvisorGender })
                 }).catch(() => { /* non-fatal — local copy already saved */ });
 
                 // If the admin created this account they must pick a fresh

@@ -188,6 +188,118 @@
         </svg>`;
     }
 
+    /** Build the Dr. Tari medical-academic advisor — inspired by the
+     *  selected concept: braided hair, academic teal/gold stole and a
+     *  subtle stethoscope. Same animation ids as the existing avatars. */
+    function medicalAvatarSVG() {
+        return `
+        <svg id="avatarSvg" viewBox="0 0 220 280" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+                <radialGradient id="bgGlowT" cx="50%" cy="40%" r="60%">
+                    <stop offset="0%"  stop-color="#7bdcb5" stop-opacity="0.18"/>
+                    <stop offset="100%" stop-color="#0f3d3e" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="skinT" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#a86f4d"/>
+                    <stop offset="100%" stop-color="#7a4a2e"/>
+                </linearGradient>
+                <linearGradient id="blazerT" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#1b2740"/>
+                    <stop offset="100%" stop-color="#111827"/>
+                </linearGradient>
+                <linearGradient id="stoleT" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#0b6f73"/>
+                    <stop offset="100%" stop-color="#074e55"/>
+                </linearGradient>
+            </defs>
+
+            <circle cx="110" cy="120" r="115" fill="url(#bgGlowT)"/>
+
+            <g id="avTorso">
+                <path d="M20 272 Q110 190 200 272 L200 280 L20 280 Z"
+                      fill="url(#blazerT)" stroke="#0b1220" stroke-width="1"/>
+                <path d="M82 215 L110 258 L138 215 Z" fill="#ffffff"/>
+                <path d="M74 224 L93 276 L106 235 L94 218 Z" fill="url(#stoleT)" stroke="#d8b657" stroke-width="1.2"/>
+                <path d="M146 224 L127 276 L114 235 L126 218 Z" fill="url(#stoleT)" stroke="#d8b657" stroke-width="1.2"/>
+                <path d="M86 246 L100 246 M120 246 L134 246" stroke="#d8b657" stroke-width="2" stroke-linecap="round" opacity=".85"/>
+                <path d="M76 226 Q58 238 60 256 Q60 271 74 273" fill="none" stroke="#1f2937" stroke-width="2.4"/>
+                <path d="M144 226 Q162 238 160 256 Q160 271 146 273" fill="none" stroke="#1f2937" stroke-width="2.4"/>
+                <circle cx="74" cy="273" r="4.5" fill="#d8b657" stroke="#6b5a22"/>
+                <circle cx="146" cy="273" r="4.5" fill="#d8b657" stroke="#6b5a22"/>
+                <g id="avHandL" transform="translate(50 268) rotate(0)">
+                    <ellipse cx="0" cy="0" rx="9" ry="6" fill="url(#skinT)"/>
+                </g>
+                <g id="avHandR" transform="translate(170 268) rotate(0)">
+                    <ellipse cx="0" cy="0" rx="9" ry="6" fill="url(#skinT)"/>
+                </g>
+            </g>
+
+            <g id="avHead" transform="translate(0 0) rotate(0 110 130)">
+                <rect x="94" y="178" width="32" height="28" fill="url(#skinT)"/>
+                <path d="M94 200 Q110 210 126 200 L126 210 L94 210 Z" fill="#6b3f27"/>
+
+                <path id="avHair" d="M58 122 Q60 62 108 54 Q157 61 164 122 Q151 91 110 91 Q70 92 58 122 Z"
+                      fill="#1b1513" stroke="#0b0705" stroke-width="1.3"/>
+                <g stroke="#30231e" stroke-width="3.2" stroke-linecap="round" opacity=".95">
+                    <path d="M73 91 Q93 61 121 58"/>
+                    <path d="M82 84 Q106 60 137 70"/>
+                    <path d="M65 108 Q89 82 125 80"/>
+                    <path d="M140 80 Q154 99 154 128"/>
+                    <path d="M61 126 Q67 159 82 180"/>
+                </g>
+                <path id="avHairLine" d="M70 106 Q91 90 110 91 Q132 91 151 106"
+                      fill="none" stroke="#080504" stroke-width="2" stroke-opacity=".5"/>
+
+                <ellipse cx="110" cy="130" rx="47" ry="57" fill="url(#skinT)"/>
+                <circle cx="62" cy="142" r="4" fill="#e7c64e" stroke="#a98c1c"/>
+                <circle cx="158" cy="142" r="4" fill="#e7c64e" stroke="#a98c1c"/>
+
+                <g stroke="#4b2f2a" stroke-width="2.2" fill="none">
+                    <rect x="79"  y="121" width="24" height="17" rx="5"/>
+                    <rect x="117" y="121" width="24" height="17" rx="5"/>
+                    <line x1="103" y1="129" x2="117" y2="129"/>
+                </g>
+
+                <g id="avBrows" stroke="#22160f" stroke-width="3.7" fill="none" stroke-linecap="round">
+                    <path id="avBrowL" d="M81 118 Q92 113 103 118"/>
+                    <path id="avBrowR" d="M117 118 Q128 113 139 118"/>
+                </g>
+
+                <g id="avEyes">
+                    <ellipse class="eye-white" cx="92"  cy="130" rx="8.5" ry="6.5" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
+                    <ellipse class="eye-white" cx="128" cy="130" rx="8.5" ry="6.5" fill="${EYE_WHITE}" stroke="#b79d84" stroke-width=".7"/>
+                    <g id="avPupils">
+                        <circle id="avIrisL" cx="92"  cy="131" r="5.1" fill="${IRIS_F}" opacity=".96"/>
+                        <circle id="avIrisR" cx="128" cy="131" r="5.1" fill="${IRIS_F}" opacity=".96"/>
+                        <circle id="avPupilL" cx="92"  cy="131" r="3.2" fill="${HAIR}"/>
+                        <circle id="avPupilR" cx="128" cy="131" r="3.2" fill="${HAIR}"/>
+                        <circle cx="93"  cy="129.5" r="1" fill="#fff" opacity=".9"/>
+                        <circle cx="129" cy="129.5" r="1" fill="#fff" opacity=".9"/>
+                    </g>
+                    <rect id="avLidL" x="83" y="115" width="18" height="0" fill="url(#skinT)"/>
+                    <rect id="avLidR" x="119" y="115" width="18" height="0" fill="url(#skinT)"/>
+                </g>
+
+                <path d="M110 135 Q108 148 105 152 Q110 156 115 152 Q112 148 110 135 Z"
+                      fill="#6b3f27" opacity=".35"/>
+
+                <g id="avMouthGroup" transform="translate(110 168)">
+                    <path id="avMouthCavity" d="M -16 0 Q 0 0 16 0 Q 0 0 -16 0 Z" fill="#2a0d05"/>
+                    <path id="avMouthTeeth" d="M -14 -1 Q 0 -1 14 -1 Q 0 -1 -14 -1 Z" fill="#f7ecd9" opacity="0"/>
+                    <path id="avMouthUpper" d="M -16 0 Q -8 -2 0 -2 Q 8 -2 16 0 Q 8 0 0 0 Q -8 0 -16 0 Z"
+                          fill="#7a2f29" stroke="#552220" stroke-width=".6"/>
+                    <path id="avMouthLower" d="M -16 0 Q -8 4 0 4 Q 8 4 16 0 Q 8 0 0 0 Q -8 0 -16 0 Z"
+                          fill="#8a3a32" stroke="#552220" stroke-width=".6"/>
+                    <path id="avMouth" d="M -14 0 Q 0 0 14 0" stroke="none" fill="none"/>
+                    <path id="avMouthInner" d="M -10 0 Q 0 0 10 0 Z" fill="none" opacity="0"/>
+                </g>
+            </g>
+
+            <circle id="listenRing" cx="110" cy="130" r="108" fill="none"
+                    stroke="#7bdcb5" stroke-width="3" stroke-dasharray="6 8" opacity="0"/>
+        </svg>`;
+    }
+
     /** Build the male advisor — short hair, glasses, white coat over teal
      *  shirt. Same group ids so the same driver code animates it. */
     function maleAvatarSVG() {
@@ -321,9 +433,10 @@
         </svg>`;
     }
 
-    // Public API: window.BMUAvatars.svg('male' | 'female') -> string
+    // Public API: window.BMUAvatars.svg('medical' | 'male' | 'female') -> string
     window.BMUAvatars = {
         svg(gender) {
+            if (gender === 'medical') return medicalAvatarSVG();
             return gender === 'male' ? maleAvatarSVG() : femaleAvatarSVG();
         },
         /** Compact head-and-shoulders thumbnail used by login/register
@@ -331,7 +444,6 @@
          *  viewBox so it fits a 110-px-wide circle. */
         thumb(gender) {
             const skin     = gender === 'male' ? SKIN_M      : SKIN_F;
-            const skinDark = gender === 'male' ? SKIN_M_DARK : SKIN_F_DARK;
             if (gender === 'male') {
                 return `
                 <svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -365,6 +477,42 @@
                     </g>
                     <!-- mouth (smile) -->
                     <path id="thumbMouth" d="M46 64 Q55 68 64 64" fill="none" stroke="#3a1f12" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>`;
+            }
+            if (gender === 'medical') {
+                return `
+                <svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="thumbBgT" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#12393f"/>
+                            <stop offset="100%" stop-color="#0a2528"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="0" y="0" width="110" height="110" rx="55" fill="url(#thumbBgT)"/>
+                    <path d="M10 110 Q55 76 100 110 L100 110 Z" fill="#1b2740"/>
+                    <path d="M39 94 L50 110 L55 92 L48 83 Z" fill="#0b6f73" stroke="#d8b657" stroke-width=".8"/>
+                    <path d="M71 94 L60 110 L55 92 L62 83 Z" fill="#0b6f73" stroke="#d8b657" stroke-width=".8"/>
+                    <rect x="48" y="69" width="14" height="14" fill="${SKIN_F}"/>
+                    <path d="M31 48 Q35 19 55 15 Q77 18 80 48 Q72 31 55 31 Q38 31 31 48 Z" fill="#1b1513"/>
+                    <g stroke="#30231e" stroke-width="2" stroke-linecap="round">
+                        <path d="M37 41 Q48 21 64 18"/>
+                        <path d="M45 35 Q59 20 73 29"/>
+                        <path d="M32 55 Q42 72 47 80"/>
+                    </g>
+                    <ellipse cx="55" cy="53" rx="22" ry="26" fill="${SKIN_F}"/>
+                    <g stroke="#4b2f2a" stroke-width="1.4" fill="none">
+                        <rect x="38" y="49" width="12" height="9" rx="2"/>
+                        <rect x="60" y="49" width="12" height="9" rx="2"/>
+                        <line x1="50" y1="53" x2="60" y2="53"/>
+                    </g>
+                    <g id="thumbEyes">
+                        <circle id="thumbEyeFlashL" class="thumb-eye-flash" cx="45" cy="54" r="5" fill="#7bdcb5" fill-opacity=".12" stroke="#cffff0" stroke-width="1.55" opacity="0"/>
+                        <circle id="thumbEyeFlashR" class="thumb-eye-flash" cx="65" cy="54" r="5" fill="#7bdcb5" fill-opacity=".12" stroke="#cffff0" stroke-width="1.55" opacity="0"/>
+                        <circle cx="45" cy="54" r="1.7" fill="${HAIR}"/>
+                        <circle cx="65" cy="54" r="1.7" fill="${HAIR}"/>
+                    </g>
+                    <path id="thumbMouth" d="M46 65 Q55 69 64 65" fill="none" stroke="#552220" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M33 84 Q28 96 39 100 M77 84 Q82 96 71 100" fill="none" stroke="#1f2937" stroke-width="1.5"/>
                 </svg>`;
             }
             return `

@@ -251,14 +251,32 @@
         syncViewportModeClasses();
     }
 
+    function normaliseAdvisorAvatar(value) {
+        return ['medical', 'female', 'male'].includes(value) ? value : 'medical';
+    }
+
+    function voiceGenderForAvatar(value) {
+        return value === 'male' ? 'male' : 'female';
+    }
+
+    function nextAdvisorAvatar(value) {
+        const order = ['medical', 'female', 'male'];
+        const current = normaliseAdvisorAvatar(value);
+        return order[(order.indexOf(current) + 1) % order.length];
+    }
+
     function syncAvatarGenderToggle() {
         if (!avatarGenderToggleBtn) return;
         const gender = getAdvisorGender();
-        avatarGenderToggleBtn.title = gender === 'male' ? 'Switch to female avatar' : 'Switch to male avatar';
+        const next = nextAdvisorAvatar(gender);
+        const labels = { medical: 'Dr. Tari medical avatar', female: 'female avatar', male: 'male avatar' };
+        avatarGenderToggleBtn.title = `Switch to ${labels[next]}`;
         avatarGenderToggleBtn.setAttribute('aria-label', avatarGenderToggleBtn.title);
-        avatarGenderToggleBtn.innerHTML = gender === 'male'
+        avatarGenderToggleBtn.innerHTML = gender === 'medical'
             ? '<i class="fa-solid fa-person-dress"></i>'
-            : '<i class="fa-solid fa-person"></i>';
+            : gender === 'male'
+            ? '<i class="fa-solid fa-person-dress"></i>'
+            : '<i class="fa-solid fa-user-doctor"></i>';
     }
 
     function syncAvatarThemeContrast() {
@@ -812,19 +830,19 @@
     // Dr. Tari they're used to.
     function getAdvisorGender() {
         const cached = localStorage.getItem('bmu_advisor_gender');
-        if (cached === 'male' || cached === 'female') return cached;
+        if (cached === 'male' || cached === 'female' || cached === 'medical') return cached;
         try {
             const u = JSON.parse(localStorage.getItem('bmu_user') || 'null');
             if (u?.advisorGender === 'male' || u?.advisorGender === 'female') return u.advisorGender;
         } catch (_) { /* ignore */ }
-        return 'female';
+        return 'medical';
     }
 
     /** Render the SVG for the chosen gender into the host div, then
      *  re-resolve all the named handles so every helper below points at
      *  the live nodes (the previous SVG, if any, is replaced wholesale). */
     function applyAvatar(gender) {
-        const g = gender === 'male' ? 'male' : 'female';
+        const g = normaliseAdvisorAvatar(gender);
         if (!avatarSvgHost || !window.BMUAvatars) return;
 
         const compact = shouldUseCompactAvatar();
@@ -868,7 +886,8 @@
 
     /** Save the chosen avatar both locally and on the server. */
     async function saveAdvisorGender(gender) {
-        const g = gender === 'male' ? 'male' : 'female';
+        const g = normaliseAdvisorAvatar(gender);
+        const serverGender = voiceGenderForAvatar(g);
         clearCachedBrowserVoice();
         localStorage.setItem('bmu_advisor_gender', g);
         try {
@@ -880,7 +899,7 @@
             await fetch('/api/users/advisor-preference', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ gender: g })
+                body: JSON.stringify({ gender: serverGender })
             });
         } catch (_) { /* non-fatal */ }
         syncAvatarGenderToggle();
@@ -3801,9 +3820,9 @@
     }
 
     avatarGenderToggleBtn?.addEventListener('click', async () => {
-        const next = getAdvisorGender() === 'male' ? 'female' : 'male';
+        const next = nextAdvisorAvatar(getAdvisorGender());
         await saveAdvisorGender(next);
-        toast(`Switched to ${next === 'male' ? 'male' : 'female'} avatar`);
+        toast(`Switched to ${next === 'medical' ? 'Dr. Tari medical' : next} avatar`);
     });
 
     // ---------- Escalation ----------

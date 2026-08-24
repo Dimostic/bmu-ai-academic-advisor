@@ -1168,7 +1168,7 @@ html[data-theme="dark"] .loading { color: var(--muted); }
 .advisor-pick {
     border: 1px solid var(--line); border-radius: 12px;
     padding: 12px 14px; margin: 6px 0;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
     background: var(--bg-elev);
 }
 .advisor-pick legend {
@@ -1213,4 +1213,18 @@ html[data-theme="dark"] .advisor-pick { background: var(--bg-elev); }
 html[data-theme="dark"] .advisor-pick-card { background: rgba(47,191,158,.06); }
 html[data-theme="dark"] .advisor-pick-card:has(input:checked) {
     background: rgba(47,191,158,.14); border-color: var(--accent);
+}
+
+@media (max-width: 520px) {
+    .advisor-pick {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        padding: 10px;
+    }
+    .advisor-pick-card {
+        padding: 8px 6px;
+    }
+    .advisor-pick-card span {
+        font-size: .78rem;
+    }
 }
