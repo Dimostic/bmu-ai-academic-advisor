@@ -3312,6 +3312,8 @@
             let restartBaseTranscript = '';
             let noSpeechTimer = null;
             let mobileRestartCount = 0;
+            let noSpeechRestarting = false;
+            let noSpeechRetryCount = 0;
             const clearSilenceTimer = () => {
                 if (silenceTimer) clearTimeout(silenceTimer);
                 silenceTimer = null;
@@ -3450,6 +3452,7 @@
                     : currentSegment;
                 if (heard) {
                     heardSpeech = true;
+                    noSpeechRetryCount = 0;
                     lastHeardTranscript = heard;
                     clearNoSpeechTimer();
                 }
@@ -3489,11 +3492,44 @@
             };
             recognition.onerror = (e) => {
                 const code = String(e?.error || '').toLowerCase();
-                console.warn('[advisor] speech error:', code);
+                if (code === 'no-speech' || code === 'aborted') {
+                    console.debug('[advisor] speech notice:', code);
+                } else {
+                    console.warn('[advisor] speech error:', code);
+                }
                 if (code === 'no-speech' || code === 'aborted') {
                     if (hasCapturedTranscript()) {
                         setAvatarState('listening', `Listening... ${Math.ceil(LISTENING_SILENCE_MS / 1000)}s`);
                         queueVoiceSubmit();
+                        return;
+                    }
+                    const elapsed = Date.now() - autoStartedAt;
+                    const canRetryNoSpeech = code === 'no-speech'
+                        && state.recording
+                        && !submitting
+                        && noSpeechRetryCount < 8
+                        && elapsed < Math.max(1200, noSpeechMs - 500);
+                    if (canRetryNoSpeech) {
+                        noSpeechRetryCount += 1;
+                        noSpeechRestarting = true;
+                        const remaining = Math.max(1, Math.ceil((noSpeechMs - elapsed) / 1000));
+                        setAvatarState('listening', `Listening... ${remaining}s`);
+                        setTimeout(() => {
+                            if (!state.recording || submitting || heardSpeech || !recognition) {
+                                noSpeechRestarting = false;
+                                return;
+                            }
+                            try {
+                                recognition.start();
+                            } catch (_) {
+                                setTimeout(() => {
+                                    if (!state.recording || submitting || heardSpeech || !recognition) return;
+                                    try { recognition.start(); } catch (_) { /* no-speech timer will finish */ }
+                                }, 450);
+                            } finally {
+                                noSpeechRestarting = false;
+                            }
+                        }, isMobileSpeechDevice() ? 650 : 350);
                         return;
                     }
                     cancelListening('Ready');
@@ -3513,6 +3549,7 @@
             };
             recognition.onend = () => {
                 if (submitting) return;
+                if (noSpeechRestarting && state.recording && !heardSpeech) return;
                 if (state.recording && hasCapturedTranscript()) {
                     restartBaseTranscript = normalizeVoiceTranscript(questionInput.value || lastHeardTranscript || buffer || restartBaseTranscript);
                     setAvatarState('listening', `Listening... ${Math.ceil(LISTENING_SILENCE_MS / 1000)}s`);
