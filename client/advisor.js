@@ -2743,7 +2743,7 @@
             : '<i class="fa-solid fa-microphone"></i>';
     }
 
-    const LISTENING_SILENCE_MS = 3000;
+    const LISTENING_SILENCE_MS = 5000;
     const LISTENING_NO_SPEECH_MS = 3000;
     const VOICE_SUBMIT_RE = /\b(?:send it|submit|that's all|that is all|go ahead|please answer|answer now|done|deal)\s*[\.\?!]*$/i;
     const VOICE_RESTART_RE = /\b(?:start over|restart|try again)\s*[\.\?!]*$/i;
