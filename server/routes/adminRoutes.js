@@ -2743,6 +2743,7 @@ router.get('/advisor/recent-qa', authenticateToken, requireAdmin, async (req, re
                                  rq.admin_cache_decision,
                                  rq.admin_cache_user_id,
                                  rq.admin_cache_decided_at,
+                                 fb.feedback_notes,
                 (SELECT s.text
                    FROM advisor_messages s
                    WHERE s.conversation_id = a.conversation_id
@@ -2760,6 +2761,20 @@ router.get('/advisor/recent-qa', authenticateToken, requireAdmin, async (req, re
                    LIMIT 1)                            AS existing_cache_id
             FROM advisor_messages a
                         LEFT JOIN advisor_response_quality rq ON rq.advisor_message_id = a.id
+                        LEFT JOIN (
+                            SELECT
+                                advisor_message_id,
+                                GROUP_CONCAT(
+                                    CONCAT(
+                                        IF(helpful = 1, 'Helpful', 'Not helpful'),
+                                        IF(COALESCE(NULLIF(TRIM(comment), ''), '') = '', '', CONCAT(': ', TRIM(comment)))
+                                    )
+                                    ORDER BY updated_at DESC
+                                    SEPARATOR ' | '
+                                ) AS feedback_notes
+                            FROM advisor_response_feedback
+                            GROUP BY advisor_message_id
+                        ) fb ON fb.advisor_message_id = a.id
                         ${whereClause}
             ORDER BY a.id DESC
             LIMIT ? OFFSET ?
@@ -2870,22 +2885,37 @@ router.get('/advisor/quality-export', authenticateToken, requireAdmin, async (re
         const limit = Math.max(1, Math.min(5000, parseInt(req.query?.limit, 10) || 500));
         const rows = await query(`
             SELECT
-                advisor_message_id,
-                conversation_id,
-                addressed_score,
-                grounding_score,
-                citation_score,
-                completeness_score,
-                overall_score,
-                auto_cache_eligible,
-                auto_cached,
-                helpful_count,
-                not_helpful_count,
-                feedback_score,
-                admin_cache_decision,
-                created_at
-            FROM advisor_response_quality
-            ORDER BY advisor_message_id DESC
+                rq.advisor_message_id,
+                rq.conversation_id,
+                rq.addressed_score,
+                rq.grounding_score,
+                rq.citation_score,
+                rq.completeness_score,
+                rq.overall_score,
+                rq.auto_cache_eligible,
+                rq.auto_cached,
+                rq.helpful_count,
+                rq.not_helpful_count,
+                rq.feedback_score,
+                fb.feedback_notes,
+                rq.admin_cache_decision,
+                rq.created_at
+            FROM advisor_response_quality rq
+            LEFT JOIN (
+                SELECT
+                    advisor_message_id,
+                    GROUP_CONCAT(
+                        CONCAT(
+                            IF(helpful = 1, 'Helpful', 'Not helpful'),
+                            IF(COALESCE(NULLIF(TRIM(comment), ''), '') = '', '', CONCAT(': ', TRIM(comment)))
+                        )
+                        ORDER BY updated_at DESC
+                        SEPARATOR ' | '
+                    ) AS feedback_notes
+                FROM advisor_response_feedback
+                GROUP BY advisor_message_id
+            ) fb ON fb.advisor_message_id = rq.advisor_message_id
+            ORDER BY rq.advisor_message_id DESC
             LIMIT ?
         `, [limit]);
 
@@ -2902,6 +2932,7 @@ router.get('/advisor/quality-export', authenticateToken, requireAdmin, async (re
             'helpful_count',
             'not_helpful_count',
             'feedback_score',
+            'feedback_notes',
             'admin_cache_decision',
             'created_at'
         ];

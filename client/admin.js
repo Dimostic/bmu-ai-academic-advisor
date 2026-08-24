@@ -1541,6 +1541,10 @@
                 const fullAnswer = it.display_markdown || it.advisor_text || '';
                 const preview = fullAnswer.slice(0, 800);
                 const promoteLabel = it.existing_cache_id ? 'Refresh in cache' : 'Promote to cache';
+                const feedbackNotes = String(it.feedback_notes || '').trim();
+                const feedbackNotesHtml = feedbackNotes
+                    ? `<details class="curate-a"><summary>Feedback notes</summary><pre>${escapeHtml(feedbackNotes)}</pre></details>`
+                    : '';
                 return `
                 <article class="curate-card" data-id="${it.advisor_message_id}">
                     <div class="curate-meta">
@@ -1558,6 +1562,7 @@
                         <summary>Show advisor reply (${preview.length} chars)</summary>
                         <pre>${escapeHtml(preview)}</pre>
                     </details>
+                    ${feedbackNotesHtml}
                     <div class="curate-actions">
                         <button class="btn btn-primary btn-sm promote-btn" type="button">
                             <i class="fa-solid fa-star"></i> ${promoteLabel}

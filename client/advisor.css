@@ -668,6 +668,28 @@ html[data-theme="dark"] .avatar-stage-controls {
     opacity: .45;
     cursor: not-allowed;
 }
+.advisor-feedback {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.feedback-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--muted);
+    cursor: pointer;
+}
+.feedback-btn:hover,
+.feedback-btn.is-selected {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(17, 153, 142, 0.1);
+}
 .fullpage-answer-wrap,
 .fullpage-answer {
     display: none;
@@ -1553,7 +1575,7 @@ body.advisor-full-view .fullpage-answer {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 10px 48px 10px 14px;
+    padding: 10px 48px 10px 78px;
     border: 1px solid var(--line);
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.92);
@@ -1562,6 +1584,26 @@ body.advisor-full-view .fullpage-answer {
     font-size: .92rem;
     line-height: 1.45;
     white-space: pre-wrap;
+}
+
+body.advisor-full-view .fullpage-feedback {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    display: inline-flex;
+    gap: 4px;
+}
+
+body.advisor-full-view .fullpage-feedback.hidden {
+    display: none;
+}
+
+body.advisor-full-view .fullpage-feedback .feedback-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 8px 20px rgba(15, 61, 62, 0.1);
 }
 
 body.advisor-full-view .fullpage-answer-clear {
@@ -1607,6 +1649,12 @@ html[data-theme="dark"] body.advisor-full-view .fullpage-answer {
 }
 
 html[data-theme="dark"] body.advisor-full-view .fullpage-answer-clear {
+    background: rgba(10, 18, 20, 0.9);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+html[data-theme="dark"] .feedback-btn,
+html[data-theme="dark"] body.advisor-full-view .fullpage-feedback .feedback-btn {
     background: rgba(10, 18, 20, 0.9);
     border-color: rgba(255, 255, 255, 0.18);
 }
@@ -1673,7 +1721,7 @@ body.advisor-full-view #advisorViewToggleBtn {
         max-height: 40px;
         font-size: .84rem;
         line-height: 1.35;
-        padding: 8px 42px 8px 10px;
+        padding: 8px 42px 8px 72px;
     }
 
     body.advisor-full-view .fullpage-answer-clear {

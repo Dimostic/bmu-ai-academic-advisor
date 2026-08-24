@@ -100,6 +100,7 @@
     const guestDemoSuggestions = $('guestDemoSuggestions');
     const fullPageAnswerWrap = $('fullPageAnswerWrap');
     const fullPageAnswer = $('fullPageAnswer');
+    const fullPageFeedback = $('fullPageFeedback');
     const clearAnswerBtn = $('clearAnswerBtn');
     const voiceCommandBar = $('voiceCommandBar');
     const wakeCommandBtn = $('wakeCommandBtn');
@@ -180,6 +181,7 @@
         voicePhaseUpdatedAt: Date.now(),
         voicePhaseHistory: [],
         usage: null,
+        lastAdvisorMessageId: null,
         guestDemo: {
             enabled: _isGuestDemo,
             limit: 5,
@@ -1214,6 +1216,7 @@
         fullPageAnswerWrap?.classList.toggle('hidden', !value);
         renderFullPageAnswer(value);
         if (clearAnswerBtn) clearAnswerBtn.hidden = !value;
+        syncFullPageFeedback(stateName === 'answer' ? state.lastAdvisorMessageId : null);
         if (value) {
             requestAnimationFrame(() => {
                 fullPageAnswer.scrollTop = fullPageAnswer.scrollHeight;
@@ -1257,6 +1260,51 @@
         });
         if (cursor < text.length) html += escapeHtml(text.slice(cursor));
         fullPageAnswer.innerHTML = html;
+    }
+
+    function syncFullPageFeedback(messageId = state.lastAdvisorMessageId) {
+        if (!fullPageFeedback) return;
+        const msgId = Number(messageId || 0);
+        const show = Boolean(msgId && fullPageAnswerWrap && !fullPageAnswerWrap.classList.contains('hidden'));
+        fullPageFeedback.classList.toggle('hidden', !show);
+        fullPageFeedback.dataset.messageId = show ? String(msgId) : '';
+        if (!show) {
+            fullPageFeedback.querySelectorAll('.feedback-btn').forEach(btn => btn.classList.remove('is-selected'));
+        }
+    }
+
+    function promptFeedbackComment(helpful) {
+        if (helpful) return '';
+        const options = [
+            'Wrong information',
+            'Not enough detail',
+            'Did not answer my question',
+            'Voice/transcription problem',
+            'Other'
+        ];
+        const answer = window.prompt(`What was the issue?\n\n${options.map((x, i) => `${i + 1}. ${x}`).join('\n')}\n\nYou may type a number or short comment.`);
+        if (answer === null) return null;
+        const trimmed = String(answer || '').trim();
+        const index = parseInt(trimmed, 10);
+        if (index >= 1 && index <= options.length) return options[index - 1];
+        return trimmed || 'Not helpful';
+    }
+
+    function bindFeedbackButtons(container, messageId) {
+        const msgId = Number(messageId || 0);
+        if (!container || !msgId) return;
+        const buttons = Array.from(container.querySelectorAll('.feedback-btn'));
+        buttons.forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const helpful = btn.getAttribute('data-helpful') === '1';
+                const comment = promptFeedbackComment(helpful);
+                if (comment === null) return;
+                const ok = await sendAdvisorFeedback(msgId, helpful, comment);
+                if (!ok) return;
+                buttons.forEach(b => b.classList.remove('is-selected'));
+                btn.classList.add('is-selected');
+            });
+        });
     }
 
     function syncFullPageCaption(charIndex = 0, { force = false } = {}) {
@@ -1388,16 +1436,7 @@
                 <button type="button" class="feedback-btn" data-helpful="0" title="Not helpful">
                     <i class="fa-regular fa-thumbs-down"></i>
                 </button>`;
-            const buttons = Array.from(fbWrap.querySelectorAll('.feedback-btn'));
-            buttons.forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const helpful = btn.getAttribute('data-helpful') === '1';
-                    const ok = await sendAdvisorFeedback(msgId, helpful);
-                    if (!ok) return;
-                    buttons.forEach(b => b.classList.remove('is-selected'));
-                    btn.classList.add('is-selected');
-                });
-            });
+            bindFeedbackButtons(fbWrap, msgId);
             bubble.actions.appendChild(fbWrap);
         }
 
@@ -1417,11 +1456,11 @@
         }
     }
 
-    async function sendAdvisorFeedback(advisorMessageId, helpful) {
+    async function sendAdvisorFeedback(advisorMessageId, helpful, comment = '') {
         try {
             await api('/api/advisor/feedback', {
                 method: 'POST',
-                body: { advisorMessageId, helpful }
+                body: { advisorMessageId, helpful, comment: comment || null }
             });
             toast(helpful ? 'Thanks. Marked helpful.' : 'Thanks. We will improve this answer.');
             return true;
@@ -2653,6 +2692,8 @@
                     audio_url:         final.audio?.audio_url || audioUrl,
                     message_id:        final.messageId || final.message_id || null
                 });
+                state.lastAdvisorMessageId = Number(final.messageId || final.message_id || 0) || null;
+                syncFullPageFeedback(state.lastAdvisorMessageId);
                 renderFollowups(state.guestDemo.enabled ? [] : final.reply?.follow_up_questions);
                 if (!state.guestDemo.enabled && final.reply?.needs_escalation) addEscalationHint();
                 if (state.guestDemo.enabled) {
@@ -3809,6 +3850,22 @@
     });
     clearAnswerBtn?.addEventListener('click', () => {
         setFullPageAnswer('');
+    });
+    fullPageFeedback?.querySelectorAll('.feedback-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const msgId = Number(fullPageFeedback.dataset.messageId || state.lastAdvisorMessageId || 0);
+            if (!msgId) {
+                toast('Feedback is available after the answer is saved.', 'error');
+                return;
+            }
+            const helpful = btn.getAttribute('data-helpful') === '1';
+            const comment = promptFeedbackComment(helpful);
+            if (comment === null) return;
+            const ok = await sendAdvisorFeedback(msgId, helpful, comment);
+            if (!ok) return;
+            fullPageFeedback.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('is-selected'));
+            btn.classList.add('is-selected');
+        });
     });
     voiceCommandBar?.querySelectorAll('[data-voice-command]').forEach((btn) => {
         btn.addEventListener('click', () => {

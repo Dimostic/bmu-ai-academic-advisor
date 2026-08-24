@@ -53,7 +53,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260821-landscape-status" />
+    <link rel="stylesheet" href="/advisor.css?v=20260824-answer-feedback" />
     <link rel="stylesheet" href="/pages.css?v=20260815-thinking-label" />
 </head>
 <body>
@@ -189,6 +189,14 @@
 
             <div class="fullpage-answer-wrap hidden" id="fullPageAnswerWrap">
                 <div class="fullpage-answer" id="fullPageAnswer" aria-live="polite"></div>
+                <div class="fullpage-feedback hidden" id="fullPageFeedback" aria-label="Rate this answer">
+                    <button type="button" class="feedback-btn" data-helpful="1" title="Helpful" aria-label="Helpful">
+                        <i class="fa-regular fa-thumbs-up"></i>
+                    </button>
+                    <button type="button" class="feedback-btn" data-helpful="0" title="Not helpful" aria-label="Not helpful">
+                        <i class="fa-regular fa-thumbs-down"></i>
+                    </button>
+                </div>
                 <button type="button" class="fullpage-answer-clear" id="clearAnswerBtn" title="Clear answer" aria-label="Clear answer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -312,7 +320,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260817-advisor-accuracy" defer></script>
-    <script src="/advisor.js?v=20260824-followup-capture" defer></script>
+    <script src="/advisor.js?v=20260824-answer-feedback" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>
