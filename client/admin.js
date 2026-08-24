@@ -106,6 +106,7 @@
         documents: renderDocuments,
         documentLab: renderDocumentLab,
         structuredRecords: renderStructuredRecords,
+        dataQuality: renderDataQuality,
         faqs:      renderFAQs,
         users:     renderUsers,
         audit:     renderAudit,
@@ -541,10 +542,20 @@
         }
     }
 
-    async function renderStructuredQuality(targetId) {
+    async function renderDataQuality() {
+        main.innerHTML = `
+            <h2>Data Quality</h2>
+            <p class="lede">Structured data checks for facts Dr. Tari answers exactly: officers, courses, fees, programme requirements, cutoffs, registration rules, and calendar records.</p>
+            <div id="dataQualityBody"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+        `;
+        await renderStructuredQuality('dataQualityBody', { full: true });
+    }
+
+    async function renderStructuredQuality(targetId, options = {}) {
         const el = document.getElementById(targetId);
         if (!el) return;
         try {
+            const full = !!options.full;
             const data = await api('/api/admin/structured-records/quality');
             const warnings = data.warnings || [];
             const tableCounts = data.tableCounts || [];
@@ -567,7 +578,7 @@
             const warningRows = warnings.length
                 ? table(
                     ['Severity', 'Area', 'Issue', 'Action'],
-                    warnings.slice(0, 20).map(row => [
+                    warnings.slice(0, full ? 60 : 20).map(row => [
                         `<span class="badge ${row.severity === 'high' ? 'badge-danger' : 'badge-warn'}">${escapeHtml(row.severity)}</span>`,
                         escapeHtml(row.area || '—'),
                         escapeHtml(row.message || '—'),
@@ -577,7 +588,7 @@
                     ])
                 )
                 : '<p class="empty">No obvious structured-data warnings detected.</p>';
-            const unitConflictSamples = (courses.unitConflictSamples || []).slice(0, 6);
+            const unitConflictSamples = (courses.unitConflictSamples || []).slice(0, full ? 25 : 6);
             const unitConflictRows = unitConflictSamples.length
                 ? table(
                     ['Programme', 'Course', 'Units', 'Rows', 'Action'],
@@ -590,6 +601,55 @@
                     ])
                 )
                 : '<p class="empty">No course unit conflicts detected.</p>';
+            const programmeGapSamples = (programmes.gapSamples || []).slice(0, full ? 50 : 0);
+            const programmeGapRows = programmeGapSamples.length
+                ? table(
+                    ['Programme', 'Gaps', 'Coverage', 'Linked names', 'Action'],
+                    programmeGapSamples.map(row => {
+                        const gaps = row.gaps || [];
+                        const firstGap = gaps[0] || '';
+                        const actionTable = firstGap.includes('courses')
+                            ? 'academic_courses'
+                            : (firstGap.includes('fees') ? 'academic_fees' : 'academic_rules');
+                        const actionLabel = firstGap.includes('courses')
+                            ? 'Open courses'
+                            : (firstGap.includes('fees') ? 'Open fees' : 'Open requirements');
+                        return [
+                            escapeHtml(row.programme || '—'),
+                            escapeHtml(gaps.join(', ') || '—'),
+                            escapeHtml(`Courses ${row.courseCount || 0} · Fees ${row.feeCount || 0} · Requirements ${row.ruleCount || 0}`),
+                            escapeHtml((row.linkedProgrammeNames || []).join(', ') || (row.programmeAliases || []).join(', ') || '—'),
+                            `<button class="btn btn-ghost btn-sm" data-structured-quality-action="${escapeHtml(actionTable)}" data-structured-quality-q="${escapeHtml(row.programme || row.canonicalProgramme || '')}"><i class="fa-solid fa-magnifying-glass"></i> ${escapeHtml(actionLabel)}</button>`
+                        ];
+                    })
+                )
+                : '<p class="empty">No programme coverage gaps detected.</p>';
+            const incompleteLevelSamples = (courses.incompleteLevelSamples || []).slice(0, full ? 50 : 0);
+            const incompleteLevelRows = incompleteLevelSamples.length
+                ? table(
+                    ['Programme', 'Course records', 'Available levels', 'Action'],
+                    incompleteLevelSamples.map(row => [
+                        escapeHtml(row.programme || '—'),
+                        escapeHtml(String(row.courseCount || 0)),
+                        escapeHtml((row.levels || []).join(', ') || 'none'),
+                        `<button class="btn btn-ghost btn-sm" data-structured-quality-action="academic_courses" data-structured-quality-q="${escapeHtml(row.programme || '')}"><i class="fa-solid fa-magnifying-glass"></i> Review courses</button>`
+                    ])
+                )
+                : '<p class="empty">No likely incomplete course-level coverage detected.</p>';
+            const invalidCodeSamples = (courses.invalidCodeSamples || []).slice(0, full ? 50 : 0);
+            const invalidCodeRows = invalidCodeSamples.length
+                ? table(
+                    ['Programme', 'Level', 'Course code', 'Title', 'Source', 'Action'],
+                    invalidCodeSamples.map(row => [
+                        escapeHtml(row.programme || '—'),
+                        escapeHtml(row.level_label || '—'),
+                        escapeHtml(row.course_code || '—'),
+                        escapeHtml(row.course_title || '—'),
+                        escapeHtml(row.source_path || '—'),
+                        `<button class="btn btn-ghost btn-sm" data-structured-quality-action="academic_courses" data-structured-quality-q="${escapeHtml(row.course_code || row.course_title || row.programme || '')}"><i class="fa-solid fa-magnifying-glass"></i> Review row</button>`
+                    ])
+                )
+                : '<p class="empty">No invalid course code samples detected.</p>';
             const ruleSummary = (rules.categories || []).slice(0, 8).map(row =>
                 `<span class="badge">${escapeHtml(row.category)}: ${escapeHtml(String(row.count || 0))}</span>`
             ).join('');
@@ -613,6 +673,14 @@
                 ${warningRows}
                 <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Course unit conflicts</h4>
                 ${unitConflictRows}
+                ${full ? `
+                    <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Programme coverage gaps</h4>
+                    ${programmeGapRows}
+                    <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Likely incomplete course levels</h4>
+                    ${incompleteLevelRows}
+                    <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Invalid course code samples</h4>
+                    ${invalidCodeRows}
+                ` : ''}
                 <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Structured table coverage</h4>
                 ${tableSummary}
             `;
