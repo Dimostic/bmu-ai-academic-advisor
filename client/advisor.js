@@ -2764,6 +2764,7 @@
 
     const LISTENING_SILENCE_MS = 5000;
     const LISTENING_NO_SPEECH_MS = 3000;
+    const SERVER_STT_NO_SPEECH_MS = 8000;
     const VOICE_SUBMIT_RE = /\b(?:send it|submit|that's all|that is all|go ahead|please answer|answer now|done|deal)\s*[\.\?!]*$/i;
     const VOICE_RESTART_RE = /\b(?:start over|restart|try again)\s*[\.\?!]*$/i;
     const VOICE_CANCEL_RE = /\b(?:cancel listening|stop listening|never mind|nevermind)\s*[\.\?!]*$/i;
@@ -3079,7 +3080,12 @@
         state.voicePaused = false;
         state.cancelVoiceListening = false;
         state.discardVoiceRecording = false;
-        const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : LISTENING_NO_SPEECH_MS;
+        const browserSpeechOk = shouldUseBrowserSpeechRecognition();
+        const noSpeechMs = Number(options.noSpeechMs) > 0
+            ? Number(options.noSpeechMs)
+            : browserSpeechOk
+                ? LISTENING_NO_SPEECH_MS
+                : SERVER_STT_NO_SPEECH_MS;
         const autoFollowup = Boolean(options.autoFollowup);
         clearPendingVoiceSubmit();
         wakeNeedsUserGesture = false;
@@ -3087,12 +3093,12 @@
         // Hard-stop the early misleading error: if neither path can work,
         // bail out with a friendly toast rather than starting a recording
         // we know will fail at upload time.
-        if (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable) {
+        if (!browserSpeechOk && !serverSttAvailable) {
             toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
             return;
         }
         setAvatarState('listening', autoFollowup ? `Listening... ${Math.ceil(noSpeechMs / 1000)}s` : 'Listening');
-        if (shouldUseBrowserSpeechRecognition()) {
+        if (browserSpeechOk) {
             const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new Rec();
             recognition.lang = 'en-NG';
@@ -3289,7 +3295,7 @@
                 console.warn('[advisor] speech error:', code);
                 if (code === 'no-speech' || code === 'aborted') {
                     if (hasCapturedTranscript()) {
-                        setAvatarState('listening', 'Listening... 3s');
+                        setAvatarState('listening', `Listening... ${Math.ceil(LISTENING_SILENCE_MS / 1000)}s`);
                         queueVoiceSubmit();
                         return;
                     }
@@ -3312,7 +3318,7 @@
                 if (submitting) return;
                 if (state.recording && hasCapturedTranscript()) {
                     restartBaseTranscript = normalizeVoiceTranscript(questionInput.value || lastHeardTranscript || buffer || restartBaseTranscript);
-                    setAvatarState('listening', 'Listening... 3s');
+                    setAvatarState('listening', `Listening... ${Math.ceil(LISTENING_SILENCE_MS / 1000)}s`);
                     queueVoiceSubmit();
                     if (isMobileSpeechDevice() && shouldUseBrowserSpeechRecognition() && mobileRestartCount < 3) {
                         mobileRestartCount += 1;
@@ -3323,7 +3329,7 @@
                             // Fall through to submit after the grace timer.
                         }
                     }
-                    setAvatarState('listening', 'Listening... 3s');
+                    setAvatarState('listening', `Listening... ${Math.ceil(LISTENING_SILENCE_MS / 1000)}s`);
                     queueVoiceSubmit();
                     return;
                 }
@@ -3345,7 +3351,7 @@
     }
 
     async function startServerRecording(options = {}) {
-        const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : LISTENING_NO_SPEECH_MS;
+        const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : SERVER_STT_NO_SPEECH_MS;
         const autoFollowup = Boolean(options.autoFollowup);
         if (!serverSttAvailable) {
             updateMicAvailability();
@@ -3377,9 +3383,12 @@
             const startedAt = Date.now();
             let heardSpeech = false;
             let lastSpeechAt = 0;
+            let peakRms = 0;
             let noiseFloor = 0.008;
             let discardReason = '';
             let speechCandidateAt = 0;
+            let noSpeechExtended = false;
+            let noSpeechDeadline = startedAt + noSpeechMs;
             const stopRecorder = (discard = false) => {
                 if (discard) discardReason = 'no-speech';
                 discardRecording = discardRecording || discard;
@@ -3486,10 +3495,12 @@
                     }
                     const rms = Math.sqrt(sum / sample.length);
                     const now = Date.now();
+                    peakRms = Math.max(peakRms, rms);
                     if (!heardSpeech) {
                         noiseFloor = (noiseFloor * 0.92) + (Math.min(rms, 0.035) * 0.08);
                     }
-                    const speechThreshold = Math.max(0.010, Math.min(0.030, noiseFloor * 2.4));
+                    const speechThreshold = Math.max(0.006, Math.min(0.024, noiseFloor * 1.8));
+                    const softSpeechThreshold = Math.max(0.0045, speechThreshold * 0.68);
                     if (rms > speechThreshold) {
                         if (!speechCandidateAt) speechCandidateAt = now;
                         const sustainedSpeechMs = now - speechCandidateAt;
@@ -3500,9 +3511,20 @@
                         }
                         return;
                     }
+                    if (heardSpeech && rms > softSpeechThreshold) {
+                        lastSpeechAt = now;
+                        setAvatarState('listening', 'Listening');
+                        return;
+                    }
                     speechCandidateAt = 0;
-                    if (!heardSpeech && now - startedAt >= noSpeechMs) {
-                        stopRecorder(true);
+                    if (!heardSpeech && now >= noSpeechDeadline) {
+                        if (!autoFollowup && !noSpeechExtended && peakRms > 0.004) {
+                            noSpeechExtended = true;
+                            noSpeechDeadline = now + 4000;
+                            setAvatarState('listening', 'Listening... 4s');
+                            return;
+                        }
+                        stopRecorder(autoFollowup || peakRms < 0.0035);
                         return;
                     }
                     if (heardSpeech && now - lastSpeechAt >= LISTENING_SILENCE_MS) {
