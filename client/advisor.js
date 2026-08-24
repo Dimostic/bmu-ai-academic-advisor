@@ -285,6 +285,7 @@
         if (!advisorSvg || !avatarSvgHost) return;
         const lightTheme = document.documentElement.getAttribute('data-theme') !== 'dark';
         const gender = document.getElementById('avatarStage')?.dataset.advisorGender || getAdvisorGender();
+        const isMaleAvatar = gender === 'male' || gender === 'academic-male';
 
         const eyeFill = lightTheme ? '#ead7c4' : '#f3e7da';
         const eyeStroke = lightTheme ? '#8b715d' : '#b79d84';
@@ -295,19 +296,19 @@
         });
 
         avatarSvgHost.querySelectorAll('#avIrisL, #avIrisR').forEach((iris) => {
-            iris.setAttribute('fill', gender === 'male' ? '#1f2a26' : '#35504d');
+            iris.setAttribute('fill', isMaleAvatar ? '#1f2a26' : '#35504d');
             iris.setAttribute('opacity', lightTheme ? '.99' : '.96');
-            iris.setAttribute('r', gender === 'male' ? '5.2' : '5.4');
+            iris.setAttribute('r', isMaleAvatar ? '5.2' : '5.4');
         });
 
         avatarSvgHost.querySelectorAll('#avPupilL, #avPupilR').forEach((pupil) => {
             pupil.setAttribute('fill', '#050302');
-            pupil.setAttribute('r', gender === 'male' ? '2.8' : '3');
+            pupil.setAttribute('r', isMaleAvatar ? '2.8' : '3');
         });
 
         avatarSvgHost.querySelectorAll('#avBrows path').forEach((brow) => {
-            brow.setAttribute('stroke', gender === 'male' ? '#090503' : '#22160f');
-            brow.setAttribute('stroke-width', gender === 'male' ? '4.5' : '3.7');
+            brow.setAttribute('stroke', isMaleAvatar ? '#090503' : '#22160f');
+            brow.setAttribute('stroke-width', isMaleAvatar ? '4.5' : '3.7');
         });
 
         const maleHair = avatarSvgHost.querySelector('#avHair');
