@@ -141,6 +141,7 @@
         mediaRecorder: null,
         audioCtx: null,
         currentAudio: null,
+        speechPlaybackActive: false,
         audioOutputUnlocked: false,
         ttsMuted: true,
         ttsPaused: false,
@@ -1690,6 +1691,7 @@
                     let raf;
                     let visemeAtTime = () => 0;
                     let smoothLevel = 0;
+                    let unexpectedPauseRetries = 0;
                     const tick = () => {
                         const target = visemeAtTime(audio.currentTime || 0);
                         smoothLevel = smoothLevel + (target - smoothLevel) * 0.42;
@@ -1704,17 +1706,27 @@
                         }
                     });
                     audio.addEventListener('play', () => {
+                        state.speechPlaybackActive = true;
                         clearComposerWhenAdvisorSpeaks();
                         setAvatarState('speaking', 'Speaking');
                         syncCaptionForAudioPlayback(spokenText, 0, audio.duration || 0, true);
                         tick();
                     });
                     audio.addEventListener('pause', () => {
-                        if (!audio.ended) setAvatarState('idle', 'Paused');
+                        if (!audio.ended && state.ttsPaused) setAvatarState('idle', 'Paused');
+                        if (!audio.ended && !state.ttsPaused && unexpectedPauseRetries < 1) {
+                            unexpectedPauseRetries += 1;
+                            setTimeout(() => {
+                                if (state.currentAudio === audio && audio.paused && !audio.ended && !state.ttsPaused) {
+                                    audio.play().catch(() => {});
+                                }
+                            }, 220);
+                        }
                     });
                     audio.addEventListener('ended', () => {
                         cancelAnimationFrame(raf);
                         setMouthOpenness(0);
+                        state.speechPlaybackActive = false;
                         state.currentAudio = null;
                         resetPauseButtonUi();
                         setAvatarState('idle', 'Ready');
@@ -1725,6 +1737,7 @@
                     audio.addEventListener('error', () => {
                         cancelAnimationFrame(raf);
                         setMouthOpenness(0);
+                        state.speechPlaybackActive = false;
                         state.currentAudio = null;
                         resetPauseButtonUi();
                         setAvatarState('idle', 'Ready');
@@ -1736,6 +1749,7 @@
                             console.warn('[advisor] mobile audio play blocked:', err?.message || err);
                             cancelAnimationFrame(raf);
                             setMouthOpenness(0);
+                            state.speechPlaybackActive = false;
                             state.currentAudio = null;
                             resetPauseButtonUi();
                             setAvatarState('idle', 'Ready');
@@ -1769,6 +1783,7 @@
 
                 let raf;
                 let smoothLevel = 0;
+                let unexpectedPauseRetries = 0;
                 const tick = () => {
                     analyser.getByteFrequencyData(data);
                     let low = 0;
@@ -1798,16 +1813,25 @@
                 };
 
                 audio.addEventListener('play', () => {
+                    state.speechPlaybackActive = true;
                     clearComposerWhenAdvisorSpeaks();
                     setAvatarState('speaking', 'Speaking');
                     syncCaptionForAudioPlayback(spokenText, 0, audio.duration || 0, true);
                     tick();
                 });
                 audio.addEventListener('pause', () => {
-                    if (!audio.ended) setAvatarState('idle', 'Paused');
+                    if (!audio.ended && state.ttsPaused) setAvatarState('idle', 'Paused');
+                    if (!audio.ended && !state.ttsPaused && unexpectedPauseRetries < 1) {
+                        unexpectedPauseRetries += 1;
+                        setTimeout(() => {
+                            if (state.currentAudio === audio && audio.paused && !audio.ended && !state.ttsPaused) {
+                                audio.play().catch(() => {});
+                            }
+                        }, 220);
+                    }
                 });
                 audio.addEventListener('ended', () => {
-                    cancelAnimationFrame(raf); setMouthOpenness(0); setAvatarState('idle', 'Ready');
+                    cancelAnimationFrame(raf); setMouthOpenness(0); state.speechPlaybackActive = false; state.currentAudio = null; setAvatarState('idle', 'Ready');
                     state.ttsPaused = false;
                     resetPauseButtonUi();
                     maybeStartAutoFollowupListening();
@@ -1817,6 +1841,7 @@
                 audio.addEventListener('error', () => {
                     cancelAnimationFrame(raf);
                     setMouthOpenness(0);
+                    state.speechPlaybackActive = false;
                     state.currentAudio = null;
                     resetPauseButtonUi();
                     setAvatarState('idle', 'Ready');
@@ -1828,6 +1853,7 @@
                         console.warn('[advisor] audio play blocked:', err?.message || err);
                         cancelAnimationFrame(raf);
                         setMouthOpenness(0);
+                        state.speechPlaybackActive = false;
                         state.currentAudio = null;
                         resetPauseButtonUi();
                         setAvatarState('idle', 'Ready');
@@ -1909,6 +1935,7 @@
         if (state.voicePaused) return;
         if (state.lastAskInputMode !== 'voice') return;
         if (state.recording || document.hidden) return;
+        if (isAdvisorSpeechActive()) return;
         if (!questionInput || questionInput.value.trim()) return;
         if (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable) return;
         if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) return;
@@ -1916,6 +1943,10 @@
             state.autoFollowupTimer = null;
             if (state.voicePaused) return;
             if (state.recording || document.hidden) return;
+            if (isAdvisorSpeechActive()) {
+                maybeStartAutoFollowupListening();
+                return;
+            }
             if (questionInput?.value.trim()) return;
             startListening({
                 autoFollowup: true,
@@ -1933,6 +1964,7 @@
 
     function stopCurrentAudio() {
         clearAutoFollowupTimer();
+        state.speechPlaybackActive = false;
         if (state.currentAudio) {
             try { state.currentAudio.pause(); } catch (_) {}
             try { state.currentAudio.currentTime = 0; } catch (_) {}
@@ -1945,6 +1977,12 @@
         try { window.speechSynthesis?.cancel(); } catch (_) {}
         resetPauseButtonUi();
         setMouthOpenness(0);
+    }
+
+    function isAdvisorSpeechActive() {
+        const audioActive = Boolean(state.currentAudio && !state.currentAudio.ended);
+        const browserTtsActive = Boolean(window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending));
+        return Boolean(state.speechPlaybackActive || audioActive || browserTtsActive || state.voicePhase === 'speaking');
     }
 
     function cancelActiveAsk() {
@@ -2324,6 +2362,7 @@
                 };
 
                 u.onstart = () => {
+                    state.speechPlaybackActive = true;
                     clearComposerWhenAdvisorSpeaks();
                     setAvatarState('speaking', 'Speaking');
                     setFullPageAnswer(cleaned, 'speaking');
@@ -2342,6 +2381,7 @@
                 };
                 u.onend = () => {
                     stopPulse();
+                    state.speechPlaybackActive = false;
                     state.ttsPaused = false;
                     setAvatarState('idle', 'Ready');
                     maybeStartAutoFollowupListening();
@@ -2349,6 +2389,7 @@
                 };
                 u.onerror = () => {
                     stopPulse();
+                    state.speechPlaybackActive = false;
                     state.ttsPaused = false;
                     setAvatarState('idle', 'Ready');
                     resolve(0);
@@ -3003,6 +3044,14 @@
     function scheduleWakeWordListener(delay = 900) {
         if (!state.wakeWordEnabled || !shouldUseWakeWordRecognition()) return;
         if (wakeNeedsUserGesture) return;
+        if (isAdvisorSpeechActive()) {
+            if (wakeRestartTimer) clearTimeout(wakeRestartTimer);
+            wakeRestartTimer = setTimeout(() => {
+                wakeRestartTimer = null;
+                scheduleWakeWordListener(900);
+            }, Math.max(900, delay));
+            return;
+        }
         if (wakeRestartTimer) clearTimeout(wakeRestartTimer);
         wakeRestartTimer = setTimeout(() => {
             wakeRestartTimer = null;
@@ -3013,6 +3062,10 @@
     function startWakeWordListener() {
         if (!state.wakeWordEnabled || !shouldUseWakeWordRecognition()) return;
         if (wakeNeedsUserGesture) return;
+        if (isAdvisorSpeechActive()) {
+            scheduleWakeWordListener(900);
+            return;
+        }
         if (wakeRecognition || state.recording || document.hidden) {
             scheduleWakeWordListener(1000);
             return;
