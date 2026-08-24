@@ -3040,6 +3040,7 @@
     }
 
     function syncWakeCommandUi() {
+        const hideOnMobile = isMobileSpeechDevice();
         const available = shouldUseWakeWordRecognition();
         const active = Boolean(state.wakeWordEnabled && available);
         const armed = Boolean(active && wakeRecognition);
@@ -3051,6 +3052,7 @@
                     : 'Wake command on. Tap to re-arm, then say Dr. Tari'
                 : 'Turn on wake command. Say Dr. Tari to activate listening';
         [wakeCommandBtn, avatarWakeCommandBtn].filter(Boolean).forEach((btn) => {
+            btn.hidden = hideOnMobile;
             btn.disabled = !available;
             btn.classList.toggle('is-active', active);
             btn.classList.toggle('is-armed', armed);

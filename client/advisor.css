@@ -668,6 +668,12 @@ html[data-theme="dark"] .avatar-stage-controls {
     opacity: .45;
     cursor: not-allowed;
 }
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+    #wakeCommandBtn,
+    #avatarWakeCommandBtn {
+        display: none !important;
+    }
+}
 .advisor-feedback {
     display: inline-flex;
     align-items: center;
