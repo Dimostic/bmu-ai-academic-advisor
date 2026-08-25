@@ -392,12 +392,32 @@
     });
 
     function syncMobileLayoutVars() {
+        syncViewportModeClasses();
         const topBar = document.querySelector('.top-bar');
         const topH = topBar ? Math.ceil(topBar.getBoundingClientRect().height) : 64;
-        const avatarH = avatarPane ? Math.ceil(avatarPane.getBoundingClientRect().height) : 160;
+        const visualHeight = Math.ceil(
+            window.visualViewport?.height
+            || window.innerHeight
+            || document.documentElement.clientHeight
+            || 0
+        );
+        const isTouchLandscapeFull = Boolean(
+            advisorFullView
+            && window.matchMedia('(orientation: landscape)').matches
+            && window.matchMedia('(pointer: coarse)').matches
+        );
+        const measuredAvatarH = avatarPane ? Math.ceil(avatarPane.getBoundingClientRect().height) : 160;
+        const maxUsefulAvatarH = visualHeight
+            ? Math.max(160, visualHeight - topH - (isTouchLandscapeFull ? 112 : 72))
+            : measuredAvatarH;
+        const avatarH = isTouchLandscapeFull
+            ? maxUsefulAvatarH
+            : Math.min(measuredAvatarH, maxUsefulAvatarH);
+        if (visualHeight) {
+            document.documentElement.style.setProperty('--app-viewport-h', `${visualHeight}px`);
+        }
         document.documentElement.style.setProperty('--mobile-topbar-h', `${topH}px`);
         document.documentElement.style.setProperty('--mobile-avatar-h', `${avatarH}px`);
-        syncViewportModeClasses();
         queueLayoutDebugMeasure('layout-vars');
     }
 
@@ -503,6 +523,7 @@
                 stageClippedBottom: Boolean(stageRect && stageRect.bottom > visible.height)
             },
             css: {
+                rootAppViewport: getComputedStyle(document.documentElement).getPropertyValue('--app-viewport-h').trim(),
                 rootMobileTopbar: getComputedStyle(document.documentElement).getPropertyValue('--mobile-topbar-h').trim(),
                 rootMobileAvatar: getComputedStyle(document.documentElement).getPropertyValue('--mobile-avatar-h').trim(),
                 body: styleInfo(document.body, ['height', 'min-height', 'overflow', 'overflow-y']),
