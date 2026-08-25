@@ -121,6 +121,7 @@
 
     const advisorViewMode = advisorViewParams.get('view');
     const advisorFullView = advisorViewMode === 'normal' ? false : true;
+    const layoutDebugEnabled = ['1', 'true', 'yes'].includes(String(advisorViewParams.get('layoutDebug') || '').toLowerCase());
     const GUEST_DEMO_CLOSING_TEXT = 'You have exhausted your five guest questions. Please register or sign in to continue asking Dr. Tari.';
     const THINKING_MIN_VISIBLE_MS = 850;
     const TRANSCRIPT_PREVIEW_MS = 650;
@@ -397,6 +398,177 @@
         document.documentElement.style.setProperty('--mobile-topbar-h', `${topH}px`);
         document.documentElement.style.setProperty('--mobile-avatar-h', `${avatarH}px`);
         syncViewportModeClasses();
+        queueLayoutDebugMeasure('layout-vars');
+    }
+
+    function rectInfo(el) {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return {
+            x: Math.round(r.x),
+            y: Math.round(r.y),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+            top: Math.round(r.top),
+            right: Math.round(r.right),
+            bottom: Math.round(r.bottom),
+            left: Math.round(r.left)
+        };
+    }
+
+    function styleInfo(el, props) {
+        if (!el) return {};
+        const s = getComputedStyle(el);
+        return Object.fromEntries(props.map(p => [p, s.getPropertyValue(p)]));
+    }
+
+    function getAvatarLayoutReport(reason = 'manual') {
+        const vv = window.visualViewport;
+        const svg = avatarSvgHost?.querySelector('svg');
+        const stageRect = rectInfo(avatarStage);
+        const svgRect = rectInfo(svg);
+        const visible = {
+            width: Math.round(vv?.width || window.innerWidth || 0),
+            height: Math.round(vv?.height || window.innerHeight || 0),
+            offsetLeft: Math.round(vv?.offsetLeft || 0),
+            offsetTop: Math.round(vv?.offsetTop || 0),
+            pageLeft: Math.round(vv?.pageLeft || 0),
+            pageTop: Math.round(vv?.pageTop || window.scrollY || 0),
+            scale: vv?.scale || 1
+        };
+        const stageVisibleHeight = stageRect
+            ? Math.max(0, Math.min(stageRect.bottom, visible.height) - Math.max(stageRect.top, 0))
+            : 0;
+        const svgVisibleHeight = svgRect
+            ? Math.max(0, Math.min(svgRect.bottom, visible.height) - Math.max(svgRect.top, 0))
+            : 0;
+        return {
+            reason,
+            at: new Date().toISOString(),
+            url: location.href,
+            userAgent: navigator.userAgent,
+            platform: navigator.platform || '',
+            maxTouchPoints: navigator.maxTouchPoints || 0,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            screen: {
+                width: screen.width,
+                height: screen.height,
+                availWidth: screen.availWidth,
+                availHeight: screen.availHeight,
+                orientation: screen.orientation?.type || ''
+            },
+            viewport: {
+                innerWidth: window.innerWidth,
+                innerHeight: window.innerHeight,
+                clientWidth: document.documentElement.clientWidth,
+                clientHeight: document.documentElement.clientHeight,
+                scrollX: Math.round(window.scrollX || 0),
+                scrollY: Math.round(window.scrollY || 0),
+                visualViewport: visible
+            },
+            media: {
+                landscape: window.matchMedia('(orientation: landscape)').matches,
+                portrait: window.matchMedia('(orientation: portrait)').matches,
+                coarsePointer: window.matchMedia('(pointer: coarse)').matches,
+                hoverNone: window.matchMedia('(hover: none)').matches,
+                maxWidth1024: window.matchMedia('(max-width: 1024px)').matches,
+                maxHeight620: window.matchMedia('(max-height: 620px)').matches
+            },
+            classes: {
+                body: document.body.className,
+                grid: advisorGrid?.className || '',
+                stageMode: avatarStage?.dataset.avatarMode || '',
+                advisorGender: avatarStage?.dataset.advisorGender || ''
+            },
+            rects: {
+                topBar: rectInfo(topBar),
+                advisorGrid: rectInfo(advisorGrid),
+                avatarPane: rectInfo(avatarPane),
+                avatarControls: rectInfo(document.querySelector('.avatar-stage-controls')),
+                avatarStage: stageRect,
+                avatarSvgHost: rectInfo(avatarSvgHost),
+                avatarSvg: svgRect,
+                avatarMeta: rectInfo(document.querySelector('.avatar-meta')),
+                chatPane: rectInfo(document.querySelector('.chat-pane')),
+                composer: rectInfo(composer)
+            },
+            visibility: {
+                stageVisibleHeight: Math.round(stageVisibleHeight),
+                svgVisibleHeight: Math.round(svgVisibleHeight),
+                svgAboveViewport: Boolean(svgRect && svgRect.bottom < 0),
+                svgBelowViewport: Boolean(svgRect && svgRect.top > visible.height),
+                svgClippedTop: Boolean(svgRect && svgRect.top < 0),
+                svgClippedBottom: Boolean(svgRect && svgRect.bottom > visible.height),
+                stageClippedTop: Boolean(stageRect && stageRect.top < 0),
+                stageClippedBottom: Boolean(stageRect && stageRect.bottom > visible.height)
+            },
+            css: {
+                rootMobileTopbar: getComputedStyle(document.documentElement).getPropertyValue('--mobile-topbar-h').trim(),
+                rootMobileAvatar: getComputedStyle(document.documentElement).getPropertyValue('--mobile-avatar-h').trim(),
+                body: styleInfo(document.body, ['height', 'min-height', 'overflow', 'overflow-y']),
+                grid: styleInfo(advisorGrid, ['display', 'grid-template-columns', 'grid-template-rows', 'height', 'padding', 'gap', 'overflow']),
+                avatarPane: styleInfo(avatarPane, ['display', 'grid-template-columns', 'grid-template-rows', 'height', 'min-height', 'padding', 'overflow']),
+                avatarStage: styleInfo(avatarStage, ['width', 'height', 'min-height', 'max-height', 'overflow']),
+                avatarSvg: styleInfo(svg, ['width', 'height', 'max-width', 'max-height', 'transform', 'transform-origin'])
+            }
+        };
+    }
+
+    function renderLayoutDebugReport(reason = 'manual') {
+        if (!layoutDebugEnabled) return;
+        const report = getAvatarLayoutReport(reason);
+        window.BMUAdvisorLayoutReport = report;
+        let panel = document.getElementById('layoutDebugPanel');
+        if (!panel) {
+            panel = document.createElement('aside');
+            panel.id = 'layoutDebugPanel';
+            panel.className = 'layout-debug-panel';
+            panel.innerHTML = `
+                <header>
+                    <strong>Avatar Layout Debug</strong>
+                    <button type="button" data-debug-action="close" aria-label="Hide debug panel">x</button>
+                </header>
+                <div class="layout-debug-summary"></div>
+                <menu>
+                    <button type="button" data-debug-action="copy">Copy report</button>
+                    <button type="button" data-debug-action="measure">Re-measure</button>
+                </menu>
+                <textarea readonly spellcheck="false"></textarea>
+            `;
+            document.body.appendChild(panel);
+            panel.querySelector('[data-debug-action="close"]')?.addEventListener('click', () => panel.classList.add('layout-debug-panel--collapsed'));
+            panel.querySelector('[data-debug-action="measure"]')?.addEventListener('click', () => renderLayoutDebugReport('button'));
+            panel.querySelector('[data-debug-action="copy"]')?.addEventListener('click', async () => {
+                const text = panel.querySelector('textarea')?.value || JSON.stringify(window.BMUAdvisorLayoutReport || {}, null, 2);
+                try {
+                    await navigator.clipboard.writeText(text);
+                    toast('Layout report copied.');
+                } catch (_) {
+                    panel.querySelector('textarea')?.select();
+                    toast('Select and copy the layout report.');
+                }
+            });
+        }
+        panel.classList.remove('layout-debug-panel--collapsed');
+        const text = JSON.stringify(report, null, 2);
+        const summary = panel.querySelector('.layout-debug-summary');
+        if (summary) {
+            summary.innerHTML = `
+                <span>Viewport ${report.viewport.visualViewport.width}x${report.viewport.visualViewport.height}</span>
+                <span>Stage ${report.rects.avatarStage?.width || 0}x${report.rects.avatarStage?.height || 0}</span>
+                <span>SVG top/bottom ${report.rects.avatarSvg?.top ?? 'n/a'} / ${report.rects.avatarSvg?.bottom ?? 'n/a'}</span>
+                <span>Mode ${escapeHtml(report.classes.stageMode || 'n/a')}</span>
+            `;
+        }
+        const textarea = panel.querySelector('textarea');
+        if (textarea) textarea.value = text;
+        console.info('[advisor layout debug]', report);
+    }
+
+    function queueLayoutDebugMeasure(reason = 'queued') {
+        if (!layoutDebugEnabled) return;
+        window.clearTimeout(queueLayoutDebugMeasure._timer);
+        queueLayoutDebugMeasure._timer = window.setTimeout(() => renderLayoutDebugReport(reason), 160);
     }
 
     function syncHistoryLayout() {
@@ -4562,11 +4734,15 @@
 
         syncMobileLayoutVars();
         setTimeout(syncMobileLayoutVars, 200);
+        setTimeout(() => renderLayoutDebugReport('boot'), 600);
         window.addEventListener('resize', syncMobileLayoutVars, { passive: true });
         window.addEventListener('orientationchange', () => {
             syncMobileLayoutVars();
             setTimeout(syncMobileLayoutVars, 120);
+            setTimeout(() => renderLayoutDebugReport('orientationchange'), 520);
         }, { passive: true });
+        window.visualViewport?.addEventListener('resize', () => queueLayoutDebugMeasure('visualViewport-resize'), { passive: true });
+        window.visualViewport?.addEventListener('scroll', () => queueLayoutDebugMeasure('visualViewport-scroll'), { passive: true });
 
         async function refreshQuotaBadge() {
             const badge = document.getElementById('quotaBadge');
