@@ -237,6 +237,57 @@ async function _writeAudioArchive({ text, provider, voiceId, speed, gender, remo
     }
 }
 
+async function _writeLocalAudioArchive({ text, provider, voiceId, speed, gender, audioUrl, filePath, sourceType, sourceId, voice }) {
+    if (!audioUrl || !AUDIO_ARCHIVE_ENABLED) return null;
+    try {
+        await ensureAudioArchiveSchema();
+        const cacheKey = _archiveHash(text, provider, voiceId, speed, gender);
+        const textHash = _hash(text, voiceId, speed);
+        let bytes = null;
+        try {
+            const stat = await fs.promises.stat(filePath);
+            bytes = stat.size;
+        } catch (_) { /* file may be on a mounted/static path not readable here */ }
+        await query(
+            `INSERT INTO advisor_audio_archives
+             (cache_key, text_hash, speech_text, text_preview, source_type, source_id,
+              provider, voice_id, audio_speed, gender, audio_url, file_path, mime_type, bytes, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'audio/mpeg', ?, 'active')
+             ON DUPLICATE KEY UPDATE
+                speech_text = VALUES(speech_text),
+                text_preview = VALUES(text_preview),
+                source_type = COALESCE(VALUES(source_type), source_type),
+                source_id = COALESCE(VALUES(source_id), source_id),
+                provider = VALUES(provider),
+                audio_url = VALUES(audio_url),
+                file_path = VALUES(file_path),
+                bytes = COALESCE(VALUES(bytes), bytes),
+                hit_count = hit_count + 1,
+                last_hit_at = NOW(),
+                status = 'active'`,
+            [
+                cacheKey,
+                textHash,
+                text,
+                String(text).slice(0, 240),
+                sourceType || null,
+                sourceId == null ? null : String(sourceId),
+                voice ? `${provider}:${voice}` : provider,
+                voiceId,
+                speed,
+                gender,
+                audioUrl,
+                filePath || audioUrl,
+                bytes
+            ]
+        );
+        return { provider: voice ? `${provider}:${voice}` : provider, audioUrl, fromCache: false, archived: true };
+    } catch (err) {
+        console.warn('[ttsService] local audio archive metadata write failed:', err.message);
+        return null;
+    }
+}
+
 async function _readCache(text, voiceId, speed) {
     try {
         const hash = _hash(text, voiceId, speed);
@@ -310,6 +361,22 @@ async function synthesise(text, opts = {}) {
             const edge = require('./edgeTtsService');
             if (edge.isConfigured()) {
                 const r = await edge.synthesiseToFile(normalizedText, { gender });
+                if (shouldArchive(opts)) {
+                    const fileName = path.basename(String(r.audioUrl || ''));
+                    const filePath = fileName ? path.join(__dirname, '../../uploads/audio', fileName) : '';
+                    await _writeLocalAudioArchive({
+                        text: normalizedText,
+                        provider: 'edge',
+                        voiceId: 0,
+                        speed: 1,
+                        gender,
+                        audioUrl: r.audioUrl,
+                        filePath,
+                        sourceType: opts.sourceType || null,
+                        sourceId: opts.sourceId || null,
+                        voice: r.voice
+                    });
+                }
                 return {
                     provider: 'edge',
                     audioUrl: r.audioUrl,

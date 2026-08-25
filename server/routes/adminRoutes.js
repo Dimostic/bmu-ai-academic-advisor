@@ -11,6 +11,7 @@ const Advisor = require('../models/Advisor');
 const advisorStreamService = require('../services/advisorStreamService');
 const responseQualityService = require('../services/responseQualityService');
 const documentLabService = require('../services/documentLabService');
+const ttsService = require('../services/ttsService');
 const emailService = (() => {
     try { return require('../services/emailService'); }
     catch (_) { return null; }
@@ -227,6 +228,16 @@ function _invalidateStructuredLookupCache() {
         console.warn('[adminRoutes] structured lookup cache invalidation failed:', err.message);
     }
     _invalidateFAQCache();
+}
+
+function _speechFromCachedAnswer(answer) {
+    const text = String(answer || '').trim();
+    if (!text) return '';
+    const firstParagraph = text
+        .split(/\n{2,}/)
+        .map(part => part.trim())
+        .find(Boolean);
+    return (firstParagraph || text).replace(/\s+/g, ' ').slice(0, 600);
 }
 
 let evalSchemaReady = false;
@@ -2401,6 +2412,144 @@ router.get('/cache/stats', authenticateToken, requireAdmin, async (req, res) => 
             success: false,
             error: 'Failed to get cache statistics'
         });
+    }
+});
+
+// Audio archive statistics for common/authoritative advisor responses
+router.get('/audio-archive/stats', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await ttsService.ensureAudioArchiveSchema();
+        const summaryRows = await query(`
+            SELECT
+                COUNT(*) AS total_archives,
+                COALESCE(SUM(bytes), 0) AS total_bytes,
+                COALESCE(SUM(hit_count), 0) AS total_hits,
+                MAX(updated_at) AS last_updated_at
+            FROM advisor_audio_archives
+            WHERE status = 'active'
+        `);
+        const bySource = await query(`
+            SELECT COALESCE(source_type, 'unknown') AS source_type,
+                   COUNT(*) AS total,
+                   COALESCE(SUM(bytes), 0) AS bytes,
+                   COALESCE(SUM(hit_count), 0) AS hits
+            FROM advisor_audio_archives
+            WHERE status = 'active'
+            GROUP BY COALESCE(source_type, 'unknown')
+            ORDER BY total DESC
+        `);
+        const recent = await query(`
+            SELECT id, source_type, source_id, provider, gender, audio_url, bytes,
+                   hit_count, last_hit_at, text_preview, updated_at
+            FROM advisor_audio_archives
+            WHERE status = 'active'
+            ORDER BY updated_at DESC
+            LIMIT 20
+        `);
+        const coverageRows = await query(`
+            SELECT
+                COUNT(*) AS verified_cached_answers,
+                SUM(CASE WHEN aa.id IS NULL THEN 0 ELSE 1 END) AS with_audio
+            FROM cached_qa cq
+            LEFT JOIN advisor_audio_archives aa
+              ON aa.source_type = 'cached_qa'
+             AND aa.source_id = CAST(cq.id AS CHAR)
+             AND aa.status = 'active'
+            WHERE cq.is_active = 1
+              AND cq.is_verified = 1
+              AND cq.answer IS NOT NULL
+              AND TRIM(cq.answer) <> ''
+        `);
+        const summary = summaryRows[0] || {};
+        const coverage = coverageRows[0] || {};
+        res.json({
+            success: true,
+            summary: {
+                totalArchives: Number(summary.total_archives || 0),
+                totalBytes: Number(summary.total_bytes || 0),
+                totalHits: Number(summary.total_hits || 0),
+                lastUpdatedAt: summary.last_updated_at || null,
+                verifiedCachedAnswers: Number(coverage.verified_cached_answers || 0),
+                verifiedCachedAnswersWithAudio: Number(coverage.with_audio || 0)
+            },
+            bySource,
+            recent
+        });
+    } catch (error) {
+        console.error('Audio archive stats error:', error);
+        res.status(500).json({ success: false, error: 'Failed to get audio archive statistics' });
+    }
+});
+
+// Generate/reuse audio for top verified cached Q&A answers. Kept capped because
+// misses can call the configured TTS provider.
+router.post('/audio-archive/prewarm', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(50, parseInt(req.body?.limit, 10) || 10));
+        const genderInput = String(req.body?.gender || 'female').toLowerCase();
+        const genders = genderInput === 'both' ? ['female', 'male'] : [genderInput === 'male' ? 'male' : 'female'];
+        await ttsService.ensureAudioArchiveSchema();
+
+        const rows = await query(`
+            SELECT cq.id, cq.question, cq.answer, cq.usage_count, cq.updated_at
+            FROM cached_qa cq
+            WHERE cq.is_active = 1
+              AND cq.is_verified = 1
+              AND cq.answer IS NOT NULL
+              AND TRIM(cq.answer) <> ''
+            ORDER BY cq.usage_count DESC, cq.updated_at DESC, cq.id DESC
+            LIMIT ?
+        `, [limit]);
+
+        const results = [];
+        for (const row of rows) {
+            const speech = _speechFromCachedAnswer(row.answer);
+            if (!speech) {
+                results.push({ cachedQaId: row.id, question: row.question, ok: false, error: 'empty speech text' });
+                continue;
+            }
+            for (const gender of genders) {
+                try {
+                    const audio = await ttsService.synthesise(speech, {
+                        gender,
+                        archive: true,
+                        sourceType: 'cached_qa',
+                        sourceId: row.id
+                    });
+                    results.push({
+                        cachedQaId: row.id,
+                        question: row.question,
+                        gender,
+                        ok: Boolean(audio?.audioUrl),
+                        provider: audio?.provider || 'none',
+                        fromCache: Boolean(audio?.fromCache),
+                        audioUrl: audio?.audioUrl || null,
+                        error: audio?.error || null
+                    });
+                } catch (error) {
+                    results.push({ cachedQaId: row.id, question: row.question, gender, ok: false, error: error.message });
+                }
+            }
+        }
+
+        const ok = results.filter(item => item.ok).length;
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'AUDIO_ARCHIVE_PREWARMED',
+            details: { limit, genders, ok, failed: results.length - ok },
+            ipAddress: req.ip
+        });
+        res.json({
+            success: true,
+            message: `Prepared audio for ${ok} cached answer voice(s)`,
+            total: results.length,
+            prepared: ok,
+            failed: results.length - ok,
+            results
+        });
+    } catch (error) {
+        console.error('Audio archive prewarm error:', error);
+        res.status(500).json({ success: false, error: 'Failed to prewarm audio archive' });
     }
 });
 

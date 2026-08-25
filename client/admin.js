@@ -317,10 +317,11 @@
         const el = document.getElementById(targetId);
         if (!el) return;
         try {
-            const [overview, quality, trend] = await Promise.all([
+            const [overview, quality, trend, audioArchive] = await Promise.all([
                 api('/api/admin/advisor/health-overview'),
                 api('/api/admin/advisor/quality-summary').catch(() => ({ summary: {} })),
-                api('/api/admin/advisor/quality-trend?days=14').catch(() => ({ trend: [] }))
+                api('/api/admin/advisor/quality-trend?days=14').catch(() => ({ trend: [] })),
+                api('/api/admin/audio-archive/stats').catch(e => ({ error: e.message, summary: {} }))
             ]);
 
             const metrics = overview.health?.metrics || {};
@@ -328,6 +329,7 @@
             const providers = overview.health?.providers || {};
             const summary = quality.summary || overview.quality || {};
             const trendRows = trend.trend || [];
+            const audio = audioArchive.summary || {};
             const overall = Number(summary.avg_overall || 0);
             const chart = trendSparkline(trendRows);
 
@@ -355,6 +357,14 @@
                     ${stat('Low quality', Number(summary.low_quality || 0))}
                     ${stat('Auto-cached', Number(summary.auto_cached_count || 0))}
                 </div>
+                <h4 style="margin: 18px 0 8px; color: var(--bg-deep);">Common answer audio</h4>
+                <div class="stat-row">
+                    ${stat('Audio files', Number(audio.totalArchives || 0).toLocaleString())}
+                    ${stat('Storage used', formatBytes(Number(audio.totalBytes || 0)))}
+                    ${stat('Audio hits', Number(audio.totalHits || 0).toLocaleString())}
+                    ${stat('FAQ audio coverage', `${Number(audio.verifiedCachedAnswersWithAudio || 0).toLocaleString()} / ${Number(audio.verifiedCachedAnswers || 0).toLocaleString()}`)}
+                    ${stat('Last updated', audio.lastUpdatedAt ? formatDate(audio.lastUpdatedAt) : '—')}
+                </div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 16px;">
                     <span class="badge ${statusClass}">SLO ${escapeHtml(slo.status || 'disabled')}</span>
                     <span class="badge">LLM ${providers.llm ? 'on' : 'off'}</span>
@@ -364,15 +374,35 @@
                 </div>
                 <div class="admin-actions" style="margin-bottom: 14px;">
                     <button class="btn btn-ghost" id="opsRefresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                    <button class="btn btn-ghost" id="opsPrewarmAudio"><i class="fa-solid fa-volume-high"></i> Prewarm top 10 audio</button>
                     <button class="btn btn-ghost" id="opsExport"><i class="fa-solid fa-file-csv"></i> Export quality CSV</button>
                     <button class="btn btn-primary" id="opsTestAlert"><i class="fa-solid fa-bell"></i> Send test alert</button>
                 </div>
+                ${audioArchive.error ? `<p class="auth-error">Audio archive status unavailable: ${escapeHtml(audioArchive.error)}</p>` : ''}
                 <h4 style="margin: 12px 0 8px; color: var(--bg-deep);">Quality trend (14 days)</h4>
                 ${chart}
                 ${trendHtml}
             `;
 
             document.getElementById('opsRefresh')?.addEventListener('click', () => renderDashboard());
+            document.getElementById('opsPrewarmAudio')?.addEventListener('click', async () => {
+                if (!confirm('Generate or reuse audio for the top 10 verified cached answers?')) return;
+                const btn = document.getElementById('opsPrewarmAudio');
+                if (btn) btn.disabled = true;
+                try {
+                    toast('Preparing common-answer audio...');
+                    const result = await api('/api/admin/audio-archive/prewarm', {
+                        method: 'POST',
+                        body: { limit: 10, gender: 'female' }
+                    });
+                    toast(result.message || `Prepared ${result.prepared || 0} audio file(s)`);
+                    await renderAdvisorOps(targetId);
+                } catch (err) {
+                    toast(err.message || 'Could not prewarm audio', 'error');
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
             document.getElementById('opsExport')?.addEventListener('click', async () => {
                 try {
                     const res = await fetch('/api/admin/advisor/quality-export?limit=500', { headers: authHeaders() });
