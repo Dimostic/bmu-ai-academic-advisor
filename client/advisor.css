@@ -1384,7 +1384,7 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
 
 @media (max-width: 1024px) and (orientation: landscape) and (max-height: 620px) {
     body:not(.advisor-full-view) {
-        height: 100dvh;
+        height: var(--app-viewport-h, 100vh);
         overflow: hidden;
     }
 
@@ -1399,22 +1399,32 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
         height: 32px;
     }
 
-    body:not(.advisor-full-view) .brand small,
-    body:not(.advisor-full-view) .top-actions .link-muted {
+    body:not(.advisor-full-view) .brand small {
         display: none;
     }
 
     body:not(.advisor-full-view) .top-actions {
-        width: auto;
-        margin-left: auto;
-        gap: 6px;
+        right: 8px;
+        width: min(360px, calc(100vw - 16px));
+        max-height: calc(var(--app-viewport-h, 100vh) - var(--mobile-topbar-h, 56px) - 12px);
+        margin-left: 0;
+        gap: 8px;
+        overflow-y: auto;
+    }
+
+    body:not(.advisor-full-view) .top-bar.top-menu-expanded .top-actions > * {
+        display: flex;
+    }
+
+    body:not(.advisor-full-view) .top-bar.top-menu-expanded .top-actions .icon-btn {
+        flex: 0 0 38px;
     }
 
     body:not(.advisor-full-view) .advisor-grid {
         display: grid;
         grid-template-columns: minmax(280px, 1.35fr) minmax(320px, .65fr);
         grid-template-rows: minmax(0, 1fr);
-        height: calc(100dvh - var(--mobile-topbar-h, 56px));
+        height: calc(var(--app-viewport-h, 100vh) - var(--mobile-topbar-h, 56px));
         padding: 8px;
         gap: 8px;
         overflow: hidden;
@@ -1466,10 +1476,10 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
     body:not(.advisor-full-view) .avatar-stage .avatar-svg-host svg,
     body:not(.advisor-full-view) .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
         width: auto;
-        height: min(100%, 56vh);
+        height: calc(100% - 8px);
         max-width: 100%;
-        max-height: 100%;
-        transform: none;
+        max-height: calc(100% - 8px);
+        transform: translateY(0) scale(1.04);
         transform-origin: center center;
     }
 
@@ -2538,13 +2548,13 @@ body.advisor-full-view.touch-landscape-full-view .avatar-meta > span {
 
 body.advisor-full-view.touch-landscape-full-view .avatar-stage-controls {
     position: absolute !important;
-    left: 50% !important;
-    top: 6px !important;
+    left: 8px !important;
+    top: 50% !important;
     bottom: auto !important;
     z-index: 61 !important;
-    transform: translateX(-50%) !important;
+    transform: translateY(-50%) !important;
     display: flex !important;
-    flex-direction: row !important;
+    flex-direction: column !important;
     gap: 5px !important;
     margin: 0 !important;
     padding: 5px !important;
@@ -2738,7 +2748,7 @@ body.advisor-full-view .top-actions {
     body.advisor-full-view .advisor-grid {
         padding: 4px 10px 6px !important;
         gap: 4px !important;
-        height: calc(100dvh - var(--mobile-topbar-h, 56px)) !important;
+        height: calc(var(--app-viewport-h, 100vh) - var(--mobile-topbar-h, 56px)) !important;
     }
 
     body.advisor-full-view .avatar-stage .avatar-svg-host svg,
@@ -2787,7 +2797,7 @@ body.advisor-full-view .top-actions {
     }
 
     body:not(.advisor-full-view) .advisor-grid {
-        height: calc(100dvh - var(--mobile-topbar-h, 56px)) !important;
+        height: calc(var(--app-viewport-h, 100vh) - var(--mobile-topbar-h, 56px)) !important;
     }
 
     body:not(.advisor-full-view) .avatar-pane {
@@ -2809,10 +2819,10 @@ body.advisor-full-view .top-actions {
     body:not(.advisor-full-view) .avatar-stage .avatar-svg-host svg,
     body:not(.advisor-full-view) .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
         width: auto !important;
-        height: min(100%, 74vh) !important;
+        height: calc(100% - 8px) !important;
         max-width: 100% !important;
-        max-height: 100% !important;
-        transform: none !important;
+        max-height: calc(100% - 8px) !important;
+        transform: translateY(0) scale(1.04) !important;
     }
 }
 
@@ -2863,16 +2873,16 @@ body.advisor-full-view.touch-landscape-full-view .avatar-stage .avatar-svg-host 
 
 body.advisor-full-view.touch-landscape-full-view .avatar-stage .avatar-svg-host svg {
     width: auto !important;
-    height: calc(100% - 8px) !important;
+    height: calc(100% - 4px) !important;
     max-width: 100% !important;
-    max-height: calc(100% - 8px) !important;
-    transform: translateY(0) scale(.98) !important;
-    transform-origin: center center !important;
+    max-height: calc(100% - 4px) !important;
+    transform: translateY(0) scale(1.16) !important;
+    transform-origin: center 52% !important;
 }
 
 body.advisor-full-view.touch-landscape-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
-    height: min(calc(100% - 8px), 72svh) !important;
-    transform: translateY(0) scale(.96) !important;
+    height: calc(100% - 4px) !important;
+    transform: translateY(0) scale(1.12) !important;
 }
 
 @media (max-width: 1024px) and (orientation: landscape) {
@@ -2890,12 +2900,12 @@ body.advisor-full-view.touch-landscape-full-view .avatar-stage[data-avatar-mode=
         height: calc(100% - 8px) !important;
         max-width: 100% !important;
         max-height: calc(100% - 8px) !important;
-        transform: translateY(0) scale(.98) !important;
-        transform-origin: center center !important;
+        transform: translateY(0) scale(1.04) !important;
+        transform-origin: center 52% !important;
     }
 
     body:not(.advisor-full-view) .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
-        height: min(calc(100% - 8px), 72svh) !important;
-        transform: translateY(0) scale(.96) !important;
+        height: calc(100% - 8px) !important;
+        transform: translateY(0) scale(1.02) !important;
     }
 }
