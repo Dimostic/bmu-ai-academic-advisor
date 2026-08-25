@@ -314,7 +314,8 @@ async function synthesise(text, opts = {}) {
                     provider: 'edge',
                     audioUrl: r.audioUrl,
                     fromCache: !!r.fromCache,
-                    voice: r.voice
+                    voice: r.voice,
+                    archived: shouldArchive(opts)
                 };
             }
         } catch (err) {

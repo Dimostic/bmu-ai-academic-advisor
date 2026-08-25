@@ -59,7 +59,7 @@ async function main() {
     );
 
     console.log(`[archiveCommonAnswerAudio] Found ${rows.length} cached answers; genders=${genders.join(', ')}; dryRun=${dryRun}`);
-    let archived = 0;
+    let ready = 0;
     let skipped = 0;
 
     for (const row of rows) {
@@ -80,9 +80,11 @@ async function main() {
                 sourceType: 'cached_qa',
                 sourceId: row.id
             });
-            if (audio?.audioUrl && audio.archived !== false) {
-                archived += 1;
-                console.log(`[archived] cached_qa:${row.id} ${gender} ${audio.fromCache ? 'hit' : 'new'} ${audio.audioUrl}`);
+            if (audio?.audioUrl) {
+                ready += 1;
+                const state = audio.fromCache ? 'hit' : 'new';
+                const archiveState = audio.archived ? 'archived' : 'cached';
+                console.log(`[audio-ready] cached_qa:${row.id} ${gender} ${audio.provider || 'tts'} ${archiveState}/${state} ${audio.audioUrl}`);
             } else {
                 skipped += 1;
                 console.log(`[skip] cached_qa:${row.id} ${gender} provider=${audio?.provider || 'none'} error=${audio?.error || ''}`);
@@ -90,7 +92,7 @@ async function main() {
         }
     }
 
-    console.log(`[archiveCommonAnswerAudio] Done. archived_or_hit=${archived}; skipped=${skipped}`);
+    console.log(`[archiveCommonAnswerAudio] Done. audio_ready=${ready}; skipped=${skipped}`);
 }
 
 main()
