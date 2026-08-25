@@ -248,10 +248,12 @@
         if (!advisorViewToggleBtn) return;
         if (advisorFullView) {
             advisorViewToggleBtn.title = 'Return to normal view';
-            advisorViewToggleBtn.innerHTML = '<i class="fa-solid fa-compress"></i> Normal view';
+            advisorViewToggleBtn.setAttribute('aria-label', 'Return to normal view');
+            advisorViewToggleBtn.innerHTML = '<i class="fa-solid fa-compress"></i><span class="view-toggle-label">Normal view</span>';
         } else {
             advisorViewToggleBtn.title = 'Open full page advisor view';
-            advisorViewToggleBtn.innerHTML = '<i class="fa-solid fa-expand"></i> Full page';
+            advisorViewToggleBtn.setAttribute('aria-label', 'Open full page advisor view');
+            advisorViewToggleBtn.innerHTML = '<i class="fa-solid fa-expand"></i><span class="view-toggle-label">Full page</span>';
         }
         document.body.classList.toggle('advisor-full-view', advisorFullView);
         syncViewportModeClasses();
@@ -502,6 +504,8 @@
             },
             rects: {
                 topBar: rectInfo(topBar),
+                topActions: rectInfo(document.querySelector('.top-actions')),
+                advisorViewToggleBtn: rectInfo(advisorViewToggleBtn),
                 advisorGrid: rectInfo(advisorGrid),
                 avatarPane: rectInfo(avatarPane),
                 avatarControls: rectInfo(document.querySelector('.avatar-stage-controls')),

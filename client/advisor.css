@@ -1588,6 +1588,26 @@ body.advisor-full-view .top-bar {
     flex-wrap: nowrap;
     align-items: center;
     padding: 8px 14px;
+    gap: 8px;
+    overflow: hidden;
+}
+
+body.advisor-full-view .brand {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+body.advisor-full-view .brand > div {
+    min-width: 0;
+    overflow: hidden;
+}
+
+body.advisor-full-view .brand strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 body.advisor-full-view .top-bar.top-menu-collapsed .top-actions,
@@ -1595,7 +1615,11 @@ body.advisor-full-view .top-actions {
     display: flex;
     margin-left: auto;
     flex-wrap: nowrap;
-    min-width: max-content;
+    min-width: 0;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    overflow: visible;
 }
 
 body.advisor-full-view .brand small {
@@ -2003,9 +2027,20 @@ body.advisor-full-view #advisorViewToggleBtn {
 
     body.advisor-full-view .top-actions {
         gap: 6px;
+        position: static !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: max-content !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        overflow: visible !important;
     }
 
     body.advisor-full-view .top-actions .btn {
+        min-width: 38px;
         padding: 6px 10px;
         font-size: .82rem;
     }
@@ -2370,6 +2405,57 @@ body.advisor-full-view.touch-landscape-full-view .advisor-grid {
     gap: 6px !important;
     grid-template-rows: minmax(0, 1fr) auto !important;
     overflow: hidden !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .top-bar {
+    gap: 6px !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .brand {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .brand strong {
+    max-width: 58vw;
+}
+
+body.advisor-full-view.touch-landscape-full-view .top-actions {
+    position: static !important;
+    display: flex !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: max-content !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view #advisorViewToggleBtn {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 32px !important;
+    padding: 0 !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    flex: 0 0 36px !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view #advisorViewToggleBtn .view-toggle-label {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view #hardRefreshBtn {
+    flex: 0 0 32px !important;
 }
 
 body.advisor-full-view.touch-landscape-full-view .avatar-pane {
