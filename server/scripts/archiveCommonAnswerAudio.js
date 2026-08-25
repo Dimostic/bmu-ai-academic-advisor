@@ -143,4 +143,9 @@ main()
         console.error('[archiveCommonAnswerAudio] Failed:', err.message);
         process.exitCode = 1;
     })
-    .finally(closeDbPool);
+    .finally(async () => {
+        await closeDbPool();
+        if (!process.exitCode) {
+            process.exit(0);
+        }
+    });
