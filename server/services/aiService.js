@@ -1209,8 +1209,13 @@ ${officialUpdates}
             {
                 key: 'university_librarian',
                 label: 'University Librarian',
-                officeTerms: ['university librarian', 'librarian'],
-                patterns: [/university\s+librarian/i, /\blibrarian\b/i]
+                officeTerms: ['university librarian', 'librarian', 'university liberian', 'liberian', 'librian', 'libraran', 'libraryian', 'library officer', 'head of library'],
+                patterns: [
+                    /university\s+(?:librarian|liberian|librian|libraran|libraryian)/i,
+                    /\b(?:librarian|liberian|librian|libraran|libraryian)\b/i,
+                    /library\s+officer/i,
+                    /head\s+(?:of\s+)?(?:the\s+)?library/i
+                ]
             },
             {
                 key: 'governing_council_chair',

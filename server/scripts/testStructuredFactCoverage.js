@@ -24,6 +24,11 @@ const REQUIRED_OFFICERS = [
         name: 'pro-chancellor / governing council chairman',
         officePatterns: ['pro chancellor', 'pro-chancellor', 'governing council'],
         nameFragments: ['tarila', 'tebepah']
+    },
+    {
+        name: 'university librarian',
+        officePatterns: ['librarian'],
+        nameFragments: ['abraham', 'etebu']
     }
 ];
 

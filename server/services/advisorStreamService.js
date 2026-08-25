@@ -200,7 +200,12 @@ const BMU_PRINCIPAL_OFFICERS = [
     { position: 'Deputy Vice-Chancellor Academic', name: 'Prof. Godwill Ziriki', note: 'in charge of Sampou campus' },
     { position: 'Registrar', name: 'Dr. (Mrs) Felicia Akusu', note: '' },
     { position: 'Bursar', name: 'Dr Ebipuado Ombu', note: '' },
-    { position: 'University Librarian', name: 'Dr. Abraham Etebu', note: '' }
+    {
+        position: 'University Librarian',
+        name: 'Dr. Abraham Etebu',
+        note: '',
+        aliases: ['abraham etebu', 'university liberian', 'liberian', 'librian', 'libraran', 'libraryian', 'library officer', 'head of library']
+    }
 ];
 const BMU_VISITOR = {
     role: 'Visitor to the University',
@@ -298,7 +303,7 @@ function _detectPrincipalOfficerRole(question) {
     if (/registrar|registerer/i.test(q)) return 'Registrar';
     if (/bursar|chief\s+financial\s+officer|financial\s+officer/i.test(q)) return 'Bursar';
     if (/\b(?:boss|bossar|bossa|bosa|busa|bussa|bursah)\b/i.test(q)) return 'Bursar';
-    if (/university\s+librarian|\blibrarian\b/i.test(q)) return 'University Librarian';
+    if (/university\s+(?:librarian|liberian|librian|libraran|libraryian)|\b(?:librarian|liberian|librian|libraran|libraryian)\b|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library/i.test(q)) return 'University Librarian';
     return null;
 }
 
@@ -1266,7 +1271,7 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
         'dean': /^\s*dean\s*[:\-]\s*([^\r\n]{3,160})/im,
         'pro-chancellor / chairman of governing council': /^\s*(?:pro[-\s]?chancellor\s*(?:\/|and|,)?\s*)?(?:governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman))\s*[:\-]\s*([^\r\n]{3,160})/im,
         'chancellor': /^\s*chancellor\s*[:\-]\s*([^\r\n]{3,160})/im,
-        'librarian': /^\s*(?:university\s+)?librarian\s*[:\-]\s*([^\r\n]{3,160})/im
+        'librarian': /^\s*(?:university\s+)?(?:librarian|liberian|librian|libraran|libraryian)\s*[:\-]\s*([^\r\n]{3,160})/im
     };
 
     const re = rolePatterns[normalizedRole];
@@ -1289,7 +1294,7 @@ function _extractOfficeHolderFromProfileDoc(roleLabel, profileText) {
         'dean': /\bdean\b/i,
         'pro-chancellor / chairman of governing council': /pro[-\s]?chancellor|governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman)/i,
         'chancellor': /\bchancellor\b/i,
-        'librarian': /university\s+librarian|\blibrarian\b/i
+        'librarian': /university\s+(?:librarian|liberian|librian|libraran|libraryian)|\b(?:librarian|liberian|librian|libraran|libraryian)\b|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library/i
     };
     const roleToken = roleTokenMap[normalizedRole];
     if (!roleToken) return null;
@@ -1437,7 +1442,7 @@ async function _resolvePriorityDocumentIds(question) {
             patterns.push('%programme%');
             patterns.push('%programmes%');
         }
-        if (/(who\s+is|name\s+of|current)/i.test(q) && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|pro[-\s]?chancellor|governing\s+council|council\s+(?:chair|chairman))/i.test(q)) {
+        if (/(who\s+is|name\s+of|current)/i.test(q) && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|pro[-\s]?chancellor|governing\s+council|council\s+(?:chair|chairman)|librarian|liberian|librian|libraran|libraryian|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library)/i.test(q)) {
             patterns.push('%profile of bmu%');
             patterns.push('%profile%');
             patterns.push('%management%');
@@ -1469,7 +1474,7 @@ async function _resolvePriorityDocumentIds(question) {
 function _isOfficeHolderIdentityQuestion(question) {
     const q = String(question || '').toLowerCase();
     return /(who\s+is|name\s+of|current)/i.test(q)
-    && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|pro[-\s]?chancellor|governing\s+council|council\s+(?:chair|chairman)|librarian|university\s+librarian)/i.test(q);
+    && /(registrar|vice[-\s]?chancellor|\bvc\b|bursar|dean|chancellor|pro[-\s]?chancellor|governing\s+council|council\s+(?:chair|chairman)|librarian|university\s+librarian|liberian|librian|libraran|libraryian|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library)/i.test(q);
 }
 
 async function _getOfficeHolderDocumentContext(question) {
@@ -1483,7 +1488,7 @@ async function _getOfficeHolderDocumentContext(question) {
             'Bursar': /\bbursar\b/i,
             'Dean': /\bdean\b/i,
             'Chancellor': /\bchancellor\b/i,
-            'Librarian': /university\s+librarian|\blibrarian\b/i
+            'Librarian': /university\s+(?:librarian|liberian|librian|libraran|libraryian)|\b(?:librarian|liberian|librian|libraran|libraryian)\b|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library/i
         };
         const needle = roleNeedleMap[roleLabel];
 
@@ -1560,7 +1565,7 @@ function _detectOfficeRoleLabel(question) {
     if (/registrar/.test(q)) return 'Registrar';
     if (/bursar/.test(q)) return 'Bursar';
     if (/dean/.test(q)) return 'Dean';
-    if (/librarian|university\s+librarian/.test(q)) return 'Librarian';
+    if (/university\s+(?:librarian|liberian|librian|libraran|libraryian)|\b(?:librarian|liberian|librian|libraran|libraryian)\b|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library/.test(q)) return 'Librarian';
     return 'office holder';
 }
 
@@ -1575,7 +1580,7 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
         'Bursar': /^\s*[-•]?\s*bursar\s*[:\-]\s*([^\n\r;]{3,220})/im,
         'Dean': /^\s*[-•]?\s*dean\s*[:\-]\s*([^\n\r;]{3,220})/im,
         'Chancellor': /^\s*[-•]?\s*chancellor\s*[:\-]\s*([^\n\r;]{3,220})/im,
-        'Librarian': /^\s*[-•]?\s*(?:university\s+)?librarian\s*[:\-]\s*([^\n\r;]{3,220})/im
+        'Librarian': /^\s*[-•]?\s*(?:university\s+)?(?:librarian|liberian|librian|libraran|libraryian)\s*[:\-]\s*([^\n\r;]{3,220})/im
     };
     const loosePatterns = {
         'Pro-Chancellor / Chairman of Governing Council': /(?:^|\s)(?:pro[-\s]?chancellor\s*(?:\/|and|,)?\s*)?(?:governing\s+council\s+(?:chair|chairman)|(?:chair|chairman)\s+(?:of\s+)?(?:the\s+)?governing\s+council|council\s+(?:chair|chairman))\s*[:\-]\s*([^\n\r]{3,260})/i,
@@ -1584,7 +1589,7 @@ function _extractRoleNameFromContext(roleLabel, ragContext) {
         'Bursar': /(?:^|\s)bursar\s*[:\-]\s*([^\n\r]{3,260})/i,
         'Dean': /(?:^|\s)dean\s*[:\-]\s*([^\n\r]{3,260})/i,
         'Chancellor': /(?:^|\s)chancellor\s*[:\-]\s*([^\n\r]{3,260})/i,
-        'Librarian': /(?:^|\s)(?:university\s+)?librarian\s*[:\-]\s*([^\n\r]{3,260})/i
+        'Librarian': /(?:^|\s)(?:university\s+)?(?:librarian|liberian|librian|libraran|libraryian)\s*[:\-]\s*([^\n\r]{3,260})/i
     };
 
     const stopAtNextRole = (value) => String(value || '').replace(
@@ -1637,7 +1642,7 @@ function _extractRoleExcerptFromContext(roleLabel, ragContext) {
         'Bursar': /\bbursar\b[^\n\r]{0,220}/i,
         'Dean': /\bdean\b[^\n\r]{0,220}/i,
         'Chancellor': /\bchancellor\b[^\n\r]{0,220}/i,
-        'Librarian': /(?:university\s+librarian|\blibrarian\b)[^\n\r]{0,220}/i
+        'Librarian': /(?:university\s+(?:librarian|liberian|librian|libraran|libraryian)|\b(?:librarian|liberian|librian|libraran|libraryian)\b|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library)[^\n\r]{0,220}/i
     };
 
     const re = patterns[roleLabel];

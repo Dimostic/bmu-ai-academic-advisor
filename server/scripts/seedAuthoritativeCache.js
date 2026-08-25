@@ -76,7 +76,7 @@ const OFFICER_QUESTIONS = [
     ['Who is the Bursar of BMU?', ['Who is the bossar of BMU?', 'Who is the bossa of BMU?', 'Name the current Bursar of Bayelsa Medical University']],
     ['Who is the Pro-Chancellor of BMU?', ['Who is the Chairman of the Governing Council of BMU?', 'Who chairs BMU Governing Council?']],
     ['Who is the Registrar of BMU?', ['Name the current Registrar of Bayelsa Medical University']],
-    ['Who is the University Librarian of BMU?', ['Name the current University Librarian of Bayelsa Medical University']],
+    ['Who is the University Librarian of BMU?', ['Name the current University Librarian of Bayelsa Medical University', 'Who is the Liberian of BMU?', 'Who is the Librian of BMU?', 'Who is the head of library at BMU?', 'Who is the BMU library officer?']],
     ['Who are the principal officers of BMU?', ['List the principal officers of Bayelsa Medical University']],
     ['Who is the Visitor to BMU?', ['Who is the Governor visitor to Bayelsa Medical University?']]
 ];
@@ -123,7 +123,7 @@ const LAW_QUESTIONS = [
     ['Who appoints the Vice-Chancellor under BMU Law?', ['How long does the BMU Vice-Chancellor serve?']],
     ['What is the role of the Bursar as chief financial officer under BMU Law?', ['Is the Bursar the Chief Financial Officer?']],
     ['What is the role of the Registrar as chief administrative officer under BMU Law?', ['Is the Registrar secretary to Council and Senate?']],
-    ['What is the role of the University Librarian under the First Schedule of BMU Law?', ['Who coordinates BMU library services?']],
+    ['What is the role of the University Librarian under the First Schedule of BMU Law?', ['Who coordinates BMU library services?', 'What does the BMU Liberian do?', 'What is the role of the head of library under BMU Law?']],
     ['Who appoints the Pro-Chancellor under BMU Law?', ['How long is the first term of the Pro-Chancellor?']],
     ['Who appoints the Chancellor under BMU Law?', ['How long does the Chancellor hold office?']]
 ];

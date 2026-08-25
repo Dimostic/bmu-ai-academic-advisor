@@ -63,6 +63,18 @@ module.exports = [
         mustContain: ['abraham etebu', 'librarian']
     },
     {
+        name: 'principal-officer-librarian-liberian-variant',
+        question: 'Who is the Liberian of BMU?',
+        mustContain: ['abraham etebu', 'librarian'],
+        mustNotContain: ['principal officers are']
+    },
+    {
+        name: 'principal-officer-librarian-head-of-library',
+        question: 'Who is the head of library at BMU?',
+        mustContain: ['abraham etebu', 'librarian'],
+        mustNotContain: ['principal officers are']
+    },
+    {
         name: 'fees-community-health',
         question: 'What is the fee for 100 level Community Health Science non-indigene at BMU?',
         mustContain: ['community health', '415,000', 'non-indigene']

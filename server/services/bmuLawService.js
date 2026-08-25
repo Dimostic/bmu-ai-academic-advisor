@@ -7,7 +7,7 @@ function hasLawScope(question) {
         return true;
     }
     if (/\b(functions?|roles?|appoints?|appointed|appointment|remove|removes|removed|removal|tenure|term|listed|principal|disputes?|resolves?|controls?|chairs?|chairman|meetings?|delegate|delegation|certify|certified|true\s+copy|visitation|disciplin\w*|suspend|misconduct|rusticat\w*|expel|expelled|expulsion|appeal|discrimination|discriminate|quorum|committee|seal|notice|retir\w*|retirement|pension|award|degree|certificate|honorary|fees?|charge|manpower|speciali[sz]ed|proceedings?|vacanc\w*|personal\s+interest|cause\s+of\s+action|commissioner|governor|graduate|prescribed|teacher|undergraduate|acquire|hold|open|create|set\s+up|employ|run|scholarships?|medals?|expenditure|first\s+schedule|legal\s+status|perpetual|succession|movable|immovable|campus|place|vision|training|partnerships?|centres?|fellowships?|members?|offices?|named|presides?|congregation|directs?|activities|courses?|halls?|vote|proposed\s+statute|prove|proved|court|visitor|visits?|employee|examiners?|exception|parent\s+body|pre[-\s]?action|lecturers?|chooses?|reappointed|responsibility|secretary|financial\s+officer|financial\s+affairs|library|library\s+services?)\b/i.test(q)
-        && /\b(bmu|chancellors?|pro[-\s]?chancellors?|vice[-\s]?chancellors?|vc|dvc|council|senate|staff|student|examiners?|professors?|academic\s+staff|bodies|university|registrar|bursar|librarian)\b/i.test(q)) {
+        && /\b(bmu|chancellors?|pro[-\s]?chancellors?|vice[-\s]?chancellors?|vc|dvc|council|senate|staff|student|examiners?|professors?|academic\s+staff|bodies|university|registrar|bursar|librarian|liberian|librian|libraran|libraryian)\b/i.test(q)) {
         return true;
     }
     if (/\b(define|definition|meaning\s+of|incorporation|corporate\s+status|legal\s+status|continue\s+forever|perpetual\s+succession|movable\s+property|immovable\s+property|own\s+property|dispose\s+property|be\s+sued|situated|another\s+campus|sort\s+of\s+institution|research\s+benefit|health\s+care\s+database|offer\s+diplomas|list\s+as\s+bmu\s+authorities|part\s+of\s+the\s+university|precedence\s+at\s+convocation|in\s+charge\s+of\s+university\s+activities|chair\s+of\s+senate\s+by\s+office|controls?\s+admission|controls?\s+student\s+discipline|controls?\s+examinations|majority.*statute|certif(?:y|ies)\s+statutes|investigates\s+staff\s+removal|examiner\s+be\s+replaced|examiner\s+make\s+representation|mortgage\s+land|land\s+lease|body\s+create\s+a\s+committee|non\s+members|signs?\s+the\s+seal|interest\s+be\s+disclosed|months\s+before\s+suing|35\s+year\s+rule|professor\s+allowances|removes?\s+the\s+chancellor|pro\s+chancellor\s+first\s+term|vc\s+serve|bursar\s+reports|librarian\s+is\s+responsible|quorum|co-opted|pre[-\s]?action|chief\s+executive\s+academic\s+officer|chief\s+financial\s+officer|financial\s+affairs|university\s+library|library\s+services|compulsory\s+retirement|lecturer\s+retirement|visitor|visits?\s+bmu|above\s+other\s+university\s+members|presides?\s+over\s+congregation|pro\s+chancellor|governing\s+council|governing\s+body|controls?\s+finances|property\s+expenditure|teaching\s+control|controls?\s+exams?|professor\s+emeritus|student\s+welfare|academic\s+and\s+non-academic|two\s+thirds|statute\s+start|staff\s+suspension|rustication\s+goes|appeal\s+pause|land\s+disposal|residential\s+lease|regulations\s+do\s+not\s+say|committee\s+have\s+outsiders|council\s+committees|authenticate\s+seal|under\s+seal\s+evidence|conflict\s+of\s+interest|courses\s+of\s+study|halls\s+of\s+residence|honorary\s+degrees?|proposed\s+statute|21\s+year\s+land\s+exception|parent\s+body|finance\s+and\s+general\s+purposes|chooses?\s+the\s+chancellor|chancellor\s+tenure)\b/i.test(q)) return true;
@@ -170,7 +170,7 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(months\s+before\s+suing|35\s+year\s+rule|professor\s+allowances|removes?\s+the\s+chancellor|pro\s+chancellor\s+first\s+term|vc\s+serve|bursar\s+reports|librarian\s+is\s+responsible)/i.test(q)) {
+    if (/(months\s+before\s+suing|35\s+year\s+rule|professor\s+allowances|removes?\s+the\s+chancellor|pro\s+chancellor\s+first\s+term|vc\s+serve|bursar\s+reports|(?:librarian|liberian|librian|libraran|libraryian)\s+is\s+responsible)/i.test(q)) {
         if (/35\s+year/i.test(q)) {
             return reply({
                 section: 'Section 25 - Retiring Age of Academic Staff',
@@ -529,7 +529,7 @@ function buildLawReply(question) {
         });
     }
 
-    if (/(registrar|bursar|librarian).*(first\s+schedule|do|role|function|responsib(?:le|ility)|chief|coordinates?|secretary|manages?)|first\s+schedule.*(registrar|bursar|librarian)|chief\s+financial\s+officer|manages?.*(financial|library)|financial\s+affairs|university\s+library|coordinates?.*library\s+services?/i.test(q)) {
+    if (/(registrar|bursar|librarian|liberian|librian|libraran|libraryian).*(first\s+schedule|do|role|function|responsib(?:le|ility)|chief|coordinates?|secretary|manages?)|first\s+schedule.*(registrar|bursar|librarian|liberian|librian|libraran|libraryian)|chief\s+financial\s+officer|manages?.*(financial|library)|financial\s+affairs|university\s+library|coordinates?.*library\s+services?|head\s+(?:of\s+)?(?:the\s+)?library|library\s+officer/i.test(q)) {
         if (/bursar|chief\s+financial\s+officer|financial\s+affairs/i.test(q)) {
             return reply({
                 section: 'First Schedule - Bursar',
@@ -537,7 +537,7 @@ function buildLawReply(question) {
                 markdown: `Under the **First Schedule** of the **${LAW_TITLE}**, the **Bursar** is the **Chief Financial Officer** of the University and is responsible to the **Vice-Chancellor** for day-to-day administration and control of the University's financial affairs.`
             });
         }
-        if (/librarian|university\s+library|library\s+services?/i.test(q)) {
+        if (/librarian|liberian|librian|libraran|libraryian|university\s+library|library\s+services?|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library/i.test(q)) {
             return reply({
                 section: 'First Schedule - University Librarian',
                 speech: 'Under the First Schedule, the University Librarian is responsible to the Vice-Chancellor for the University Library and coordination of library services.',
