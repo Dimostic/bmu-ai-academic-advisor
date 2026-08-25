@@ -1228,3 +1228,120 @@ html[data-theme="dark"] .advisor-pick-card:has(input:checked) {
         font-size: .78rem;
     }
 }
+
+/* Auth pages must remain scrollable on short landscape mobile screens.
+   advisor.css has app-specific landscape rules for the advisor workspace;
+   these auth-page rules load later and prevent the login submit actions from
+   being trapped below the visible viewport. */
+body.auth-page {
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.auth-page .auth-shell {
+    min-height: calc(100dvh - var(--mobile-topbar-h, 72px));
+}
+
+@media (max-width: 1024px) and (orientation: landscape) and (max-height: 620px) {
+    body.auth-page {
+        height: auto !important;
+        min-height: 100dvh !important;
+        overflow-y: auto !important;
+        overscroll-behavior-y: contain;
+    }
+
+    body.auth-page .top-bar {
+        position: sticky;
+        padding: 6px 10px !important;
+        gap: 8px;
+    }
+
+    body.auth-page .brand img {
+        width: 32px;
+        height: 32px;
+    }
+
+    body.auth-page .brand small {
+        display: none;
+    }
+
+    body.auth-page .top-actions {
+        width: auto;
+        margin-left: auto;
+        gap: 6px;
+    }
+
+    body.auth-page .top-actions .link-muted {
+        display: none;
+    }
+
+    body.auth-page .auth-shell {
+        min-height: 0;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 10px max(12px, env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    }
+
+    body.auth-page .auth-card {
+        max-width: min(520px, calc(100vw - 24px));
+        padding: 16px 18px;
+        border-radius: 12px;
+    }
+
+    body.auth-page .auth-card h1 {
+        font-size: 1.25rem;
+    }
+
+    body.auth-page .auth-card .lede {
+        margin-bottom: 12px;
+        font-size: .9rem;
+    }
+
+    body.auth-page .auth-form {
+        gap: 8px;
+    }
+
+    body.auth-page .auth-form input,
+    body.auth-page .auth-form select,
+    body.auth-page .auth-form textarea {
+        padding: 8px 10px;
+    }
+
+    body.auth-page .advisor-pick {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        padding: 8px;
+        margin: 2px 0;
+    }
+
+    body.auth-page .advisor-pick legend {
+        font-size: .76rem;
+        margin-bottom: 0;
+    }
+
+    body.auth-page .advisor-pick-card {
+        padding: 6px 4px;
+        gap: 4px;
+    }
+
+    body.auth-page .advisor-pick-card .advisor-pick-thumb {
+        max-width: 54px;
+    }
+
+    body.auth-page .advisor-pick-card span {
+        font-size: .72rem;
+    }
+
+    body.auth-page .auth-form .btn-primary {
+        padding: 9px 12px;
+        margin-top: 2px;
+    }
+
+    body.auth-page .auth-form .alt-action {
+        margin-top: 6px;
+        font-size: .82rem;
+    }
+}
