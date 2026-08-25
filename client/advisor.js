@@ -249,10 +249,39 @@
 
     function syncViewportModeClasses() {
         const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
-        const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+        const viewportH = Math.ceil(
+            window.visualViewport?.height
+            || window.innerHeight
+            || document.documentElement.clientHeight
+            || 0
+        );
         const landscape = viewportW > viewportH || window.matchMedia('(orientation: landscape)').matches;
         const touchCapable = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
         document.body.classList.toggle('touch-landscape-full-view', Boolean(advisorFullView && landscape && touchCapable));
+        const lockLandscape = Boolean(landscape && (advisorFullView || isMobileLayout() || viewportH <= 720));
+        document.documentElement.classList.toggle('advisor-landscape-locked', lockLandscape);
+        document.body.classList.toggle('advisor-landscape-locked', lockLandscape);
+    }
+
+    function shouldLockLandscapeLayout() {
+        const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportH = Math.ceil(
+            window.visualViewport?.height
+            || window.innerHeight
+            || document.documentElement.clientHeight
+            || 0
+        );
+        const landscape = viewportW > viewportH || window.matchMedia('(orientation: landscape)').matches;
+        return Boolean(landscape && (advisorFullView || isMobileLayout() || viewportH <= 720));
+    }
+
+    function clampLandscapeScroll() {
+        if (!shouldLockLandscapeLayout()) return;
+        try {
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+            if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+        } catch (_) { /* viewport may be unavailable during boot */ }
     }
 
     function syncAdvisorViewToggle() {
@@ -431,6 +460,7 @@
         }
         document.documentElement.style.setProperty('--mobile-topbar-h', `${topH}px`);
         document.documentElement.style.setProperty('--mobile-avatar-h', `${avatarH}px`);
+        clampLandscapeScroll();
         queueLayoutDebugMeasure('layout-vars');
     }
 
@@ -654,6 +684,17 @@
         state.lastSpeakingFocusAt = now;
 
         el.classList.add('is-speaking-focus');
+        if (shouldLockLandscapeLayout()) {
+            const parent = transcript || el.closest('.transcript');
+            if (parent) {
+                const parentRect = parent.getBoundingClientRect();
+                const elRect = el.getBoundingClientRect();
+                const offset = elRect.top - parentRect.top + parent.scrollTop - 8;
+                parent.scrollTop = Math.max(0, offset);
+            }
+            clampLandscapeScroll();
+            return;
+        }
         el.scrollIntoView({ behavior: force ? 'smooth' : 'auto', block: 'start', inline: 'nearest' });
     }
 
@@ -1054,8 +1095,10 @@
             state.speakingFocusTimer = null;
         }
         if (speaking) {
+            clampLandscapeScroll();
             focusActiveResponseBubble(true);
             state.speakingFocusTimer = setInterval(() => focusActiveResponseBubble(false), 1200);
+            requestAnimationFrame(clampLandscapeScroll);
         } else if (state.activeResponseBubble) {
             state.activeResponseBubble.classList.remove('is-speaking-focus');
         }
@@ -1616,7 +1659,13 @@
         const el = fullPageAnswer.querySelector(`[data-caption-index="${idx}"]`);
         if (!el) return;
         el.classList.add('is-current');
-        el.scrollIntoView({ behavior: force ? 'smooth' : 'auto', block: 'center', inline: 'nearest' });
+        const targetTop = el.offsetTop - Math.max(0, (fullPageAnswer.clientHeight - el.offsetHeight) / 2);
+        try {
+            fullPageAnswer.scrollTo({ top: Math.max(0, targetTop), behavior: force ? 'smooth' : 'auto' });
+        } catch (_) {
+            fullPageAnswer.scrollTop = Math.max(0, targetTop);
+        }
+        clampLandscapeScroll();
     }
 
     function syncCaptionForAudioPlayback(spokenText, currentTime, duration, force = false) {
@@ -4792,8 +4841,14 @@
             setTimeout(syncMobileLayoutVars, 120);
             setTimeout(() => renderLayoutDebugReport('orientationchange'), 520);
         }, { passive: true });
-        window.visualViewport?.addEventListener('resize', () => queueLayoutDebugMeasure('visualViewport-resize'), { passive: true });
-        window.visualViewport?.addEventListener('scroll', () => queueLayoutDebugMeasure('visualViewport-scroll'), { passive: true });
+        window.visualViewport?.addEventListener('resize', () => {
+            syncMobileLayoutVars();
+            queueLayoutDebugMeasure('visualViewport-resize');
+        }, { passive: true });
+        window.visualViewport?.addEventListener('scroll', () => {
+            clampLandscapeScroll();
+            queueLayoutDebugMeasure('visualViewport-scroll');
+        }, { passive: true });
 
         async function refreshQuotaBadge() {
             const badge = document.getElementById('quotaBadge');

@@ -39,6 +39,28 @@ html, body {
     background: var(--page-gradient);
     min-height: 100vh;
 }
+
+html.advisor-landscape-locked,
+html.advisor-landscape-locked body {
+    height: var(--app-viewport-h, 100vh) !important;
+    min-height: var(--app-viewport-h, 100vh) !important;
+    max-height: var(--app-viewport-h, 100vh) !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+}
+
+html.advisor-landscape-locked body .top-bar,
+html.advisor-landscape-locked body .advisor-grid,
+html.advisor-landscape-locked body .avatar-pane,
+html.advisor-landscape-locked body .avatar-stage {
+    transform: none !important;
+}
+
+html.advisor-landscape-locked body .top-bar {
+    top: 0 !important;
+    z-index: 120;
+}
+
 button, input, textarea, select { font: inherit; color: inherit; }
 .hidden { display: none !important; }
 .muted { color: var(--muted); }
@@ -1683,7 +1705,7 @@ body.advisor-full-view .advisor-grid {
     max-width: 1320px;
     padding: 8px 14px 10px;
     gap: 10px;
-    height: calc(100vh - var(--mobile-topbar-h, 64px));
+    height: calc(var(--app-viewport-h, 100vh) - var(--mobile-topbar-h, 64px));
     min-height: 0;
     overflow: hidden;
 }
@@ -2017,7 +2039,7 @@ body.advisor-full-view #advisorViewToggleBtn {
     body.advisor-full-view .advisor-grid {
         padding: 8px 10px 10px;
         gap: 8px;
-        height: calc(100vh - var(--mobile-topbar-h, 64px));
+        height: calc(var(--app-viewport-h, 100vh) - var(--mobile-topbar-h, 64px));
         min-height: 0;
     }
 
