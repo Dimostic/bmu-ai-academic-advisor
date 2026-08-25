@@ -353,6 +353,17 @@ html[data-theme="dark"] .avatar-stage-controls {
     display: block;
     will-change: transform;
 }
+@media (min-width: 1025px) {
+    body:not(.advisor-full-view) .advisor-grid:not(.history-open) .avatar-stage .avatar-svg-host svg {
+        transform: translateY(-4.5%) scale(1.13);
+        transform-origin: center 58%;
+    }
+
+    body:not(.advisor-full-view) .advisor-grid:not(.history-open) .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+        transform: translateY(-3%) scale(1.08);
+        transform-origin: center 56%;
+    }
+}
 
 /* No background pulses — the previous pulsing drop-shadow filters
    visibly flickered and distracted from the conversation. We keep the
