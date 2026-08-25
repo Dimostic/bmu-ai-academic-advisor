@@ -287,9 +287,10 @@ function _detectPrincipalOfficerRole(question) {
     const q = String(question || '').toLowerCase();
     const isIdentityQuestion = /(who\s+is|who\s+heads|who\s+leads|name\s+of|what\s+is\s+the\s+name|current|currently|tell\s+me\s+about|talking\s+about|referr?ing\s+to|i\s+mean|which\s+person|who\s+serves\s+as|\bname\b)/i.test(q);
     if (!isIdentityQuestion) return null;
+    if (/university\s+(?:librarian|liberian|librian|libraran|libraryian)|\b(?:librarian|liberian|librian|libraran|libraryian)\b|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library/i.test(q)) return 'University Librarian';
     if (/(who\s+heads|who\s+leads|leader\s+of|head\s+of)/i.test(q)
         && /\b(bmu|university|bayelsa\s+medical\s+university)\b/i.test(q)
-        && !/(faculty|department|college|school|dean|hod|head\s+of\s+department)/i.test(q)) {
+        && !/(faculty|department|college|school|dean|hod|head\s+of\s+department|library|librarian|liberian|librian|libraran|libraryian)/i.test(q)) {
         return 'Vice-Chancellor';
     }
     if (/deputy\s+vice[-\s]?chancellor|(^|\W)dvc(\W|$)/i.test(q)) {
@@ -303,7 +304,6 @@ function _detectPrincipalOfficerRole(question) {
     if (/registrar|registerer/i.test(q)) return 'Registrar';
     if (/bursar|chief\s+financial\s+officer|financial\s+officer/i.test(q)) return 'Bursar';
     if (/\b(?:boss|bossar|bossa|bosa|busa|bussa|bursah)\b/i.test(q)) return 'Bursar';
-    if (/university\s+(?:librarian|liberian|librian|libraran|libraryian)|\b(?:librarian|liberian|librian|libraran|libraryian)\b|library\s+officer|head\s+(?:of\s+)?(?:the\s+)?library/i.test(q)) return 'University Librarian';
     return null;
 }
 
@@ -666,8 +666,21 @@ function _shapeStructuredOfficer(row) {
         position,
         name,
         note,
+        aliases: _principalOfficerAliasesForPosition(position),
         sourcePath: String(row.source_path || 'BMU structured officers table').trim()
     };
+}
+
+function _principalOfficerAliasesForPosition(position) {
+    const role = _normaliseRole(position);
+    const match = BMU_PRINCIPAL_OFFICERS.find(item => {
+        const staticRole = _normaliseRole(item.position);
+        return staticRole === role
+            || (role.includes('librarian') && staticRole.includes('librarian'))
+            || (role.includes('bursar') && staticRole.includes('bursar'))
+            || (role.includes('vice chancellor') && !role.includes('deputy') && staticRole.includes('vice chancellor') && !staticRole.includes('deputy'));
+    });
+    return Array.isArray(match?.aliases) ? match.aliases : [];
 }
 
 async function _loadStructuredPrincipalOfficers() {
