@@ -149,7 +149,7 @@
             try { saved = localStorage.getItem('bmu_advisor_top_menu_collapsed'); } catch (_) { saved = null; }
             if (saved === '1') return true;
             if (saved === '0') return false;
-            return window.matchMedia('(max-width: 720px)').matches;
+            return window.matchMedia('(max-width: 1024px)').matches;
         })(),
         token: _isGuestDemo ? null : (sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || null),
         recording: false,

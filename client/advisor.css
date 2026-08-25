@@ -1014,6 +1014,36 @@ html[data-theme="dark"] .top-menu-toggle {
 body.advisor-full-view .top-menu-toggle {
     display: none;
 }
+@media (max-width: 1024px) {
+    .top-bar {
+        position: relative;
+        padding: 8px 10px !important;
+        align-items: center;
+    }
+    .top-bar .top-actions {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 8px;
+        width: min(330px, calc(100vw - 16px));
+        max-height: calc(100vh - var(--mobile-topbar-h, 64px) - 18px);
+        overflow-y: auto;
+        justify-content: flex-start;
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--bg-elev);
+        box-shadow: 0 18px 40px rgba(7, 30, 32, .22);
+        z-index: 80;
+    }
+    .top-bar .top-actions > * {
+        flex: 1 1 100%;
+        justify-content: flex-start;
+    }
+    .top-bar .top-actions .icon-btn {
+        flex: 0 0 38px;
+    }
+}
 @media (max-width: 720px) {
     .top-bar {
         position: relative;
@@ -1761,6 +1791,7 @@ html[data-theme="dark"] body.advisor-full-view .avatar-stage-controls .icon-btn.
 
 body.advisor-full-view .history-pane,
 body.advisor-full-view .topics-bar,
+body.advisor-full-view .guest-demo-banner,
 body.advisor-full-view .followups,
 body.advisor-full-view .transcript {
     display: none !important;
@@ -2433,5 +2464,178 @@ body.advisor-full-view.touch-landscape-full-view #micWave {
 
     body.advisor-full-view .composer input[type="text"] {
         font-size: .98rem;
+    }
+}
+
+/* Final full-page framing pass: keep the avatar centered and let it own the
+   visual space in every orientation. */
+body.advisor-full-view .guest-demo-banner {
+    display: none !important;
+}
+
+body.advisor-full-view .advisor-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) auto !important;
+}
+
+body.advisor-full-view .avatar-pane {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    min-height: 0 !important;
+}
+
+body.advisor-full-view .avatar-stage {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+body.advisor-full-view .avatar-stage .avatar-svg-host {
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+}
+
+body.advisor-full-view .avatar-stage .avatar-svg-host svg {
+    width: auto !important;
+    height: min(100%, 82vh) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    transform: translateY(-1%) scale(1.08) !important;
+    transform-origin: center center !important;
+}
+
+body.advisor-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+    height: min(100%, 82vh) !important;
+    transform: translateY(-1%) scale(1.03) !important;
+}
+
+body.advisor-full-view .avatar-stage-controls {
+    position: absolute !important;
+    top: 8px !important;
+    left: 50% !important;
+    bottom: auto !important;
+    transform: translateX(-50%) !important;
+    flex-direction: row !important;
+}
+
+body.advisor-full-view .chat-pane {
+    position: static !important;
+    grid-column: 1 !important;
+    width: 100% !important;
+}
+
+body.advisor-full-view .top-actions {
+    position: static !important;
+    width: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+@media (max-width: 1024px) and (orientation: portrait) {
+    body.advisor-full-view .advisor-grid {
+        padding: 6px 10px 8px !important;
+        gap: 6px !important;
+        height: calc(100dvh - var(--mobile-topbar-h, 64px)) !important;
+    }
+
+    body.advisor-full-view .avatar-pane {
+        padding: 4px 8px !important;
+    }
+
+    body.advisor-full-view .avatar-stage .avatar-svg-host svg {
+        height: min(100%, 76vh) !important;
+        transform: translateY(-1%) scale(1.02) !important;
+    }
+}
+
+@media (orientation: landscape) {
+    body.advisor-full-view .advisor-grid {
+        padding: 4px 10px 6px !important;
+        gap: 4px !important;
+        height: calc(100dvh - var(--mobile-topbar-h, 56px)) !important;
+    }
+
+    body.advisor-full-view .avatar-stage .avatar-svg-host svg,
+    body.advisor-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+        height: min(100%, 78vh) !important;
+        max-width: 100% !important;
+        transform: translateY(-1%) scale(1.08) !important;
+    }
+
+    body.advisor-full-view.guest-demo-mode .guest-demo-mini {
+        display: none !important;
+    }
+
+    body.advisor-full-view .chat-pane {
+        max-height: 96px !important;
+        overflow: visible !important;
+    }
+
+    body.advisor-full-view .voice-command-bar {
+        min-height: 26px !important;
+        padding: 3px 8px 0 !important;
+        overflow-x: auto !important;
+    }
+
+    body.advisor-full-view .voice-command-bar button {
+        min-height: 24px !important;
+        padding: 3px 8px !important;
+        font-size: .7rem !important;
+    }
+
+    body.advisor-full-view .composer {
+        min-height: 36px !important;
+        padding: 4px 8px !important;
+    }
+
+    body.advisor-full-view .composer input[type="text"] {
+        height: 30px !important;
+        padding: 5px 10px !important;
+        font-size: .86rem !important;
+    }
+}
+
+@media (max-width: 1024px) and (orientation: landscape) {
+    body:not(.advisor-full-view) .guest-demo-banner {
+        display: none !important;
+    }
+
+    body:not(.advisor-full-view) .advisor-grid {
+        height: calc(100dvh - var(--mobile-topbar-h, 56px)) !important;
+    }
+
+    body:not(.advisor-full-view) .avatar-pane {
+        height: 100% !important;
+        min-height: 0 !important;
+        grid-template-areas: "controls stage" !important;
+        grid-template-rows: minmax(0, 1fr) !important;
+    }
+
+    body:not(.advisor-full-view) .avatar-meta {
+        display: none !important;
+    }
+
+    body:not(.advisor-full-view) .avatar-stage {
+        height: 100% !important;
+        min-height: 0 !important;
+    }
+
+    body:not(.advisor-full-view) .avatar-stage .avatar-svg-host svg,
+    body:not(.advisor-full-view) .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+        width: auto !important;
+        height: min(100%, 74vh) !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        transform: none !important;
     }
 }
