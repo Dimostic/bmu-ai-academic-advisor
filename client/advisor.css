@@ -84,15 +84,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* -------- Layout -------- */
 .advisor-grid {
     display: grid;
-    grid-template-columns: minmax(360px, 1.08fr) minmax(420px, .92fr);
-    gap: 20px; padding: 20px; max-width: 1360px; margin: 0 auto;
+    grid-template-columns: minmax(420px, 1.34fr) minmax(410px, .86fr);
+    gap: 20px; padding: 20px; max-width: 1500px; margin: 0 auto;
     width: 100%;
     align-items: start;
     transition: max-width .22s ease;
 }
 .advisor-grid.history-open {
-    grid-template-columns: minmax(320px, .9fr) minmax(420px, 1fr) minmax(260px, 280px);
-    max-width: 1240px;
+    grid-template-columns: minmax(380px, 1.08fr) minmax(400px, .98fr) minmax(260px, 280px);
+    max-width: 1480px;
 }
 .guest-demo-banner {
     grid-column: 1 / -1;
@@ -216,8 +216,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .avatar-stage {
     position: relative;
-    width: min(100%, 440px);
-    height: clamp(320px, 42vw, 520px);
+    width: min(100%, 620px);
+    height: clamp(360px, 48vw, 680px);
     border-radius: var(--radius);
     /* Softer, dimmer background so the cartoon reads as the focal point.
        Was a bright #d9f1e7 → #f4f7f8 mint gradient that washed everything
@@ -230,8 +230,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
     border: 1px solid rgba(255,255,255,.06);
 }
 .advisor-grid.history-open .avatar-stage {
-    width: min(100%, 300px);
-    height: clamp(280px, 26vw, 360px);
+    width: min(100%, 470px);
+    height: clamp(320px, 32vw, 520px);
 }
 .avatar-stage-controls {
     position: static;
@@ -490,6 +490,8 @@ html[data-theme="dark"] .avatar-stage-controls {
 .topics-bar {
     display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); align-items: center;
     background: #fcfdfd;
+    min-height: 55px;
+    transition: min-height .18s ease, padding .18s ease;
 }
 .topics-scroller { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; flex: 1; }
 .topics-scroller::-webkit-scrollbar { height: 4px; }
@@ -501,6 +503,35 @@ html[data-theme="dark"] .avatar-stage-controls {
 .topic-pill:hover { border-color: var(--accent); color: var(--accent); }
 .topic-pill--start { background: var(--bg-deep); color: #fff; border-color: var(--bg-deep); }
 .topic-pill--start:hover { background: #16575a; color: #fff; border-color: #16575a; }
+.topics-collapse-btn {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--bg-deep);
+    display: inline-grid;
+    place-items: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(11, 37, 41, .07);
+}
+.topics-collapse-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.topics-bar.is-collapsed {
+    justify-content: flex-end;
+    min-height: 36px;
+    padding: 5px 10px;
+}
+.topics-bar.is-collapsed .topic-pill--start,
+.topics-bar.is-collapsed .topics-scroller {
+    display: none;
+}
+.advisor-grid.topics-collapsed:not(.history-open) .avatar-stage {
+    height: clamp(390px, 51vw, 720px);
+}
 
 .transcript { flex: 1; padding: 20px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .bubble { background: #f5f8f8; border-radius: 14px; padding: 14px 16px; max-width: 720px; width: fit-content; }
@@ -1073,26 +1104,42 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
         margin-bottom: 8px;
         padding: 12px;
         border-radius: 12px;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 46px minmax(0, 1fr);
+        grid-template-areas:
+            "controls stage"
+            "meta meta";
         align-items: center;
-        justify-content: flex-start;
-        gap: 12px;
+        justify-content: stretch;
+        gap: 8px;
     }
 
     .avatar-stage {
-        width: min(100%, 360px);
-        height: clamp(220px, 44vw, 300px);
+        grid-area: stage;
+        width: 100%;
+        height: clamp(260px, 44vh, 430px);
         flex: 0 0 auto;
     }
 
     .avatar-stage-controls {
+        grid-area: controls;
         position: static;
-        order: -1;
-        margin-bottom: 6px;
+        flex-direction: column;
+        order: 0;
+        margin: 0;
+        padding: 6px;
         align-self: center;
+        justify-self: center;
+        gap: 6px;
+    }
+
+    .avatar-stage-controls .icon-btn {
+        width: 34px;
+        height: 34px;
     }
 
     .avatar-meta {
+        grid-area: meta;
         text-align: center;
         display: flex;
         flex-direction: column;
@@ -1283,7 +1330,7 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
 
     body:not(.advisor-full-view) .advisor-grid {
         display: grid;
-        grid-template-columns: minmax(150px, 30vw) minmax(0, 1fr);
+        grid-template-columns: minmax(280px, 1.35fr) minmax(320px, .65fr);
         grid-template-rows: minmax(0, 1fr);
         height: calc(100dvh - var(--mobile-topbar-h, 56px));
         padding: 8px;
@@ -1300,17 +1347,26 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
     body:not(.advisor-full-view) .avatar-pane {
         position: static;
         grid-column: 1;
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr);
+        grid-template-areas:
+            "controls stage"
+            "meta stage";
         height: 100%;
         min-height: 0;
         margin: 0;
-        padding: 8px;
-        gap: 7px;
+        padding: 6px;
+        gap: 6px;
         overflow: hidden;
     }
 
     body:not(.advisor-full-view) .avatar-stage-controls {
+        grid-area: controls;
+        flex-direction: column;
         margin: 0;
-        gap: 6px;
+        padding: 5px;
+        gap: 5px;
+        align-self: start;
     }
 
     body:not(.advisor-full-view) .avatar-stage-controls .icon-btn {
@@ -1319,12 +1375,16 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
     }
 
     body:not(.advisor-full-view) .avatar-stage {
-        width: min(100%, 190px);
-        height: min(42vh, 170px);
+        grid-area: stage;
+        width: 100%;
+        height: 100%;
+        min-height: 260px;
     }
 
     body:not(.advisor-full-view) .avatar-meta {
+        grid-area: meta;
         gap: 3px;
+        align-self: end;
     }
 
     body:not(.advisor-full-view) .guest-demo-mini {
@@ -1384,16 +1444,24 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
 /* Short mobile screens: dial avatar size down slightly so sticky avatar +
    sticky composer still leave enough response-reading area. */
 @media (max-width: 1024px) and (max-height: 760px) {
-    .avatar-stage {
-        width: clamp(118px, 22vw, 150px);
-        height: clamp(138px, 27vw, 174px);
+    body:not(.advisor-full-view) .avatar-stage {
+        width: 100%;
+        height: clamp(240px, 42vh, 360px);
     }
 }
 
 @media (max-width: 560px) and (max-height: 700px) {
-    .avatar-stage {
-        width: clamp(106px, 30vw, 132px);
-        height: clamp(126px, 36vw, 156px);
+    body:not(.advisor-full-view) .avatar-stage {
+        width: 100%;
+        height: clamp(220px, 40vh, 320px);
+    }
+}
+
+@media (max-width: 1024px) and (orientation: landscape) and (max-height: 620px) {
+    body:not(.advisor-full-view) .avatar-stage {
+        width: 100%;
+        height: 100%;
+        min-height: 240px;
     }
 }
 

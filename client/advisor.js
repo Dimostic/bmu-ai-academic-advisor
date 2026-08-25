@@ -73,6 +73,8 @@
     const historyList   = $('historyList');
     const advisorStatus = $('avatarStatus');
     const advisorGrid   = document.querySelector('.advisor-grid');
+    const topicsBar     = document.querySelector('.topics-bar');
+    const topicsCollapseBtn = $('topicsCollapseBtn');
     const avatarPane    = document.querySelector('.avatar-pane');
     const avatarStage   = $('avatarStage');
     const avatarMicBtn  = $('avatarMicBtn');
@@ -141,6 +143,9 @@
             }
         })(),
         topics: [],
+        topicsCollapsed: (() => {
+            try { return localStorage.getItem('bmu_advisor_topics_collapsed') === '1'; } catch (_) { return false; }
+        })(),
         token: _isGuestDemo ? null : (sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || null),
         recording: false,
         mediaRecorder: null,
@@ -401,6 +406,22 @@
             && !isMobileLayout()
             && !historyPane.classList.contains('hidden');
         advisorGrid.classList.toggle('history-open', historyOpen);
+    }
+
+    function syncTopicsLayout() {
+        if (!topicsBar) return;
+        const collapsed = !advisorFullView && state.topicsCollapsed;
+        topicsBar.classList.toggle('is-collapsed', collapsed);
+        advisorGrid?.classList.toggle('topics-collapsed', collapsed);
+        if (!topicsCollapseBtn) return;
+        topicsCollapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        topicsCollapseBtn.setAttribute('aria-label', collapsed ? 'Expand topics' : 'Collapse topics');
+        topicsCollapseBtn.title = collapsed ? 'Expand topics' : 'Collapse topics';
+        const icon = topicsCollapseBtn.querySelector('i');
+        if (icon) {
+            icon.classList.toggle('fa-chevron-up', !collapsed);
+            icon.classList.toggle('fa-chevron-down', collapsed);
+        }
     }
 
     function setActiveResponseBubble(el) {
@@ -4007,6 +4028,12 @@
         }
     }
     syncHistoryLayout();
+    syncTopicsLayout();
+    topicsCollapseBtn?.addEventListener('click', () => {
+        state.topicsCollapsed = !state.topicsCollapsed;
+        try { localStorage.setItem('bmu_advisor_topics_collapsed', state.topicsCollapsed ? '1' : '0'); } catch (_) {}
+        syncTopicsLayout();
+    });
 
     window.addEventListener('resize', () => {
         if (!state.token) return;
@@ -4018,6 +4045,7 @@
             historyPane.classList.toggle('hidden', !state.historyDesktopOpen);
         }
         syncHistoryLayout();
+        syncTopicsLayout();
     });
 
     // ---------- Form ----------
