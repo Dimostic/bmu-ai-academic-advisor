@@ -581,6 +581,13 @@ function _isProgrammeFeeQuestion(question) {
     return /(fee|fees|tuition|cost|payment|payable|levy|how\s+much|pay)/i.test(q) && Boolean(_detectFeeProgramme(q));
 }
 
+function _isGeneralFeeQuestion(question) {
+    const q = String(question || '').trim();
+    if (!/(fee|fees|tuition|cost|payment|payable|levy)/i.test(q)) return false;
+    if (_detectFeeProgramme(q)) return false;
+    return /\bbmu\b|bayelsa\s+medical\s+university|by\s+programme|by\s+program|all\s+programmes?|all\s+programs?|current/i.test(q);
+}
+
 function _isMedicineFeeQuestion(question) {
     return _isProgrammeFeeQuestion(question) && _detectFeeProgramme(question) === 'MEDICINE';
 }
@@ -607,6 +614,31 @@ function _formatFeeLevel(level) {
 
 function _programmeFeeRow(level, values) {
     return `| ${_formatFeeLevel(level)} | ${values.indigene} | ${values.non_indigene} |`;
+}
+
+function _parseFeeAmount(value) {
+    const numeric = String(value || '').replace(/[^\d.]/g, '');
+    const amount = Number(numeric);
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}
+
+function _formatNairaAmount(amount) {
+    const numeric = _parseFeeAmount(amount);
+    return numeric > 0 ? `N${numeric.toLocaleString('en-NG')}` : '';
+}
+
+function _feeAmountRange(amounts) {
+    const values = [...new Set((amounts || []).map(_parseFeeAmount).filter(Boolean))].sort((a, b) => a - b);
+    if (!values.length) return '';
+    if (values.length === 1 || values[0] === values[values.length - 1]) return _formatNairaAmount(values[0]);
+    return `${_formatNairaAmount(values[0])}-${_formatNairaAmount(values[values.length - 1])}`;
+}
+
+function _feeLevelSummary(levels) {
+    const order = ['100', '200_de', '200', '300', '400', '500', '600'];
+    const found = order.filter(level => levels.has(level));
+    if (!found.length) return 'available levels';
+    return found.map(_formatFeeLevel).join(', ');
 }
 
 function _normaliseRole(value) {
@@ -831,6 +863,99 @@ async function _buildStructuredProgrammeFeeReply(question) {
     } catch (err) {
         console.warn('[advisorStreamService] structured fee lookup failed:', err.message);
         return null;
+    }
+}
+
+function _buildStaticAllProgrammeFeesReply() {
+    const rows = Object.entries(PROGRAMME_FEES)
+        .map(([, fees]) => {
+            const levels = new Set([
+                ...Object.keys(fees.indigene || {}),
+                ...Object.keys(fees.non_indigene || {})
+            ]);
+            return `| ${fees.display} | ${_feeLevelSummary(levels)} | ${_feeAmountRange(Object.values(fees.indigene || {}))} | ${_feeAmountRange(Object.values(fees.non_indigene || {}))} |`;
+        })
+        .filter(Boolean);
+    if (!rows.length) return null;
+    const table = [
+        '| Programme | Levels covered | Indigene total payable | Non-indigene total payable |',
+        '| --- | --- | ---: | ---: |',
+        ...rows
+    ].join('\n');
+    return {
+        speech_text: 'Here is a programme-by-programme summary of the current BMU fee structure. The exact amount depends on programme, level, entry mode, and whether the student is indigene or non-indigene.',
+        display_markdown: `Here is the **current BMU fee summary by programme**. Amounts are **total payable per session** and may vary by level or Direct Entry status.\n\n${table}\n\nSource: **BMU fee structures new.docx**. Acceptance fee for new students and optional accommodation may be separate where applicable. For an exact figure, ask with programme, level, and indigene or non-indigene status.`,
+        topic_slug: 'programme_fee_summary',
+        citations: [{ title: 'bmu fee structures new.docx', source: 'Programme fee tables' }],
+        suggested_actions: [],
+        follow_up_questions: [
+            'What is the 100 level MBBS non-indigene fee?',
+            'What is the 300 level Community Health indigene fee?'
+        ],
+        needs_escalation: false,
+        confidence: 0.98,
+        _source: 'fast_intent'
+    };
+}
+
+async function _buildAllProgrammeFeesReply(question) {
+    if (!_isGeneralFeeQuestion(question)) return null;
+    try {
+        const rows = await query(
+            `SELECT programme, fee_category, amount_label, amount_value, session_label, source_path, row_json
+             FROM academic_fees
+             WHERE status = 'active'
+             ORDER BY programme ASC, fee_category ASC, amount_value ASC
+             LIMIT 5000`
+        );
+        const grouped = new Map();
+        for (const row of rows || []) {
+            const programme = String(row.programme || '').trim();
+            if (!programme) continue;
+            const category = _structuredFeeCategory(row);
+            const level = _structuredFeeLevel(row);
+            const amount = _parseFeeAmount(row.amount_value || row.amount_label);
+            if (!category || !amount) continue;
+            const item = grouped.get(programme) || {
+                programme,
+                levels: new Set(),
+                indigene: [],
+                non_indigene: [],
+                sourcePath: String(row.source_path || 'BMU structured fees table').trim()
+            };
+            if (level) item.levels.add(level);
+            item[category].push(amount);
+            if (!item.sourcePath && row.source_path) item.sourcePath = String(row.source_path).trim();
+            grouped.set(programme, item);
+        }
+        const summaries = [...grouped.values()]
+            .filter(item => item.indigene.length || item.non_indigene.length)
+            .sort((a, b) => a.programme.localeCompare(b.programme));
+        if (!summaries.length) return _buildStaticAllProgrammeFeesReply();
+        const tableRows = summaries.map(item => `| ${item.programme} | ${_feeLevelSummary(item.levels)} | ${_feeAmountRange(item.indigene)} | ${_feeAmountRange(item.non_indigene)} |`);
+        const sourcePath = summaries.find(item => item.sourcePath)?.sourcePath || 'BMU structured fees table';
+        const table = [
+            '| Programme | Levels covered | Indigene total payable | Non-indigene total payable |',
+            '| --- | --- | ---: | ---: |',
+            ...tableRows
+        ].join('\n');
+        return {
+            speech_text: 'Here is a programme-by-programme summary of the current BMU fee structure. The exact amount depends on programme, level, entry mode, and whether the student is indigene or non-indigene.',
+            display_markdown: `Here is the **current BMU fee summary by programme**. Amounts are **total payable per session** and may vary by level or Direct Entry status.\n\n${table}\n\nSource: **${sourcePath}**. Acceptance fee for new students and optional accommodation may be separate where applicable. For an exact figure, ask with programme, level, and indigene or non-indigene status.`,
+            topic_slug: 'programme_fee_summary',
+            citations: [{ title: sourcePath, source: 'Academic fees structured table' }],
+            suggested_actions: [],
+            follow_up_questions: [
+                'What is the 100 level MBBS non-indigene fee?',
+                'What is the 300 level Community Health indigene fee?'
+            ],
+            needs_escalation: false,
+            confidence: 0.99,
+            _source: 'structured_facts'
+        };
+    } catch (err) {
+        console.warn('[advisorStreamService] all-programme structured fee lookup failed:', err.message);
+        return _buildStaticAllProgrammeFeesReply();
     }
 }
 
@@ -1791,6 +1916,8 @@ async function _buildFastIntentReply(question) {
     if (_isDepartmentHeadIdentityQuestion(q)) return _buildDepartmentHeadSafeReply(q);
     const admissionCutoffReply = await _buildAdmissionCutoffReply(q);
     if (admissionCutoffReply) return admissionCutoffReply;
+    const allProgrammeFeesReply = await _buildAllProgrammeFeesReply(q);
+    if (allProgrammeFeesReply) return allProgrammeFeesReply;
     const programmeFeeReply = await _buildStructuredProgrammeFeeReply(q) || _buildProgrammeFeeReply(q);
     if (programmeFeeReply) return programmeFeeReply;
     if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
@@ -2160,7 +2287,8 @@ async function askStream({
     const requestedPrincipalOfficerByName = _detectPrincipalOfficerByName(trimmed);
     const isPrincipalOfficersQuestion = _isPrincipalOfficersQuestion(trimmed);
     const isGovernorVisitorQuestion = _isGovernorVisitorQuestion(trimmed);
-    const explicitLawReply = (requestedPrincipalOfficerRole || requestedPrincipalOfficerByName || isPrincipalOfficersQuestion || isGovernorVisitorQuestion || !_isExplicitLawQuestion(trimmed))
+    const isFeeQuestion = _isGeneralFeeQuestion(trimmed) || _isProgrammeFeeQuestion(trimmed);
+    const explicitLawReply = (requestedPrincipalOfficerRole || requestedPrincipalOfficerByName || isPrincipalOfficersQuestion || isGovernorVisitorQuestion || isFeeQuestion || !_isExplicitLawQuestion(trimmed))
         ? null
         : bmuLawService.buildLawReply(trimmed);
     const fastIntentReply = explicitLawReply || ((!requestedPrincipalOfficerRole && !requestedPrincipalOfficerByName && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED)

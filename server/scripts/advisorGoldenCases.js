@@ -118,6 +118,12 @@ module.exports = [
         mustContain: ['health information management', '200 direct entry', 'non-indigene']
     },
     {
+        name: 'fees-current-by-programme-summary',
+        question: 'What are current BMU fees by programme?',
+        mustContain: ['fee summary by programme', 'medicine', 'nursing', 'indigene', 'non-indigene'],
+        mustNotContain: ['bayelsa medical university yenagoa law', 'section 4', 'powers']
+    },
+    {
         name: 'courses-mls-300',
         question: 'Show 300 level Medical Laboratory Science first semester courses',
         mustContain: ['mls 313', 'basic hematology', 'all courses for bmu.xlsx']
