@@ -478,7 +478,6 @@ async function _buildProgrammeOverviewReply(question) {
         citations: sourceList.map(title => ({ title, source: `${display} programme/course records` })),
         suggested_actions: [],
         follow_up_questions: [
-            `What are the admission requirements for ${display}?`,
             `Show current fees for ${display}`,
             `Show courses for ${display} by level`
         ],
@@ -1217,6 +1216,20 @@ async function _buildRegistrationRequirementReply(question) {
         if (!/academic_registration_requirements/i.test(err.message || '')) {
             console.warn('[advisorStreamService] registration requirement lookup failed:', err.message);
         }
+        const q = String(question || '').toLowerCase();
+        if (/\b(new\s+students?|fresh(?:er|ers)?|applicant|apply|application|admission)\b/i.test(q)) {
+            return {
+                speech_text: 'For new BMU applicants, the current application flow is to create an account, verify the account, log in, search for the programme of choice, click apply, fill the application form, upload required documents, update the application, and pay the application fee. Registration requirements can change by session, semester, programme or level, so the latest BMU notice should be checked before acting.',
+                display_markdown: '**BMU new applicant application flow**\n\n1. Create an account.\n2. Verify the account.\n3. Log in and search for the programme of choice.\n4. Click **Apply**, fill the application form, and upload required documents.\n5. Update the application.\n6. Pay the application fee.\n\nRegistration requirements can change by **session, semester, programme, and level**, so the latest BMU notice should be checked before acting.',
+                topic_slug: 'registration_requirements',
+                citations: [{ title: 'BMU admissions page / Admissions Office notice', source: 'New applicant application flow' }],
+                suggested_actions: [],
+                follow_up_questions: [],
+                needs_escalation: false,
+                confidence: 0.88,
+                _source: 'static_registration_fallback'
+            };
+        }
         return null;
     }
 }
@@ -1711,12 +1724,52 @@ function _isAlwaysAllowedAction(action) {
         || (typeof action === 'string' && action.startsWith('open_url:'));
 }
 
+function _withSuggestionTimeout(promise, fallback = null, timeoutMs = 2500) {
+    return Promise.race([
+        promise,
+        new Promise(resolve => setTimeout(() => resolve(fallback), timeoutMs))
+    ]);
+}
+
 async function _isRetrievableQuestion(text) {
-    if (!retrievalService) return true;
     const q = String(text || '').trim();
     if (!q || q.length < 5) return false;
+
+    if (/(courses?|course\s+unit|level)/i.test(q)) {
+        if (courseCatalogService._detectProgramme && courseCatalogService._detectProgramme(q)) return true;
+        try {
+            const courseReply = await _withSuggestionTimeout(courseCatalogService.buildCourseListReply(q), null, 7000);
+            if (courseReply?.display_markdown || courseReply?.speech_text) return true;
+        } catch (_) {
+            // Continue to the normal validation routes.
+        }
+    }
+
     try {
-        const r = await retrievalService.retrieve(q, { limit: 1, skipCache: true });
+        const fast = await _withSuggestionTimeout(_buildFastIntentReply(q), null);
+        if (fast) {
+            const topic = String(fast.topic_slug || fast.source || '').toLowerCase();
+            if ((_isGeneralFeeQuestion(q) || _isProgrammeFeeQuestion(q)) && !topic.includes('fee')) return false;
+            if ((_detectPrincipalOfficerRole(q) || _isPrincipalOfficersQuestion(q)) && !topic.includes('principal_officer') && !topic.includes('chancellor')) return false;
+            if (/courses?|course\s+unit|level/i.test(q) && !/(course|programme|program|mbbs|student_handbook)/i.test(topic)) return false;
+            if (_isExplicitLawQuestion(q) && !/law|visitor|principal_officer/.test(topic)) return false;
+            return Boolean(fast.display_markdown || fast.speech_text);
+        }
+    } catch (_) {
+        // Fall through to retrieval if the deterministic route is unavailable.
+    }
+
+    const law = bmuLawService.buildLawReply(q);
+    if (law) {
+        return _isExplicitLawQuestion(q) && !_isGeneralFeeQuestion(q) && !_isProgrammeFeeQuestion(q);
+    }
+
+    if (!retrievalService) return true;
+    try {
+        const r = await _withSuggestionTimeout(
+            retrievalService.retrieve(q, { limit: 1, skipCache: true }),
+            null
+        );
         return Boolean(r?.context) && Number(r?.confidence || 0) >= SUGGESTION_MIN_CONFIDENCE;
     } catch (_) {
         return false;
@@ -1790,7 +1843,7 @@ function _buildGroundedFallback(question, parsed, ragContext) {
                 { label: 'Show me BMU programme information', action: 'open_topic:programmes' }
             ],
             follow_up_questions: [
-                'What is the current BMU admission requirement for my course?',
+                'What are the admission requirements for Medicine and Surgery?',
                 'Can you explain the BMU fee structure in more detail?'
             ],
             needs_escalation: false,
@@ -1859,13 +1912,13 @@ function _buildPureFastIntentReply(q) {
             topic_slug: 'greeting',
             citations: [],
             suggested_actions: [
-                { label: 'Show me BMU programmes and requirements', action: 'open_topic:programmes' },
+                { label: 'What programmes are offered at BMU?', action: 'open_topic:programmes' },
                 { label: 'What are current BMU fees by programme?', action: 'open_topic:fees' }
             ],
             follow_up_questions: [
-                'What courses are offered in Medicine and Surgery?',
+                'What are the admission requirements for Medicine and Surgery?',
                 'What is the current BMU tuition fee for Nursing Science?',
-                'What are the exam and grading rules at BMU?'
+                'What is BMU student academic workload and credit load?'
             ],
             needs_escalation: false,
             confidence: 0.95,
@@ -1880,12 +1933,12 @@ function _buildPureFastIntentReply(q) {
             topic_slug: 'advisor_help',
             citations: [],
             suggested_actions: [
-                { label: 'Show me key BMU student handbook topics', action: 'open_topic:conduct' },
-                { label: 'What are BMU admission programme options?', action: 'open_topic:programmes' }
+                { label: 'What is BMU student academic workload and credit load?', action: 'open_topic:conduct' },
+                { label: 'What programmes are offered at BMU?', action: 'open_topic:programmes' }
             ],
             follow_up_questions: [
-                'What are BMU hostel rules for students?',
-                'What is the BMU academic calendar for this session?'
+                'What is BMU reassessment policy after results are published?',
+                'What are BMU registration requirements for new students?'
             ],
             needs_escalation: false,
             confidence: 0.92,
@@ -1902,6 +1955,56 @@ async function _buildFastIntentReply(question) {
 
     const pureIntentReply = _buildPureFastIntentReply(q);
     if (pureIntentReply) return pureIntentReply;
+
+    const earlyAdmissionCutoffReply = await _buildAdmissionCutoffReply(q);
+    if (earlyAdmissionCutoffReply) return earlyAdmissionCutoffReply;
+    const earlyAllProgrammeFeesReply = await _buildAllProgrammeFeesReply(q);
+    if (earlyAllProgrammeFeesReply) return earlyAllProgrammeFeesReply;
+    const earlyProgrammeFeeReply = await _buildStructuredProgrammeFeeReply(q) || _buildProgrammeFeeReply(q);
+    if (earlyProgrammeFeeReply) return earlyProgrammeFeeReply;
+    if (_isMbbsDurationQuestion(q)) return _buildMbbsDurationReply();
+    if (_isMbbsAdmissionQuestion(q)) return _buildMbbsAdmissionReply();
+
+    const earlyHandbookPolicyReply = _buildHandbookAcademicPolicyReply(q);
+    if (earlyHandbookPolicyReply) return earlyHandbookPolicyReply;
+
+    const earlyRegistrationRequirementReply = await _buildRegistrationRequirementReply(q);
+    if (earlyRegistrationRequirementReply) return earlyRegistrationRequirementReply;
+
+    const earlyCourseCatalogReply = await courseCatalogService.buildCourseListReply(q);
+    if (earlyCourseCatalogReply) return earlyCourseCatalogReply;
+
+    const earlyProgrammeOverviewReply = await _buildProgrammeOverviewReply(q);
+    if (earlyProgrammeOverviewReply) return earlyProgrammeOverviewReply;
+
+    if (_isAboutBmuOverviewQuestion(q)) {
+        return {
+            speech_text: 'Bayelsa Medical University, BMU, is a Bayelsa State medical university in Yenagoa focused on training health professionals through medicine, nursing, medical laboratory science, public health and related health-science programmes.',
+            display_markdown: 'Bayelsa Medical University (BMU) is a Bayelsa State medical university in Yenagoa focused on training health professionals through medicine, nursing, medical laboratory science, public health, and related health-science programmes.\n\nYou can ask me next about BMU programmes, fees, admission requirements, hostels, exams, or student rules.',
+            topic_slug: 'about_bmu',
+            citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.95,
+            _source: 'fast_intent'
+        };
+    }
+
+    if (/(courses?\s+(?:are\s+)?offered|programmes?\s+(?:are\s+)?offered|programs?\s+(?:are\s+)?offered|list\s+(?:the\s+)?(?:courses?|programmes?|programs?)|how\s+many\s+(?:courses?|programmes?|programs?))/i.test(q)
+        && /\bbmu\b|bayelsa\s+medical\s+university/i.test(q)) {
+        return {
+            speech_text: 'BMU offers health-science programmes including Medicine and Surgery, Nursing Science, Medical Laboratory Science, Public Health, Anatomy, Physiology and Biochemistry. For exact course units, ask by programme and level.',
+            display_markdown: 'BMU offers health-science programmes including **Medicine and Surgery, Nursing Science, Medical Laboratory Science, Public Health, Anatomy, Physiology, and Biochemistry**, with related course units varying by programme and level.\n\nFor exact course-unit lists, ask something specific like: **What courses are offered in Medicine and Surgery at 100 level?**',
+            topic_slug: 'programmes',
+            citations: [{ title: 'BMU Brief Institutional Profile (May 2025)', source: 'BMU profile excerpt' }],
+            suggested_actions: [],
+            follow_up_questions: [],
+            needs_escalation: false,
+            confidence: 0.92,
+            _source: 'fast_intent'
+        };
+    }
 
     const structuredOfficers = await _getPrincipalOfficersForAnswer();
     const requestedPrincipalOfficerByName = _detectPrincipalOfficerByName(q, structuredOfficers);
@@ -1952,7 +2055,7 @@ async function _buildFastIntentReply(question) {
         };
     }
 
-    if (/(courses?\s+offered|programmes?\s+offered|programs?\s+offered|list\s+(?:the\s+)?(?:courses?|programmes?|programs?)|how\s+many\s+(?:courses?|programmes?|programs?))/i.test(q)
+    if (/(courses?\s+(?:are\s+)?offered|programmes?\s+(?:are\s+)?offered|programs?\s+(?:are\s+)?offered|list\s+(?:the\s+)?(?:courses?|programmes?|programs?)|how\s+many\s+(?:courses?|programmes?|programs?))/i.test(q)
         && /\bbmu\b|bayelsa\s+medical\s+university/i.test(q)) {
         return {
             speech_text: 'BMU offers health-science programmes including Medicine and Surgery, Nursing Science, Medical Laboratory Science, Public Health, Anatomy, Physiology and Biochemistry. For exact course units, ask by programme and level.',
@@ -2291,7 +2394,7 @@ async function askStream({
     const explicitLawReply = (requestedPrincipalOfficerRole || requestedPrincipalOfficerByName || isPrincipalOfficersQuestion || isGovernorVisitorQuestion || isFeeQuestion || !_isExplicitLawQuestion(trimmed))
         ? null
         : bmuLawService.buildLawReply(trimmed);
-    const fastIntentReply = explicitLawReply || ((!requestedPrincipalOfficerRole && !requestedPrincipalOfficerByName && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED)
+    let fastIntentReply = explicitLawReply || ((!requestedPrincipalOfficerRole && !requestedPrincipalOfficerByName && !isPrincipalOfficersQuestion && !isGovernorVisitorQuestion && ADVISOR_FAST_INTENT_ENABLED)
         ? await _buildFastIntentReply(trimmed)
         : null);
 
@@ -2319,6 +2422,7 @@ async function askStream({
     }
 
     if (fastIntentReply) {
+        fastIntentReply = await _sanitizeInteractiveSuggestions(fastIntentReply);
         send('speech_ready', { speech_text: fastIntentReply.speech_text });
         if (fastIntentReply.display_markdown) send('token', { text: fastIntentReply.display_markdown });
 
@@ -2988,6 +3092,8 @@ module.exports = {
     triggerSloAlert,
     _diagnoseStaticQuestion,
     _buildFastIntentReply,
+    _isRetrievableQuestion,
+    _sanitizeInteractiveSuggestions,
     _staticFacts: {
         BMU_PRINCIPAL_OFFICERS,
         BMU_VISITOR,

@@ -23,6 +23,7 @@
     "test:course-retrieval": "node server/scripts/testCourseRetrieval.js",
     "test:course-data-quality": "node server/scripts/testCourseDataQuality.js",
     "test:advisor-golden": "node server/scripts/testAdvisorGolden.js",
+    "audit:advisor-followups": "node server/scripts/auditAdvisorFollowups.js",
     "test:advisor-policy": "node server/scripts/testAdvisorPromptPolicy.js",
     "test:stt-protection": "node server/scripts/testSttProtection.js",
     "test:structured-facts": "node server/scripts/testStructuredFactCoverage.js",
