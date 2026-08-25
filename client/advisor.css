@@ -2639,3 +2639,87 @@ body.advisor-full-view .top-actions {
         transform: none !important;
     }
 }
+
+/* Mobile landscape avatar safety layer.
+   Some Android browsers report a landscape viewport that is taller than the
+   actual visible area after browser chrome and keyboard controls settle. Keep
+   the avatar fitted to the stage itself rather than a viewport unit, and keep
+   compact mode opt-in only via advisor.js. */
+@media (orientation: landscape) and (pointer: coarse) {
+    body.advisor-full-view .avatar-stage .avatar-svg-host,
+    body:not(.advisor-full-view) .avatar-stage .avatar-svg-host {
+        width: 100% !important;
+        height: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        overflow: hidden !important;
+    }
+
+    body.advisor-full-view .avatar-stage .avatar-svg-host svg,
+    body:not(.advisor-full-view) .avatar-stage .avatar-svg-host svg {
+        width: auto !important;
+        height: calc(100% - 8px) !important;
+        max-width: 100% !important;
+        max-height: calc(100% - 8px) !important;
+        transform: translateY(0) scale(.98) !important;
+        transform-origin: center center !important;
+    }
+
+    body.advisor-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg,
+    body:not(.advisor-full-view) .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+        width: auto !important;
+        height: min(calc(100% - 8px), 72svh) !important;
+        max-width: 100% !important;
+        max-height: calc(100% - 8px) !important;
+        transform: translateY(0) scale(.96) !important;
+    }
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-stage .avatar-svg-host {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-stage .avatar-svg-host svg {
+    width: auto !important;
+    height: calc(100% - 8px) !important;
+    max-width: 100% !important;
+    max-height: calc(100% - 8px) !important;
+    transform: translateY(0) scale(.98) !important;
+    transform-origin: center center !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+    height: min(calc(100% - 8px), 72svh) !important;
+    transform: translateY(0) scale(.96) !important;
+}
+
+@media (max-width: 1024px) and (orientation: landscape) {
+    body:not(.advisor-full-view) .avatar-stage .avatar-svg-host {
+        width: 100% !important;
+        height: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        overflow: hidden !important;
+    }
+
+    body:not(.advisor-full-view) .avatar-stage .avatar-svg-host svg {
+        width: auto !important;
+        height: calc(100% - 8px) !important;
+        max-width: 100% !important;
+        max-height: calc(100% - 8px) !important;
+        transform: translateY(0) scale(.98) !important;
+        transform-origin: center center !important;
+    }
+
+    body:not(.advisor-full-view) .avatar-stage[data-avatar-mode="thumb"] .avatar-svg-host svg {
+        height: min(calc(100% - 8px), 72svh) !important;
+        transform: translateY(0) scale(.96) !important;
+    }
+}

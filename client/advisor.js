@@ -222,13 +222,7 @@
         const params = new URLSearchParams(location.search);
         if (params.get('avatar') === 'compact' || params.get('forceCompactAvatar') === '1') return true;
         if (params.get('avatar') === 'full' || params.get('forceCompactAvatar') === '0') return false;
-        const ua = navigator.userAgent || '';
-        const androidChrome = /Android/i.test(ua) && /(Chrome|Chromium|CriOS)/i.test(ua);
-        const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
-        const noHover = window.matchMedia('(hover: none)').matches;
-        const landscape = window.matchMedia('(orientation: landscape)').matches;
-        const carLikeViewport = Math.min(window.innerWidth, window.innerHeight) < 700;
-        return androidChrome && coarsePointer && noHover && landscape && carLikeViewport;
+        return false;
     }
 
     function syncAvatarCompactToggle() {
