@@ -2814,6 +2814,11 @@
     async function askNow() {
         const q = questionInput.value.trim();
         if (!q) return;
+        if (state.pendingAskInputMode === 'voice' && looksLikeBadVoiceTranscript(q)) {
+            state.pendingAskInputMode = 'text';
+            rejectBadVoiceTranscript();
+            return;
+        }
         if (consumeLocalVoiceCommand(q)) return;
         const askInputMode = state.pendingAskInputMode === 'voice' ? 'voice' : 'text';
         state.pendingAskInputMode = 'text';
@@ -3239,7 +3244,10 @@
     function looksLikeBadVoiceTranscript(text) {
         const value = String(text || '').trim();
         if (!value) return true;
+        const plain = value.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
         if (/^(?:do\s+you\s+translate|do\s+not\s+translate|please\s+translate|translate(?:\s+this)?|thank\s+you\s+for\s+watching|thanks\s+for\s+watching|subscribe(?:\s+to\s+my\s+channel)?|you\s+you|hello\s+hello)\s*[\.\?!]*$/i.test(value)) return true;
+        if (/\b(?:do\s+not\s+translate|do\s+you\s+translate|please\s+translate|translate\s+this|foreign\s+language|subtitles?|caption(?:ed|ing)?|thank\s+you\s+for\s+watching|thanks\s+for\s+watching|subscribe\s+to)\b/i.test(plain)) return true;
+        if (plain.split(/\s+/).length <= 5 && /\b(?:translate|translation|subtitle|caption)\b/i.test(plain)) return true;
         const letters = value.match(/\p{L}/gu) || [];
         if (!letters.length) return true;
         const latinLetters = value.match(/\p{Script=Latin}/gu) || [];
@@ -4036,7 +4044,7 @@
                             setAvatarState('listening', 'Listening... 4s');
                             return;
                         }
-                        stopRecorder(peakRms < (autoFollowup ? 0.012 : 0.0035));
+                        stopRecorder(autoFollowup || peakRms < 0.0035);
                         return;
                     }
                     if (heardSpeech && now - lastSpeechAt >= LISTENING_SILENCE_MS) {
@@ -4093,6 +4101,7 @@
     }
 
     micBtn.addEventListener('click', () => {
+        questionInput?.blur();
         wakeNeedsUserGesture = false;
         if (state.recording) {
             stopListening();
@@ -4104,6 +4113,7 @@
     });
 
     avatarMicBtn?.addEventListener('click', () => {
+        questionInput?.blur();
         wakeNeedsUserGesture = false;
         if (state.recording) {
             stopListening();
