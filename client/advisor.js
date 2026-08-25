@@ -3047,7 +3047,22 @@
         updateClearInputButton();
         setAvatarState('idle', 'Ready');
         toast("I couldn't hear that clearly. Please try again in English or type the question.", 'error');
+        scheduleVoiceRetryAfterError();
         scheduleWakeWordListener(900);
+    }
+
+    function scheduleVoiceRetryAfterError(delayMs = 4300) {
+        const shouldRetry = state.voiceConversationActive
+            || Boolean(state.lastVoiceGestureAt && Date.now() - state.lastVoiceGestureAt < 90000)
+            || Boolean(document.body?.classList.contains('advisor-fullscreen'));
+        if (!shouldRetry) return;
+        setTimeout(() => {
+            if (document.hidden || state.recording || state.voicePaused) return;
+            if (state.voicePhase === 'thinking' || state.voicePhase === 'transcribing' || isAdvisorSpeechActive()) return;
+            if (questionInput?.disabled || (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable)) return;
+            state.voiceConversationActive = true;
+            startListening({ autoFollowup: true, noSpeechMs: getConversationListenWindowMs() });
+        }, delayMs);
     }
 
     const WAKE_WORD_RE = /\b(?:dr\.?\s*(?:tari|tarry|terry)|doctor\s*(?:tari|tarry|terry)|dear\s+(?:tari|tarry|terry)|diary|dairy\s+(?:tari|tarry|terry)|tari)\b/i;
@@ -3560,7 +3575,8 @@
                     startServerRecording({ noSpeechMs, autoFollowup });
                     return;
                 }
-                toast('Microphone could not hear clearly. Please tap the mic and try again.', 'error');
+                toast('Microphone could not hear clearly. Listening will restart now.', 'error');
+                scheduleVoiceRetryAfterError();
             };
             recognition.onend = () => {
                 if (submitting) return;
@@ -3715,18 +3731,20 @@
                         toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
                         setAvatarState('idle', 'Ready');
                     } else {
-                        toast(data?.error || 'Could not transcribe audio. Please tap the mic and try again, or type your question.', 'error');
+                        toast(data?.error || 'Could not transcribe audio clearly. Listening will restart now, or you can type your question.', 'error');
                         setAvatarState('idle', 'Ready');
+                        scheduleVoiceRetryAfterError();
                     }
                 } catch (err) {
                     const timedOut = err?.name === 'AbortError';
                     toast(
                         timedOut
-                            ? 'Transcription took too long. Please tap the mic and try again, or type your question.'
-                            : 'Could not transcribe audio. Please type your question or try again.',
+                            ? 'Transcription took too long. Listening will restart now, or you can type your question.'
+                            : 'Could not transcribe audio clearly. Listening will restart now, or you can type your question.',
                         'error'
                     );
                     setAvatarState('idle', 'Ready');
+                    scheduleVoiceRetryAfterError();
                 } finally {
                     if (sttTimeout) clearTimeout(sttTimeout);
                     if (state.currentSttController === sttController) state.currentSttController = null;

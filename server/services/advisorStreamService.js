@@ -1726,9 +1726,57 @@ function _buildHandbookAcademicPolicyReply(question) {
     };
 }
 
+function _buildPureFastIntentReply(q) {
+    if (/^(hi|hello|hey|good\s+(morning|afternoon|evening))(\b|[!.,?\s])/.test(q)) {
+        return {
+            speech_text: 'Hello. I am Dr Tari, your BMU academic advisor. Ask me about programmes, fees, courses, exams, or student policies.',
+            display_markdown: 'Hello. I am Dr Tari, your BMU Academic Advisor. Ask me about programmes, fees, courses, exams, hostel, or student policies.',
+            topic_slug: 'greeting',
+            citations: [],
+            suggested_actions: [
+                { label: 'Show me BMU programmes and requirements', action: 'open_topic:programmes' },
+                { label: 'What are current BMU fees by programme?', action: 'open_topic:fees' }
+            ],
+            follow_up_questions: [
+                'What courses are offered in Medicine and Surgery?',
+                'What is the current BMU tuition fee for Nursing Science?',
+                'What are the exam and grading rules at BMU?'
+            ],
+            needs_escalation: false,
+            confidence: 0.95,
+            _source: 'fast_intent'
+        };
+    }
+
+    if (/(what\s+can\s+you\s+do|help\s+me|how\s+do\s+i\s+use\s+this|how\s+to\s+use)/.test(q)) {
+        return {
+            speech_text: 'I can answer BMU questions on programmes, courses, fees, calendar, hostel, and student rules. You can type, tap follow ups, or use voice.',
+            display_markdown: 'I can help with BMU programmes, course requirements, fees, academic calendar, hostel, and student rules.\n\nYou can type your question, use voice, or tap suggested follow-up prompts.',
+            topic_slug: 'advisor_help',
+            citations: [],
+            suggested_actions: [
+                { label: 'Show me key BMU student handbook topics', action: 'open_topic:conduct' },
+                { label: 'What are BMU admission programme options?', action: 'open_topic:programmes' }
+            ],
+            follow_up_questions: [
+                'What are BMU hostel rules for students?',
+                'What is the BMU academic calendar for this session?'
+            ],
+            needs_escalation: false,
+            confidence: 0.92,
+            _source: 'fast_intent'
+        };
+    }
+
+    return null;
+}
+
 async function _buildFastIntentReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q) return null;
+
+    const pureIntentReply = _buildPureFastIntentReply(q);
+    if (pureIntentReply) return pureIntentReply;
 
     const structuredOfficers = await _getPrincipalOfficersForAnswer();
     const requestedPrincipalOfficerByName = _detectPrincipalOfficerByName(q, structuredOfficers);
@@ -1796,7 +1844,7 @@ async function _buildFastIntentReply(question) {
         return {
             speech_text: 'Hello. I am Dr Tari, your BMU academic advisor. Ask me about programmes, fees, courses, exams, or student policies.',
             display_markdown: 'Hello. I am Dr Tari, your BMU Academic Advisor. Ask me about programmes, fees, courses, exams, hostel, or student policies.',
-            topic_slug: null,
+            topic_slug: 'greeting',
             citations: [],
             suggested_actions: [
                 { label: 'Show me BMU programmes and requirements', action: 'open_topic:programmes' },

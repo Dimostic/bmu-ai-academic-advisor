@@ -4,6 +4,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
 const { query, pool } = require('../../config/db');
+const advisorStreamService = require('../services/advisorStreamService');
 const tts = require('../services/ttsService');
 
 function argValue(name, fallback = null) {
@@ -37,30 +38,72 @@ async function main() {
     const qaType = argValue('qa-type', '');
     const genderArg = String(argValue('gender', 'female')).toLowerCase();
     const dryRun = hasFlag('dry-run');
+    const skipFastIntents = hasFlag('skip-fast-intents');
+    const skipCachedQa = hasFlag('skip-cached-qa');
     const genders = genderArg === 'both' ? ['female', 'male'] : [genderArg === 'male' ? 'male' : 'female'];
 
-    await tts.ensureAudioArchiveSchema();
-
-    const params = [];
-    let where = 'WHERE is_active = 1 AND answer IS NOT NULL AND TRIM(answer) <> \'\'';
-    if (qaType) {
-        where += ' AND qa_type = ?';
-        params.push(qaType);
+    if (!dryRun) {
+        await tts.ensureAudioArchiveSchema();
     }
-    params.push(limit);
 
-    const rows = await query(
-        `SELECT id, question, answer, qa_type, is_verified, usage_count, updated_at
-         FROM cached_qa
-         ${where}
-         ORDER BY is_verified DESC, usage_count DESC, updated_at DESC, id DESC
-         LIMIT ?`,
-        params
-    );
+    let rows = [];
+    if (!skipCachedQa) {
+        const params = [];
+        let where = 'WHERE is_active = 1 AND answer IS NOT NULL AND TRIM(answer) <> \'\'';
+        if (qaType) {
+            where += ' AND qa_type = ?';
+            params.push(qaType);
+        }
+        params.push(limit);
 
-    console.log(`[archiveCommonAnswerAudio] Found ${rows.length} cached answers; genders=${genders.join(', ')}; dryRun=${dryRun}`);
+        rows = await query(
+            `SELECT id, question, answer, qa_type, is_verified, usage_count, updated_at
+             FROM cached_qa
+             ${where}
+             ORDER BY is_verified DESC, usage_count DESC, updated_at DESC, id DESC
+             LIMIT ?`,
+            params
+        );
+    }
+
+    console.log(`[archiveCommonAnswerAudio] Found ${rows.length} cached answers; genders=${genders.join(', ')}; dryRun=${dryRun}; skipCachedQa=${skipCachedQa}`);
     let ready = 0;
     let skipped = 0;
+
+    if (!skipFastIntents && advisorStreamService?._buildFastIntentReply) {
+        const fastIntents = [
+            { prompt: 'hello', sourceId: 'greeting', label: 'Greeting' }
+        ];
+        for (const item of fastIntents) {
+            const reply = await advisorStreamService._buildFastIntentReply(item.prompt);
+            const speech = String(reply?.speech_text || '').trim();
+            if (!speech) {
+                skipped += 1;
+                continue;
+            }
+            for (const gender of genders) {
+                if (dryRun) {
+                    console.log(`[dry-run] fast_intent:${item.sourceId} ${gender} "${item.label}"`);
+                    continue;
+                }
+                const audio = await tts.synthesise(speech, {
+                    gender,
+                    archive: true,
+                    sourceType: 'fast_intent',
+                    sourceId: reply.topic_slug || item.sourceId
+                });
+                if (audio?.audioUrl) {
+                    ready += 1;
+                    const state = audio.fromCache ? 'hit' : 'new';
+                    const archiveState = audio.archived ? 'archived' : 'cached';
+                    console.log(`[audio-ready] fast_intent:${reply.topic_slug || item.sourceId} ${gender} ${audio.provider || 'tts'} ${archiveState}/${state} ${audio.audioUrl}`);
+                } else {
+                    skipped += 1;
+                    console.log(`[skip] fast_intent:${item.sourceId} ${gender} provider=${audio?.provider || 'none'} error=${audio?.error || ''}`);
+                }
+            }
+        }
+    }
 
     for (const row of rows) {
         const speech = speechFromAnswer(row.answer);

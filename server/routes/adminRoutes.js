@@ -2502,6 +2502,40 @@ router.post('/audio-archive/prewarm', authenticateToken, requireAdmin, async (re
         `, [limit]);
 
         const results = [];
+        const fastIntents = [
+            { prompt: 'hello', sourceId: 'greeting', label: 'Greeting' }
+        ];
+        for (const item of fastIntents) {
+            const reply = await advisorStreamService._buildFastIntentReply(item.prompt);
+            const speech = String(reply?.speech_text || '').trim();
+            if (!speech) {
+                results.push({ sourceType: 'fast_intent', sourceId: item.sourceId, label: item.label, ok: false, error: 'empty speech text' });
+                continue;
+            }
+            for (const gender of genders) {
+                try {
+                    const audio = await ttsService.synthesise(speech, {
+                        gender,
+                        archive: true,
+                        sourceType: 'fast_intent',
+                        sourceId: reply.topic_slug || item.sourceId
+                    });
+                    results.push({
+                        sourceType: 'fast_intent',
+                        sourceId: reply.topic_slug || item.sourceId,
+                        label: item.label,
+                        gender,
+                        ok: Boolean(audio?.audioUrl),
+                        provider: audio?.provider || 'none',
+                        fromCache: Boolean(audio?.fromCache),
+                        audioUrl: audio?.audioUrl || null,
+                        error: audio?.error || null
+                    });
+                } catch (error) {
+                    results.push({ sourceType: 'fast_intent', sourceId: item.sourceId, label: item.label, gender, ok: false, error: error.message });
+                }
+            }
+        }
         for (const row of rows) {
             const speech = _speechFromCachedAnswer(row.answer);
             if (!speech) {
