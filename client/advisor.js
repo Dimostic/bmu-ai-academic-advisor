@@ -148,6 +148,11 @@
         topMenuCollapsed: (() => {
             let saved = null;
             try { saved = localStorage.getItem('bmu_advisor_top_menu_collapsed'); } catch (_) { saved = null; }
+            if (
+                window.matchMedia('(max-width: 1024px)').matches
+                && window.matchMedia('(orientation: landscape)').matches
+                && window.matchMedia('(pointer: coarse)').matches
+            ) return true;
             if (saved === '1') return true;
             if (saved === '0') return false;
             return window.matchMedia('(max-width: 1024px)').matches;
@@ -217,6 +222,12 @@
 
     function isMobileLayout() {
         return window.matchMedia('(max-width: 1024px)').matches;
+    }
+
+    function isTouchLandscapeMobileLayout() {
+        return window.matchMedia('(max-width: 1024px)').matches
+            && window.matchMedia('(orientation: landscape)').matches
+            && window.matchMedia('(pointer: coarse)').matches;
     }
 
     function shouldUseCompactAvatar() {
@@ -4229,12 +4240,17 @@
     syncTopMenuLayout();
     topMenuToggleBtn?.addEventListener('click', () => {
         state.topMenuCollapsed = !state.topMenuCollapsed;
-        try { localStorage.setItem('bmu_advisor_top_menu_collapsed', state.topMenuCollapsed ? '1' : '0'); } catch (_) {}
+        if (!isTouchLandscapeMobileLayout()) {
+            try { localStorage.setItem('bmu_advisor_top_menu_collapsed', state.topMenuCollapsed ? '1' : '0'); } catch (_) {}
+        }
         syncTopMenuLayout();
     });
 
     window.addEventListener('resize', () => {
         if (advisorFullView) return;
+        if (isTouchLandscapeMobileLayout()) {
+            state.topMenuCollapsed = true;
+        }
         if (state.token) {
             if (isMobileLayout()) {
                 historyPane.classList.remove('hidden');

@@ -1040,6 +1040,15 @@ body.advisor-full-view .top-menu-toggle {
         flex: 1 1 100%;
         justify-content: flex-start;
     }
+    .top-bar.top-menu-expanded .top-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .top-bar.top-menu-expanded .top-actions > *:not(.icon-btn) {
+        width: 100%;
+        min-height: 36px;
+    }
     .top-bar .top-actions .icon-btn {
         flex: 0 0 38px;
     }
@@ -1405,19 +1414,31 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
 
     body:not(.advisor-full-view) .top-actions {
         right: 8px;
-        width: min(360px, calc(100vw - 16px));
+        width: min(340px, calc(100vw - 16px));
         max-height: calc(var(--app-viewport-h, 100vh) - var(--mobile-topbar-h, 56px) - 12px);
         margin-left: 0;
         gap: 8px;
         overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
     }
 
     body:not(.advisor-full-view) .top-bar.top-menu-expanded .top-actions > * {
         display: flex;
+        flex: 0 0 auto;
+        width: 100%;
+        min-height: 36px;
+        align-items: center;
+        justify-content: flex-start;
     }
 
     body:not(.advisor-full-view) .top-bar.top-menu-expanded .top-actions .icon-btn {
-        flex: 0 0 38px;
+        width: 38px;
+        min-width: 38px;
+        height: 38px;
+        align-self: flex-start;
+        justify-content: center;
     }
 
     body:not(.advisor-full-view) .advisor-grid {
