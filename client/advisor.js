@@ -73,8 +73,9 @@
     const historyList   = $('historyList');
     const advisorStatus = $('avatarStatus');
     const advisorGrid   = document.querySelector('.advisor-grid');
-    const topicsBar     = document.querySelector('.topics-bar');
-    const topicsCollapseBtn = $('topicsCollapseBtn');
+    const topBar        = document.querySelector('.top-bar');
+    const topActions    = $('topActions');
+    const topMenuToggleBtn = $('topMenuToggleBtn');
     const avatarPane    = document.querySelector('.avatar-pane');
     const avatarStage   = $('avatarStage');
     const avatarMicBtn  = $('avatarMicBtn');
@@ -143,8 +144,12 @@
             }
         })(),
         topics: [],
-        topicsCollapsed: (() => {
-            try { return localStorage.getItem('bmu_advisor_topics_collapsed') === '1'; } catch (_) { return false; }
+        topMenuCollapsed: (() => {
+            let saved = null;
+            try { saved = localStorage.getItem('bmu_advisor_top_menu_collapsed'); } catch (_) { saved = null; }
+            if (saved === '1') return true;
+            if (saved === '0') return false;
+            return window.matchMedia('(max-width: 720px)').matches;
         })(),
         token: _isGuestDemo ? null : (sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || null),
         recording: false,
@@ -408,19 +413,21 @@
         advisorGrid.classList.toggle('history-open', historyOpen);
     }
 
-    function syncTopicsLayout() {
-        if (!topicsBar) return;
-        const collapsed = !advisorFullView && state.topicsCollapsed;
-        topicsBar.classList.toggle('is-collapsed', collapsed);
-        advisorGrid?.classList.toggle('topics-collapsed', collapsed);
-        if (!topicsCollapseBtn) return;
-        topicsCollapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        topicsCollapseBtn.setAttribute('aria-label', collapsed ? 'Expand topics' : 'Collapse topics');
-        topicsCollapseBtn.title = collapsed ? 'Expand topics' : 'Collapse topics';
-        const icon = topicsCollapseBtn.querySelector('i');
+    function syncTopMenuLayout() {
+        if (!topBar || !topActions) return;
+        const collapsed = !advisorFullView && state.topMenuCollapsed;
+        topBar.classList.toggle('top-menu-collapsed', collapsed);
+        topBar.classList.toggle('top-menu-expanded', !collapsed);
+        advisorGrid?.classList.toggle('top-menu-collapsed', collapsed);
+        topActions.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+        if (!topMenuToggleBtn) return;
+        topMenuToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        topMenuToggleBtn.setAttribute('aria-label', collapsed ? 'Open menu' : 'Close menu');
+        topMenuToggleBtn.title = collapsed ? 'Open menu' : 'Close menu';
+        const icon = topMenuToggleBtn.querySelector('i');
         if (icon) {
-            icon.classList.toggle('fa-chevron-up', !collapsed);
-            icon.classList.toggle('fa-chevron-down', collapsed);
+            icon.classList.toggle('fa-bars', collapsed);
+            icon.classList.toggle('fa-xmark', !collapsed);
         }
     }
 
@@ -4028,24 +4035,25 @@
         }
     }
     syncHistoryLayout();
-    syncTopicsLayout();
-    topicsCollapseBtn?.addEventListener('click', () => {
-        state.topicsCollapsed = !state.topicsCollapsed;
-        try { localStorage.setItem('bmu_advisor_topics_collapsed', state.topicsCollapsed ? '1' : '0'); } catch (_) {}
-        syncTopicsLayout();
+    syncTopMenuLayout();
+    topMenuToggleBtn?.addEventListener('click', () => {
+        state.topMenuCollapsed = !state.topMenuCollapsed;
+        try { localStorage.setItem('bmu_advisor_top_menu_collapsed', state.topMenuCollapsed ? '1' : '0'); } catch (_) {}
+        syncTopMenuLayout();
     });
 
     window.addEventListener('resize', () => {
-        if (!state.token) return;
         if (advisorFullView) return;
-        if (isMobileLayout()) {
-            historyPane.classList.remove('hidden');
-            historyPane.classList.remove('is-open');
-        } else {
-            historyPane.classList.toggle('hidden', !state.historyDesktopOpen);
+        if (state.token) {
+            if (isMobileLayout()) {
+                historyPane.classList.remove('hidden');
+                historyPane.classList.remove('is-open');
+            } else {
+                historyPane.classList.toggle('hidden', !state.historyDesktopOpen);
+            }
+            syncHistoryLayout();
         }
-        syncHistoryLayout();
-        syncTopicsLayout();
+        syncTopMenuLayout();
     });
 
     // ---------- Form ----------

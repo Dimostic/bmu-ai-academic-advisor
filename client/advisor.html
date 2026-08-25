@@ -53,7 +53,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260825-normal-avatar-prominent" />
+    <link rel="stylesheet" href="/advisor.css?v=20260825-top-menu-avatar-fill" />
     <link rel="stylesheet" href="/pages.css?v=20260815-thinking-label" />
 </head>
 <body>
@@ -65,7 +65,10 @@
                 <small>Bayelsa Medical University</small>
             </div>
         </a>
-        <nav class="top-actions">
+        <button type="button" id="topMenuToggleBtn" class="top-menu-toggle" title="Menu" aria-label="Menu" aria-expanded="true" aria-controls="topActions">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+        <nav class="top-actions" id="topActions">
             <button id="advisorViewToggleBtn" class="btn btn-ghost" type="button" title="Open full page advisor view">
                 <i class="fa-solid fa-expand"></i> Full page
             </button>
@@ -168,9 +171,6 @@
                 <div class="topics-scroller" id="topicsScroller">
                     <!-- topic pills injected here -->
                 </div>
-                <button type="button" id="topicsCollapseBtn" class="topics-collapse-btn" title="Collapse topics" aria-label="Collapse topics" aria-expanded="true">
-                    <i class="fa-solid fa-chevron-up"></i>
-                </button>
             </div>
 
             <!-- Welcome / transcript -->
@@ -323,7 +323,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260824-academic-male-avatar2" defer></script>
-    <script src="/advisor.js?v=20260825-normal-avatar-prominent" defer></script>
+    <script src="/advisor.js?v=20260825-top-menu-avatar-fill" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>
