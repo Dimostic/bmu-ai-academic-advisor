@@ -8,6 +8,7 @@ uploads/documents/*
 !uploads/documents/.gitkeep
 logs/
 vector_store/
+server/storage/advisor-audio-cache/
 .DS_Store
 Thumbs.db
 .vscode/

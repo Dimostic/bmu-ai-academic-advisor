@@ -30,7 +30,8 @@
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js",
-    "seed:admission-cycle-facts": "node server/scripts/seedAdmissionCycleFacts.js"
+    "seed:admission-cycle-facts": "node server/scripts/seedAdmissionCycleFacts.js",
+    "archive:common-audio": "node server/scripts/archiveCommonAnswerAudio.js"
   },
   "keywords": [
     "ai",

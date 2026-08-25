@@ -1047,6 +1047,26 @@ app.use('/uploads/audio',
         }
     }));
 
+// Serve archived audio for common/authoritative advisor answers. These files
+// are generated once by TTS, stored locally, and reused for repeat questions.
+app.use('/advisor-audio-cache',
+    express.static(process.env.TTS_AUDIO_ARCHIVE_DIR || path.join(__dirname, 'storage/advisor-audio-cache'), {
+        maxAge: '30d',
+        immutable: true,
+        setHeaders(res, filePath) {
+            if (filePath.endsWith('.mp3')) {
+                res.setHeader('Content-Type', 'audio/mpeg');
+            }
+            if (filePath.endsWith('.wav')) {
+                res.setHeader('Content-Type', 'audio/wav');
+            }
+            if (filePath.endsWith('.ogg')) {
+                res.setHeader('Content-Type', 'audio/ogg');
+            }
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+        }
+    }));
+
 // Ensure PWA assets are served (avoid SPA fallback edge cases)
 app.get('/sw.js', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

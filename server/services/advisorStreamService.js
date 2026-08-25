@@ -2149,7 +2149,12 @@ async function askStream({
         let audio = { provider: 'none', useBrowserFallback: false };
         if (voiceEnabled !== false && conversation.voice_enabled) {
             try {
-                audio = await tts.synthesise(fastIntentReply.speech_text, { gender: advisorGender });
+                audio = await tts.synthesise(fastIntentReply.speech_text, {
+                    gender: advisorGender,
+                    archive: true,
+                    sourceType: 'fast_intent',
+                    sourceId: fastIntentReply.topic_slug || null
+                });
                 if (audio.audioUrl) {
                     send('audio', {
                         provider: audio.provider,
@@ -2253,7 +2258,12 @@ async function askStream({
                 let audio = { provider: 'none' };
                 if (voiceEnabled !== false && conversation.voice_enabled) {
                     try {
-                        audio = await tts.synthesise(cachedSpeech, { gender: advisorGender });
+                        audio = await tts.synthesise(cachedSpeech, {
+                            gender: advisorGender,
+                            archive: true,
+                            sourceType: 'cached_qa',
+                            sourceId: cached.cachedQaId || null
+                        });
                         if (audio.audioUrl) {
                             send('audio', {
                                 provider: audio.provider,
@@ -2353,7 +2363,12 @@ async function askStream({
         let audio = { provider: 'none' };
         if (voiceEnabled !== false && conversation.voice_enabled) {
             try {
-                audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender });
+                audio = await tts.synthesise(parsed.speech_text, {
+                    gender: advisorGender,
+                    archive: true,
+                    sourceType: 'principal_officers_reference',
+                    sourceId: requestedPrincipalOfficerByName || requestedPrincipalOfficerRole || 'all'
+                });
                 if (audio.audioUrl) {
                     send('audio', {
                         provider: audio.provider,
@@ -2421,7 +2436,12 @@ async function askStream({
         let audio = { provider: 'none' };
         if (voiceEnabled !== false && conversation.voice_enabled) {
             try {
-                audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender });
+                audio = await tts.synthesise(parsed.speech_text, {
+                    gender: advisorGender,
+                    archive: true,
+                    sourceType: 'governor_visitor_reference',
+                    sourceId: 'visitor'
+                });
                 if (audio.audioUrl) {
                     send('audio', {
                         provider: audio.provider,
@@ -2505,7 +2525,12 @@ async function askStream({
         let audio = { provider: 'none' };
         if (voiceEnabled !== false && conversation.voice_enabled) {
             try {
-                audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender });
+                audio = await tts.synthesise(parsed.speech_text, {
+                    gender: advisorGender,
+                    archive: true,
+                    sourceType: 'principal_officers_reference',
+                    sourceId: 'office_holder_identity'
+                });
                 if (audio.audioUrl) {
                     send('audio', {
                         provider: audio.provider,

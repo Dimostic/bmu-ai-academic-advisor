@@ -6,21 +6,30 @@
  *   2. Browser `speechSynthesis` — final fallback. The server cannot synthesise
  *      this; we simply tell the client to do it locally.
  *
- * Performance: results are cached in the `tts_audio_cache` table by a
- * (text_hash, voice_id, audio_speed) tuple. TTSMaker's hosted audio URLs are
- * valid for ~24h, so repeat questions reuse the existing URL until it expires.
+ * Performance: common/authoritative responses can be archived as local MP3s,
+ * then reused permanently. Other responses still use the short-lived
+ * `tts_audio_cache` table because TTSMaker's hosted audio URLs expire.
  *
  * Lip-sync is computed client-side from the audio waveform using the Web Audio
  * API, so no provider-specific viseme metadata is required.
  */
 const axios = require('axios');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { query } = require('../../config/db');
 
 const TTSMAKER_BASE = 'https://api.ttsmaker.com/v2';
 const PROVIDER      = (process.env.TTS_PROVIDER || 'ttsmaker').toLowerCase();
 const ENABLED       = process.env.ENABLE_VOICE_RESPONSES !== 'false';
 const CACHE_SAFETY_MS = 5 * 60 * 1000; // treat URLs that expire in <5 min as miss
+const AUDIO_ARCHIVE_ENABLED = process.env.TTS_AUDIO_ARCHIVE_ENABLED !== 'false';
+const AUDIO_ARCHIVE_DIR = process.env.TTS_AUDIO_ARCHIVE_DIR ||
+    path.join(__dirname, '../storage/advisor-audio-cache');
+const AUDIO_ARCHIVE_PUBLIC_BASE = (process.env.TTS_AUDIO_ARCHIVE_PUBLIC_BASE || '/advisor-audio-cache')
+    .replace(/\/+$/, '');
+const AUDIO_ARCHIVE_MAX_BYTES = parseInt(process.env.TTS_AUDIO_ARCHIVE_MAX_BYTES || String(12 * 1024 * 1024), 10);
+let archiveSchemaReady = false;
 
 function normalizeTextForTts(input) {
     let s = String(input || '').trim();
@@ -74,6 +83,158 @@ function _hash(text, voiceId, speed) {
         .createHash('sha256')
         .update(`${norm}|${voiceId}|${speed.toFixed(2)}`)
         .digest('hex');
+}
+
+function shouldArchive(opts = {}) {
+    if (!AUDIO_ARCHIVE_ENABLED) return false;
+    if (opts.archive === false) return false;
+    if (opts.archive === true) return true;
+    return ['cached_qa', 'fast_intent', 'principal_officers_reference', 'governor_visitor_reference']
+        .includes(String(opts.sourceType || ''));
+}
+
+function _archiveHash(text, provider, voiceId, speed, gender) {
+    const norm = String(text).trim().toLowerCase().replace(/\s+/g, ' ');
+    return crypto
+        .createHash('sha256')
+        .update(`${norm}|${provider}|${voiceId}|${speed.toFixed(2)}|${gender}`)
+        .digest('hex');
+}
+
+async function ensureAudioArchiveSchema() {
+    if (archiveSchemaReady) return;
+    await query(`
+        CREATE TABLE IF NOT EXISTS advisor_audio_archives (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            cache_key CHAR(64) NOT NULL,
+            text_hash CHAR(64) NOT NULL,
+            speech_text LONGTEXT NOT NULL,
+            text_preview VARCHAR(255) NULL,
+            source_type VARCHAR(64) NULL,
+            source_id VARCHAR(128) NULL,
+            provider VARCHAR(64) NOT NULL,
+            voice_id INT NOT NULL,
+            audio_speed DECIMAL(4,2) NOT NULL,
+            gender VARCHAR(16) NOT NULL DEFAULT 'female',
+            audio_url VARCHAR(500) NOT NULL,
+            file_path VARCHAR(1000) NOT NULL,
+            mime_type VARCHAR(80) NOT NULL DEFAULT 'audio/mpeg',
+            bytes INT UNSIGNED NULL,
+            hit_count INT UNSIGNED NOT NULL DEFAULT 0,
+            last_hit_at TIMESTAMP NULL DEFAULT NULL,
+            status VARCHAR(32) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_audio_archive_cache_key (cache_key),
+            KEY idx_audio_archive_text_hash (text_hash),
+            KEY idx_audio_archive_source (source_type, source_id),
+            KEY idx_audio_archive_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `, []);
+    archiveSchemaReady = true;
+}
+
+async function _readAudioArchive({ text, provider, voiceId, speed, gender }) {
+    try {
+        await ensureAudioArchiveSchema();
+        const textHash = _hash(text, voiceId, speed);
+        const cacheKey = _archiveHash(text, provider, voiceId, speed, gender);
+        const rows = await query(
+            `SELECT audio_url, provider
+             FROM advisor_audio_archives
+             WHERE cache_key = ? AND text_hash = ? AND status = 'active'
+             LIMIT 1`,
+            [cacheKey, textHash]
+        );
+        if (!rows[0]?.audio_url) return null;
+        query(
+            `UPDATE advisor_audio_archives
+             SET hit_count = hit_count + 1, last_hit_at = NOW()
+             WHERE cache_key = ?`,
+            [cacheKey]
+        ).catch(() => { /* ignore */ });
+        return rows[0];
+    } catch (err) {
+        console.warn('[ttsService] audio archive read failed:', err.message);
+        return null;
+    }
+}
+
+function _extensionFromContentType(contentType, fallbackUrl) {
+    const ct = String(contentType || '').toLowerCase();
+    if (ct.includes('wav')) return 'wav';
+    if (ct.includes('ogg')) return 'ogg';
+    if (ct.includes('mpeg') || ct.includes('mp3')) return 'mp3';
+    const ext = path.extname(new URL(fallbackUrl).pathname).replace('.', '').toLowerCase();
+    return ['mp3', 'wav', 'ogg'].includes(ext) ? ext : 'mp3';
+}
+
+async function _writeAudioArchive({ text, provider, voiceId, speed, gender, remoteUrl, sourceType, sourceId }) {
+    if (!remoteUrl || !AUDIO_ARCHIVE_ENABLED) return null;
+    try {
+        await ensureAudioArchiveSchema();
+        const cacheKey = _archiveHash(text, provider, voiceId, speed, gender);
+        const textHash = _hash(text, voiceId, speed);
+        await fs.promises.mkdir(AUDIO_ARCHIVE_DIR, { recursive: true });
+
+        const response = await axios.get(remoteUrl, {
+            responseType: 'arraybuffer',
+            timeout: 30_000,
+            maxContentLength: AUDIO_ARCHIVE_MAX_BYTES,
+            headers: { accept: 'audio/*,*/*;q=0.8' }
+        });
+        const contentType = String(response.headers?.['content-type'] || 'audio/mpeg').split(';')[0].trim();
+        const buffer = Buffer.from(response.data || []);
+        if (buffer.length < 256) throw new Error('downloaded audio was empty');
+        if (!/^audio\//i.test(contentType) && !/\.mp3(?:$|\?)/i.test(remoteUrl)) {
+            throw new Error(`unexpected audio content type: ${contentType || 'unknown'}`);
+        }
+
+        const ext = _extensionFromContentType(contentType, remoteUrl);
+        const fileName = `${cacheKey}.${ext}`;
+        const filePath = path.join(AUDIO_ARCHIVE_DIR, fileName);
+        await fs.promises.writeFile(filePath, buffer);
+        const audioUrl = `${AUDIO_ARCHIVE_PUBLIC_BASE}/${fileName}`;
+
+        await query(
+            `INSERT INTO advisor_audio_archives
+             (cache_key, text_hash, speech_text, text_preview, source_type, source_id,
+              provider, voice_id, audio_speed, gender, audio_url, file_path, mime_type, bytes, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+             ON DUPLICATE KEY UPDATE
+                speech_text = VALUES(speech_text),
+                text_preview = VALUES(text_preview),
+                source_type = COALESCE(VALUES(source_type), source_type),
+                source_id = COALESCE(VALUES(source_id), source_id),
+                provider = VALUES(provider),
+                audio_url = VALUES(audio_url),
+                file_path = VALUES(file_path),
+                mime_type = VALUES(mime_type),
+                bytes = VALUES(bytes),
+                status = 'active'`,
+            [
+                cacheKey,
+                textHash,
+                text,
+                String(text).slice(0, 240),
+                sourceType || null,
+                sourceId == null ? null : String(sourceId),
+                provider,
+                voiceId,
+                speed,
+                gender,
+                audioUrl,
+                filePath,
+                contentType || 'audio/mpeg',
+                buffer.length
+            ]
+        );
+        return { provider: `${provider}_archive`, audioUrl, fromCache: false, archived: true };
+    } catch (err) {
+        console.warn('[ttsService] audio archive write failed:', err.message);
+        return null;
+    }
 }
 
 async function _readCache(text, voiceId, speed) {
@@ -169,10 +330,50 @@ async function synthesise(text, opts = {}) {
 
     const voiceId = getVoiceId(gender);
     const speed = getSpeed();
+    const archiveWanted = shouldArchive(opts);
+
+    if (archiveWanted) {
+        const archived = await _readAudioArchive({
+            text: normalizedText,
+            provider: 'ttsmaker',
+            voiceId,
+            speed,
+            gender
+        });
+        if (archived?.audio_url) {
+            return {
+                provider: archived.provider || 'ttsmaker_archive',
+                audioUrl: archived.audio_url,
+                fromCache: true,
+                archived: true
+            };
+        }
+    }
 
     // 1. Cache lookup
     const cached = await _readCache(normalizedText, voiceId, speed);
     if (cached?.audio_url) {
+        if (archiveWanted) {
+            const archive = await _writeAudioArchive({
+                text: normalizedText,
+                provider: 'ttsmaker',
+                voiceId,
+                speed,
+                gender,
+                remoteUrl: cached.audio_url || cached.backup_url,
+                sourceType: opts.sourceType || null,
+                sourceId: opts.sourceId || null
+            });
+            if (archive?.audioUrl) {
+                return {
+                    provider: archive.provider,
+                    audioUrl: archive.audioUrl,
+                    audioBackupUrl: cached.audio_url || cached.backup_url || null,
+                    fromCache: true,
+                    archived: true
+                };
+            }
+        }
         return {
             provider: cached.provider || 'ttsmaker',
             audioUrl: cached.audio_url,
@@ -207,6 +408,19 @@ async function synthesise(text, opts = {}) {
         );
 
         if (data?.error_code === 0 && data?.audio_download_url) {
+            const archive = archiveWanted
+                ? await _writeAudioArchive({
+                    text: normalizedText,
+                    provider: 'ttsmaker',
+                    voiceId,
+                    speed,
+                    gender,
+                    remoteUrl: data.audio_download_url || data.audio_download_backup_url,
+                    sourceType: opts.sourceType || null,
+                    sourceId: opts.sourceId || null
+                })
+                : null;
+
             await _writeCache({
                 text: normalizedText,
                 voiceId,
@@ -216,6 +430,17 @@ async function synthesise(text, opts = {}) {
                 provider: 'ttsmaker',
                 expiresAtTs: data.audio_file_expiration_timestamp || null
             });
+            if (archive?.audioUrl) {
+                return {
+                    provider: archive.provider,
+                    audioUrl: archive.audioUrl,
+                    audioBackupUrl: data.audio_download_url || data.audio_download_backup_url || null,
+                    expiresAt: null,
+                    quota: data.account_status || null,
+                    fromCache: false,
+                    archived: true
+                };
+            }
             return {
                 provider: 'ttsmaker',
                 audioUrl: data.audio_download_url,
@@ -259,5 +484,7 @@ async function checkQuota() {
 module.exports = {
     synthesise,
     checkQuota,
+    ensureAudioArchiveSchema,
+    normalizeTextForTts,
     isConfigured: isTtsmakerConfigured
 };
