@@ -124,7 +124,7 @@
     const SERVER_STT_TRANSCRIPT_PREVIEW_MS = 1800;
     const CONVERSATION_LISTEN_MS = 30000;
     const COMPACT_CONVERSATION_LISTEN_MS = 20000;
-    const MOBILE_AUTO_FOLLOWUP_LISTEN_MS = 12000;
+    const MOBILE_AUTO_FOLLOWUP_LISTEN_MS = 30000;
     const SERVER_STT_MAX_RECORDING_MS = 45000;
     const SERVER_STT_UPLOAD_TIMEOUT_MS = 25000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
@@ -3392,10 +3392,6 @@
                     recognition = null;
                     return;
                 }
-                if (autoFollowup && !looksLikeIntentionalAutoFollowup(normalized)) {
-                    cancelListening('Ready');
-                    return;
-                }
                 if (looksLikeBadVoiceTranscript(normalized)) {
                     submitting = true;
                     clearSilenceTimer();
@@ -3699,11 +3695,6 @@
                     if (handleAuthFailure(res.status, data)) return;
                     if (data?.success && data.text) {
                         const normalized = normalizeVoiceTranscript(data.text);
-                        if (autoFollowup && !looksLikeIntentionalAutoFollowup(normalized)) {
-                            setAvatarState('idle', 'Ready');
-                            scheduleWakeWordListener(900);
-                            return;
-                        }
                         if (data.transcriptOk === false || looksLikeBadVoiceTranscript(normalized)) {
                             rejectBadVoiceTranscript();
                             return;
@@ -3771,13 +3762,13 @@
                     if (!heardSpeech) {
                         noiseFloor = (noiseFloor * 0.92) + (Math.min(rms, 0.035) * 0.08);
                     }
-                    const thresholdFactor = autoFollowup ? 2.15 : 1.8;
-                    const speechThreshold = Math.max(autoFollowup ? 0.012 : 0.006, Math.min(0.032, noiseFloor * thresholdFactor));
-                    const softSpeechThreshold = Math.max(autoFollowup ? 0.008 : 0.0045, speechThreshold * (autoFollowup ? 0.72 : 0.62));
+                    const thresholdFactor = autoFollowup ? 1.75 : 1.8;
+                    const speechThreshold = Math.max(0.006, Math.min(0.032, noiseFloor * thresholdFactor));
+                    const softSpeechThreshold = Math.max(0.0045, speechThreshold * 0.62);
                     if (rms > speechThreshold) {
                         if (!speechCandidateAt) speechCandidateAt = now;
                         const sustainedSpeechMs = now - speechCandidateAt;
-                        if (!autoFollowup || sustainedSpeechMs >= 420) {
+                        if (!autoFollowup || sustainedSpeechMs >= 220) {
                             heardSpeech = true;
                             lastSpeechAt = now;
                             setAvatarState('listening', 'Listening');

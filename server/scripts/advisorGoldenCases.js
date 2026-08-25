@@ -148,6 +148,12 @@ module.exports = [
         mustContain: ['medicine', 'college of medicine bmu prospectus-new.docx']
     },
     {
+        name: 'programme-overview-radiography',
+        question: 'Tell me about Radiography',
+        mustContain: ['radiography and radiation science', 'admission requirements', 'fees'],
+        mustNotContain: ['matching bmu course entries', 'bmu-rad 214']
+    },
+    {
         name: 'mbbs-admission-requirements',
         question: 'What are the admission requirements for MBBS?',
         mustContain: ['medicine and surgery', 'physics', 'chemistry', 'biology', 'one sitting']

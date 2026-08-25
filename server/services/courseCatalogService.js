@@ -654,9 +654,12 @@ async function buildCourseLookupReply(question) {
     const semester = detectSemester(q);
     const courseCode = detectCourseCode(q);
     const titlePhrase = detectCourseTitlePhrase(q);
-    const isLikelyCourseLookup = /\b(course|subject|unit|units|credit|semester|level|what is|tell me about|show|find)\b/i.test(q);
+    const isLikelyCourseLookup = courseCode
+        ? /\b(course|subject|unit|units|credit|semester|level|what is|tell me about|show|find)\b/i.test(q)
+        : /\b(course|courses|subject|subjects|unit|units|credit|semester|level|show|find)\b/i.test(q);
 
     if (!courseCode && !titlePhrase) return null;
+    if (!courseCode && !isLikelyCourseLookup) return null;
     if (!isLikelyCourseLookup && !programme && !level) return null;
 
     const catalog = await loadCatalog();

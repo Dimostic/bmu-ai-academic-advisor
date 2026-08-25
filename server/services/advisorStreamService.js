@@ -402,6 +402,92 @@ function _isAboutBmuOverviewQuestion(question) {
         || /^(?:about|overview\s+of)\s+(?:bmu|bayelsa\s+medical\s+university)\??$/i.test(q);
 }
 
+const PROGRAMME_OVERVIEW_LABELS = {
+    'MEDICINE AND SURGERY': 'Medicine and Surgery (MBBS)',
+    'DENTISTRY': 'Dentistry',
+    'NURSING SCIENCE': 'Nursing Science',
+    'MEDICAL LABORATORY SCIENCE': 'Medical Laboratory Science',
+    'PHARMACY': 'Pharmacy',
+    'OPTOMETRY': 'Optometry',
+    'PHYSIOTHERAPY': 'Physiotherapy',
+    'RADIOGRAPHY': 'Radiography and Radiation Science',
+    'COMMUNITY HEALTH': 'Community Health Science',
+    'PUBLIC HEALTH': 'Public Health',
+    'HEALTH INFORMATION MANAGEMENT': 'Health Information Management',
+    'HEALTH CARE ADMINISTRATION & HOSPITAL MANAGEMENT': 'Health Care Administration and Hospital Management',
+    'HUMAN NUTRITION & DIETETICS': 'Human Nutrition and Dietetics',
+    'DENTAL TECHNOLOGY': 'Dental Technology',
+    'HUMAN ANATOMY': 'Human Anatomy',
+    'HUMAN PHYSIOLOGY': 'Human Physiology',
+    'BIOCHEMISTRY': 'Biochemistry',
+    'BIOLOGY': 'Biology',
+    'CHEMISTRY': 'Chemistry',
+    'COMPUTER SCIENCE': 'Computer Science',
+    'MATHEMATICS': 'Mathematics',
+    'MICROBIOLOGY': 'Microbiology',
+    'PHYSICS': 'Physics with Electronics',
+    'STATISTICS': 'Statistics'
+};
+
+function _formatDetectedProgramme(programme) {
+    return PROGRAMME_OVERVIEW_LABELS[programme] || String(programme || '')
+        .toLowerCase()
+        .replace(/\b\w/g, ch => ch.toUpperCase());
+}
+
+function _isProgrammeOverviewQuestion(question) {
+    const q = String(question || '').trim();
+    if (!q) return false;
+    if (/\b(course|courses|curriculum|subjects?|unit|units|credit|semester|level|fee|fees|tuition|admission|requirement|requirements|cut\s*off|cutoff|graduation|duration|how\s+many|list|show)\b/i.test(q)) {
+        return false;
+    }
+    return /^(?:tell\s+me\s+about|what\s+is|describe|introduce|give\s+me\s+an\s+overview\s+of|about)\s+.+/i.test(q);
+}
+
+async function _buildProgrammeOverviewReply(question) {
+    if (!_isProgrammeOverviewQuestion(question)) return null;
+    const programme = courseCatalogService._detectProgramme
+        ? courseCatalogService._detectProgramme(question)
+        : null;
+    if (!programme) return null;
+
+    const display = _formatDetectedProgramme(programme);
+    let levels = [];
+    let sourceTitles = [];
+    try {
+        const rows = await courseCatalogService.loadCatalog();
+        const normalizedProgramme = String(programme || '').toUpperCase();
+        const matched = rows.filter(row => {
+            const rowProgramme = String(row.programme || '').toUpperCase();
+            return rowProgramme.includes(normalizedProgramme) || normalizedProgramme.includes(rowProgramme);
+        });
+        levels = [...new Set(matched.map(row => row.level).filter(Boolean))]
+            .sort((a, b) => Number(a) - Number(b));
+        sourceTitles = [...new Set(matched.map(row => row.sourceTitle).filter(Boolean))];
+    } catch (_) { /* catalogue detail is optional for an overview */ }
+
+    const levelText = levels.length
+        ? ` The current BMU course catalogue has structured course entries for ${levels.map(level => `${level} level`).join(', ')}.`
+        : '';
+    const sourceList = sourceTitles.length ? sourceTitles : ['BMU programme/course records'];
+
+    return {
+        speech_text: `${display} is one of the programmes represented in BMU's academic advisor knowledge base. I can help with its admission requirements, fees, graduation requirements, and level-by-level course lists when you ask for those details specifically.`,
+        display_markdown: `**${display}** is represented in the BMU Academic Advisor knowledge base.${levelText}\n\nFor accuracy, ask the specific detail you need, such as:\n\n- Admission requirements for ${display}\n- Current fees for ${display}\n- Graduation requirements for ${display}\n- Courses for ${display} at a particular level and semester`,
+        topic_slug: 'programmes',
+        citations: sourceList.map(title => ({ title, source: `${display} programme/course records` })),
+        suggested_actions: [],
+        follow_up_questions: [
+            `What are the admission requirements for ${display}?`,
+            `Show current fees for ${display}`,
+            `Show courses for ${display} by level`
+        ],
+        needs_escalation: false,
+        confidence: 0.9,
+        _source: 'programme_overview'
+    };
+}
+
 function _isDepartmentHeadIdentityQuestion(question) {
     const q = String(question || '').trim().toLowerCase();
     return /(who\s+heads|who\s+leads|who\s+is\s+(?:the\s+)?head|name\s+of\s+(?:the\s+)?head|current\s+head|\bhod\b)/i.test(q)
@@ -1673,6 +1759,9 @@ async function _buildFastIntentReply(question) {
 
     const courseCatalogReply = await courseCatalogService.buildCourseListReply(q);
     if (courseCatalogReply) return courseCatalogReply;
+
+    const programmeOverviewReply = await _buildProgrammeOverviewReply(q);
+    if (programmeOverviewReply) return programmeOverviewReply;
 
     if (_isAboutBmuOverviewQuestion(q)) {
         return {
