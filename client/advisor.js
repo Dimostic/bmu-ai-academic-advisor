@@ -125,7 +125,6 @@
     const CONVERSATION_LISTEN_MS = 30000;
     const COMPACT_CONVERSATION_LISTEN_MS = 20000;
     const MOBILE_AUTO_FOLLOWUP_LISTEN_MS = 12000;
-    const AUTO_FOLLOWUP_GESTURE_WINDOW_MS = 90000;
     const SERVER_STT_MAX_RECORDING_MS = 45000;
     const SERVER_STT_UPLOAD_TIMEOUT_MS = 25000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
@@ -168,7 +167,7 @@
         speakingFocusTimer: null,
         autoFollowupTimer: null,
         lastVoiceGestureAt: 0,
-        autoFollowupTurnsRemaining: 0,
+        voiceConversationActive: false,
         lastSpeakingFocusAt: 0,
         wakeWordEnabled: (() => {
             let saved = null;
@@ -800,6 +799,7 @@
             hasRecognition: Boolean(recognition),
             hasMediaRecorder: Boolean(state.mediaRecorder),
             voicePaused: Boolean(state.voicePaused),
+            voiceConversationActive: Boolean(state.voiceConversationActive),
             history: state.voicePhaseHistory.slice()
         };
     };
@@ -2044,8 +2044,7 @@
         if (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable) return;
         if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) return;
         if (isMobileSpeechDevice()) {
-            const recentManualMicTap = Date.now() - Number(state.lastVoiceGestureAt || 0) <= AUTO_FOLLOWUP_GESTURE_WINDOW_MS;
-            if (!recentManualMicTap || Number(state.autoFollowupTurnsRemaining || 0) <= 0) return;
+            if (!state.voiceConversationActive) return;
         }
         state.autoFollowupTimer = window.setTimeout(() => {
             state.autoFollowupTimer = null;
@@ -2057,9 +2056,7 @@
             }
             if (questionInput?.value.trim()) return;
             if (isMobileSpeechDevice()) {
-                const recentManualMicTap = Date.now() - Number(state.lastVoiceGestureAt || 0) <= AUTO_FOLLOWUP_GESTURE_WINDOW_MS;
-                if (!recentManualMicTap || Number(state.autoFollowupTurnsRemaining || 0) <= 0) return;
-                state.autoFollowupTurnsRemaining = Math.max(0, Number(state.autoFollowupTurnsRemaining || 0) - 1);
+                if (!state.voiceConversationActive) return;
             }
             startListening({
                 autoFollowup: true,
@@ -2074,7 +2071,7 @@
 
     function noteManualVoiceGesture() {
         state.lastVoiceGestureAt = Date.now();
-        state.autoFollowupTurnsRemaining = 1;
+        state.voiceConversationActive = true;
     }
 
     function clearAutoFollowupTimer() {
@@ -2172,6 +2169,8 @@
         wakeNeedsUserGesture = false;
         if (action === 'listen' || action === 'continue') {
             state.voicePaused = false;
+            state.voiceConversationActive = true;
+            state.lastVoiceGestureAt = Date.now();
             enableSpeechOutput();
             if (source === 'wake') {
                 stopWakeWordListener();
@@ -2191,18 +2190,22 @@
         }
         if (action === 'stop') {
             state.voicePaused = false;
+            state.voiceConversationActive = false;
             stopAdvisorActivity({ label: 'Stopped', keepWake: true });
             toast('Stopped');
             return true;
         }
         if (action === 'clear') {
             state.voicePaused = false;
+            state.voiceConversationActive = false;
             stopAdvisorActivity({ clearText: true, label: 'Cleared', keepWake: true });
             toast('Cleared');
             return true;
         }
         if (action === 'restart') {
             state.voicePaused = false;
+            state.voiceConversationActive = true;
+            state.lastVoiceGestureAt = Date.now();
             stopAdvisorActivity({ clearText: true, label: 'Restarting', keepWake: false });
             enableSpeechOutput();
             setTimeout(() => startListening(), source === 'voice' ? 250 : 80);
@@ -2210,6 +2213,7 @@
         }
         if (action === 'wait') {
             state.voicePaused = true;
+            state.voiceConversationActive = false;
             stopAdvisorActivity({ label: 'Waiting', keepWake: true });
             setAvatarState('idle', 'Waiting');
             toast('Waiting. Say “Dr. Tari, continue” when ready.');
@@ -2584,7 +2588,12 @@
         const askInputMode = state.pendingAskInputMode === 'voice' ? 'voice' : 'text';
         state.pendingAskInputMode = 'text';
         state.lastAskInputMode = askInputMode;
-        if (askInputMode !== 'voice') state.autoFollowupTurnsRemaining = 0;
+        if (askInputMode === 'voice') {
+            state.voiceConversationActive = true;
+            state.lastVoiceGestureAt = Date.now();
+        } else {
+            state.voiceConversationActive = false;
+        }
         if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) {
             showGuestDemoLimit();
             updateGuestDemoUi();
@@ -3828,6 +3837,8 @@
             if (normalized) {
                 questionInput.value = normalized;
                 updateClearInputButton();
+                state.voiceConversationActive = true;
+                state.lastVoiceGestureAt = Date.now();
                 state.recording = false;
                 syncMicButtonsUi(false);
                 askAfterTranscriptPreview(280);
@@ -3835,6 +3846,7 @@
                 return;
             }
         }
+        state.voiceConversationActive = false;
         state.recording = false;
         syncMicButtonsUi(false);
         setAvatarState('idle', 'Ready');
