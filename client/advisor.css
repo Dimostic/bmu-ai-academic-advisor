@@ -106,14 +106,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* -------- Layout -------- */
 .advisor-grid {
     display: grid;
-    grid-template-columns: minmax(420px, 1.34fr) minmax(410px, .86fr);
+    grid-template-columns: minmax(0, 1.34fr) minmax(0, .86fr);
     gap: 20px; padding: 20px; max-width: 1500px; margin: 0 auto;
     width: 100%;
     align-items: start;
     transition: max-width .22s ease;
+    min-width: 0;
 }
 .advisor-grid.history-open {
-    grid-template-columns: minmax(380px, 1.08fr) minmax(400px, .98fr) minmax(260px, 280px);
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, .98fr) minmax(240px, 280px);
     max-width: 1480px;
 }
 .guest-demo-banner {
@@ -518,6 +519,7 @@ html[data-theme="dark"] .avatar-stage-controls {
     background: var(--bg-elev); border-radius: var(--radius); box-shadow: var(--shadow);
     display: flex; flex-direction: column; min-height: 70vh; overflow: hidden;
     min-width: 0;
+    max-width: 100%;
 }
 .topics-bar {
     display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); align-items: center;
@@ -536,22 +538,53 @@ html[data-theme="dark"] .avatar-stage-controls {
 .topic-pill--start { background: var(--bg-deep); color: #fff; border-color: var(--bg-deep); }
 .topic-pill--start:hover { background: #16575a; color: #fff; border-color: #16575a; }
 
-.transcript { flex: 1; padding: 20px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.bubble { background: #f5f8f8; border-radius: 14px; padding: 14px 16px; max-width: 720px; width: fit-content; }
+.transcript { flex: 1; padding: 20px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 14px; min-width: 0; max-width: 100%; }
+.bubble {
+    background: #f5f8f8; border-radius: 14px; padding: 14px 16px;
+    max-width: min(720px, 100%);
+    width: fit-content;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
 .bubble--student { background: var(--accent); color: #fff; align-self: flex-end; }
 .bubble--advisor { background: #ffffff; border: 1px solid var(--line); }
 .bubble--welcome { background: linear-gradient(135deg, #e7f5ee, #d4ecdf); border: none; }
 .bubble header { font-size: .78rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
 .bubble--student header { color: rgba(255,255,255,.85); }
-.bubble-body { font-size: .98rem; line-height: 1.55; }
-.bubble-body, .bubble-body p, .bubble-body li { overflow-wrap: anywhere; word-break: break-word; }
+.bubble-body { font-size: .98rem; line-height: 1.55; max-width: 100%; min-width: 0; overflow-x: hidden; }
+.bubble-body, .bubble-body p, .bubble-body li, .bubble-body strong, .bubble-body em, .bubble-body a { overflow-wrap: anywhere; word-break: break-word; }
 .bubble-body p { margin: 0 0 8px; }
 .bubble-body p:last-child { margin: 0; }
 .bubble-body h1, .bubble-body h2, .bubble-body h3 { margin: 6px 0 8px; }
 .bubble-body ul, .bubble-body ol { margin: 6px 0 8px 22px; }
 .bubble-body code { background: rgba(0,0,0,.06); padding: 1px 6px; border-radius: 4px; font-size: .9em; }
+.bubble-body pre,
+.bubble-body table {
+    display: block;
+    max-width: 100%;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.bubble-body table,
+.bubble-body thead,
+.bubble-body tbody,
+.bubble-body tr,
+.bubble-body th,
+.bubble-body td {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.bubble-body th,
+.bubble-body td {
+    padding: 6px 8px;
+}
 .bubble--student .bubble-body code { background: rgba(255,255,255,.2); }
-.bubble .typewriter { white-space: pre-wrap; }
+.bubble .typewriter { white-space: pre-wrap; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
 .bubble .caret { display: inline-block; width: 1px; background: currentColor; margin-left: 1px; animation: caret 0.8s steps(2) infinite; vertical-align: -2px; height: 1em; }
 @keyframes caret { 50% { opacity: 0; } }
 .thinking-card {
