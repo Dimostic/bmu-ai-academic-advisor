@@ -1083,6 +1083,13 @@
         advisorStatus.dataset.state = phase;
         advisorStatus.dataset.previousState = state.previousVoicePhase || '';
         advisorStatus.querySelector('.label').textContent = visibleLabel;
+        const avatarMeta = advisorStatus.closest('.avatar-meta');
+        if (avatarMeta) {
+            const processingLabel = phase === 'idle' || phase === 'paused'
+                ? ''
+                : `Dr. Tari: ${visibleLabel}`;
+            avatarMeta.dataset.processingLabel = processingLabel;
+        }
         const speaking = phase === 'speaking';
         document.body.classList.toggle('is-speaking', speaking);
         document.body.classList.toggle('is-thinking', phase === 'thinking' || phase === 'transcribing');
