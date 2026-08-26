@@ -258,7 +258,7 @@
         const landscape = viewportW > viewportH || window.matchMedia('(orientation: landscape)').matches;
         const touchCapable = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
         document.body.classList.toggle('touch-landscape-full-view', Boolean(advisorFullView && landscape && touchCapable));
-        const lockLandscape = Boolean(landscape && (advisorFullView || isMobileLayout() || viewportH <= 720));
+        const lockLandscape = Boolean(advisorFullView && landscape);
         document.documentElement.classList.toggle('advisor-landscape-locked', lockLandscape);
         document.body.classList.toggle('advisor-landscape-locked', lockLandscape);
     }
@@ -880,6 +880,32 @@
         });
     }
 
+    function syncThemeToggleButtons() {
+        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        document.querySelectorAll('#themeToggleBtn').forEach((btn) => {
+            btn.setAttribute('title', dark ? 'Switch to light theme' : 'Switch to dark theme');
+            btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+            btn.innerHTML = dark
+                ? '<i class="fa-solid fa-sun"></i>'
+                : '<i class="fa-solid fa-moon"></i>';
+        });
+    }
+
+    function setAdvisorTheme(theme) {
+        const next = theme === 'dark' ? 'dark' : 'light';
+        if (next === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+        }
+        try {
+            localStorage.setItem('bmu_advisor_theme', next);
+            localStorage.setItem('bmu_theme', next);
+        } catch (_) { /* ignore */ }
+        syncThemeToggleButtons();
+        syncAvatarThemeContrast();
+    }
+
     function scheduleGuestDemoReturnHome(afterSpeechPromise = null) {
         if (!state.guestDemo.enabled || state.guestDemo.returningHome) return;
         state.guestDemo.returningHome = true;
@@ -1089,6 +1115,7 @@
                 ? ''
                 : `Dr. Tari: ${visibleLabel}`;
             avatarMeta.dataset.processingLabel = processingLabel;
+            avatarStage?.setAttribute('data-processing-label', processingLabel);
         }
         const speaking = phase === 'speaking';
         document.body.classList.toggle('is-speaking', speaking);
@@ -1221,13 +1248,28 @@
     }
 
     // Initial paint
+    try {
+        const savedTheme = localStorage.getItem('bmu_advisor_theme') || localStorage.getItem('bmu_theme');
+        if (savedTheme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        if (savedTheme === 'light') document.documentElement.removeAttribute('data-theme');
+    } catch (_) { /* ignore */ }
     applyAvatar(getAdvisorGender());
     syncAvatarGenderToggle();
     syncAvatarThemeContrast();
     syncAvatarCompactToggle();
+    syncThemeToggleButtons();
+
+    document.addEventListener('click', (ev) => {
+        const btn = ev.target?.closest?.('#themeToggleBtn');
+        if (!btn) return;
+        ev.preventDefault();
+        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        setAdvisorTheme(dark ? 'light' : 'dark');
+    });
 
     const avatarThemeObserver = new MutationObserver(() => {
         syncAvatarThemeContrast();
+        syncThemeToggleButtons();
     });
     avatarThemeObserver.observe(document.documentElement, {
         attributes: true,
@@ -4838,6 +4880,7 @@
                 window.refreshAdvisorQuota = refreshQuotaBadge;
             }
         }
+        syncThemeToggleButtons();
 
         syncMobileLayoutVars();
         setTimeout(syncMobileLayoutVars, 200);
