@@ -28,6 +28,7 @@
     "test:stt-protection": "node server/scripts/testSttProtection.js",
     "test:structured-facts": "node server/scripts/testStructuredFactCoverage.js",
     "test:structured-quality": "node server/scripts/testStructuredRecordsQuality.js",
+    "test:recent-sources": "node server/scripts/testRecentSources.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js",

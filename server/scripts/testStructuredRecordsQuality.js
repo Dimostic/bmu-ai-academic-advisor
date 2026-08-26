@@ -3,6 +3,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 
 const { query, pool } = require('../../config/db');
+const documentLabService = require('../services/documentLabService');
 
 const REQUIRED_TABLES = [
     'structured_facts',
@@ -13,7 +14,9 @@ const REQUIRED_TABLES = [
     'academic_registration_requirements',
     'academic_calendar_events',
     'academic_officers',
-    'academic_rules'
+    'academic_rules',
+    'bmu_recent_sources',
+    'bmu_recent_facts'
 ];
 
 const CRITICAL_ROLES = [
@@ -121,6 +124,7 @@ async function tableCounts() {
 }
 
 async function main() {
+    await documentLabService.ensureSchema();
     const counts = await tableCounts();
 
     const officerRows = await query(`

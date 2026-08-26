@@ -106,6 +106,7 @@
         documents: renderDocuments,
         documentLab: renderDocumentLab,
         structuredRecords: renderStructuredRecords,
+        recentSources: renderRecentSources,
         dataQuality: renderDataQuality,
         faqs:      renderFAQs,
         users:     renderUsers,
@@ -2432,6 +2433,140 @@
             }
         } catch (err) {
             toast(err.message || 'Evaluation action failed', 'error');
+        }
+    }
+
+    // ------------------------------------------------ BMU RECENT SOURCES
+    async function renderRecentSources() {
+        main.innerHTML = `
+            <h2>BMU Recent Sources</h2>
+            <p class="lede">Monitor approved BMU website and social pages for current public information. New facts remain pending until an admin approves them for advisor use.</p>
+            <div class="admin-actions">
+                <button class="btn btn-primary" id="recentCheckAllBtn"><i class="fa-solid fa-satellite-dish"></i> Check all sources</button>
+                <button class="btn btn-ghost" id="recentRefreshBtn"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                <button class="btn btn-ghost" id="recentOpenFactsBtn"><i class="fa-solid fa-table-list"></i> Open fact table</button>
+                <button class="btn btn-ghost" id="recentOpenSourcesBtn"><i class="fa-solid fa-database"></i> Open source table</button>
+            </div>
+            <div id="recentSourceStats" class="stat-row"></div>
+            <div id="recentSourceList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading sources…</div></div>
+            <h3 style="margin:22px 0 8px;color:var(--bg-deep);">Detected recent facts</h3>
+            <div id="recentFactsList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading facts…</div></div>
+        `;
+        document.getElementById('recentRefreshBtn')?.addEventListener('click', loadRecentSources);
+        document.getElementById('recentCheckAllBtn')?.addEventListener('click', async (ev) => {
+            ev.currentTarget.disabled = true;
+            try {
+                toast('Checking BMU sources. Social pages may block automated access.');
+                const r = await api('/api/admin/recent-sources/check', { method: 'POST', body: {} });
+                toast(`Checked ${r.checked || 0} source(s); detected ${r.detected || 0} candidate fact(s).`);
+                await loadRecentSources();
+            } catch (err) {
+                toast(err.message || 'Could not check recent sources', 'error');
+            } finally {
+                ev.currentTarget.disabled = false;
+            }
+        });
+        document.getElementById('recentOpenFactsBtn')?.addEventListener('click', () => {
+            pendingStructuredRecordsView = { table: 'bmu_recent_facts', status: '' };
+            document.querySelector('[data-section="structuredRecords"]')?.click();
+        });
+        document.getElementById('recentOpenSourcesBtn')?.addEventListener('click', () => {
+            pendingStructuredRecordsView = { table: 'bmu_recent_sources', status: '' };
+            document.querySelector('[data-section="structuredRecords"]')?.click();
+        });
+        await loadRecentSources();
+    }
+
+    async function loadRecentSources() {
+        try {
+            const data = await api('/api/admin/recent-sources/summary');
+            const sources = data.sources || [];
+            const facts = data.facts || [];
+            const pending = facts.filter(f => f.status === 'pending').length;
+            const approved = facts.filter(f => f.status === 'approved').length;
+            const lastChecked = sources
+                .map(s => s.last_checked_at)
+                .filter(Boolean)
+                .sort()
+                .pop();
+            document.getElementById('recentSourceStats').innerHTML = [
+                stat('Sources', sources.length),
+                stat('Pending facts', pending),
+                stat('Approved facts', approved),
+                stat('Last check', lastChecked ? formatDate(lastChecked) : '—')
+            ].join('');
+            document.getElementById('recentSourceList').innerHTML = renderRecentSourceCards(sources);
+            document.getElementById('recentFactsList').innerHTML = renderRecentFactsTable(facts);
+            document.getElementById('recentSourceList').onclick = handleRecentSourceClick;
+            document.getElementById('recentFactsList').onclick = handleRecentFactClick;
+        } catch (err) {
+            document.getElementById('recentSourceList').innerHTML = `<p class="auth-error">${escapeHtml(err.message || 'Could not load recent sources')}</p>`;
+            document.getElementById('recentFactsList').innerHTML = '';
+        }
+    }
+
+    function renderRecentSourceCards(sources) {
+        if (!sources.length) return '<p class="empty">No BMU recent sources configured.</p>';
+        return `<div class="topic-tiles">${sources.map(source => `
+            <article class="topic-tile">
+                <span class="badge ${source.last_status === 'ok' ? 'badge-success' : source.last_status === 'error' ? 'badge-danger' : 'badge-info'}">${escapeHtml(source.last_status || 'not checked')}</span>
+                <h3>${escapeHtml(source.source_name || 'BMU source')}</h3>
+                <p>${escapeHtml(source.source_type || 'website')} · rank ${escapeHtml(source.source_rank ?? '—')} · every ${escapeHtml(source.check_frequency_hours || 24)}h</p>
+                <p class="lede">${escapeHtml(source.last_error || source.source_url || '')}</p>
+                <div class="admin-actions" style="margin-top:10px;">
+                    <button class="btn btn-primary btn-sm" data-recent-source-check="${escapeHtml(source.id)}"><i class="fa-solid fa-arrows-rotate"></i> Check</button>
+                    <a class="btn btn-ghost btn-sm" href="${escapeHtml(source.source_url || '#')}" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i> Open</a>
+                </div>
+            </article>
+        `).join('')}</div>`;
+    }
+
+    function renderRecentFactsTable(facts) {
+        if (!facts.length) return '<p class="empty">No recent facts detected yet. Click “Check all sources”.</p>';
+        const rows = facts.map(fact => [
+            `<span class="badge ${fact.status === 'approved' ? 'badge-success' : fact.status === 'rejected' ? 'badge-danger' : 'badge-info'}">${escapeHtml(fact.status || 'pending')}</span>`,
+            `<div><strong>${escapeHtml(fact.title || 'Recent BMU fact')}</strong><div style="color:var(--muted);font-size:.82rem;">${escapeHtml(fact.category || 'general')} · ${escapeHtml(fact.session_label || fact.detected_date_label || 'recent')}</div></div>`,
+            escapeHtml((fact.fact_text || '').length > 260 ? fact.fact_text.slice(0, 257) + '...' : fact.fact_text || ''),
+            escapeHtml(fact.source_name || fact.source_type || '—'),
+            `<div class="admin-actions">
+                ${fact.status !== 'approved' ? `<button class="btn btn-primary btn-sm" data-recent-fact-status="approved" data-id="${escapeHtml(fact.id)}"><i class="fa-solid fa-check"></i> Approve</button>` : ''}
+                ${fact.status !== 'rejected' ? `<button class="btn btn-ghost btn-sm" data-recent-fact-status="rejected" data-id="${escapeHtml(fact.id)}"><i class="fa-solid fa-ban"></i> Reject</button>` : ''}
+                <a class="btn btn-ghost btn-sm" href="${escapeHtml(fact.source_url || '#')}" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i></a>
+            </div>`
+        ]);
+        return table(['Status', 'Title', 'Detected text', 'Source', 'Actions'], rows);
+    }
+
+    async function handleRecentSourceClick(ev) {
+        const btn = ev.target.closest('[data-recent-source-check]');
+        if (!btn) return;
+        const sourceId = parseInt(btn.dataset.recentSourceCheck, 10);
+        btn.disabled = true;
+        try {
+            const r = await api('/api/admin/recent-sources/check', { method: 'POST', body: { sourceId } });
+            toast(`Checked source; detected ${r.detected || 0} candidate fact(s).`);
+            await loadRecentSources();
+        } catch (err) {
+            toast(err.message || 'Could not check source', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function handleRecentFactClick(ev) {
+        const btn = ev.target.closest('[data-recent-fact-status]');
+        if (!btn) return;
+        const id = parseInt(btn.dataset.id, 10);
+        const status = btn.dataset.recentFactStatus;
+        btn.disabled = true;
+        try {
+            await api(`/api/admin/recent-facts/${id}/status`, { method: 'POST', body: { status } });
+            toast(status === 'approved' ? 'Recent fact approved for advisor use' : 'Recent fact rejected');
+            await loadRecentSources();
+        } catch (err) {
+            toast(err.message || 'Could not update recent fact', 'error');
+        } finally {
+            btn.disabled = false;
         }
     }
 

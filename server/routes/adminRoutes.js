@@ -12,6 +12,7 @@ const advisorStreamService = require('../services/advisorStreamService');
 const responseQualityService = require('../services/responseQualityService');
 const documentLabService = require('../services/documentLabService');
 const ttsService = require('../services/ttsService');
+const bmuRecentSourceService = require('../services/bmuRecentSourceService');
 const emailService = (() => {
     try { return require('../services/emailService'); }
     catch (_) { return null; }
@@ -104,6 +105,29 @@ const STRUCTURED_TABLES = {
         numericColumns: [],
         defaults: { status: 'active', authority_type: 'institution', currentness_label: 'current' },
         search: ['student_category', 'programme', 'level_label', 'semester_label', 'session_label', 'requirement_type', 'requirement_text', 'deadline_label', 'portal_url', 'source_path', 'raw_text']
+    },
+    bmu_recent_sources: {
+        label: 'BMU recent sources',
+        description: 'Approved BMU website and social sources monitored for current public information.',
+        usesRecordHash: false,
+        columns: ['source_name', 'source_type', 'source_url', 'authority_type', 'source_rank', 'check_frequency_hours', 'last_checked_at', 'last_status', 'last_error', 'notes', 'status'],
+        required: ['source_name', 'source_url'],
+        textColumns: ['source_name', 'source_type', 'source_url', 'authority_type', 'last_checked_at', 'last_status', 'last_error', 'notes', 'status'],
+        jsonColumns: [],
+        numericColumns: ['source_rank', 'check_frequency_hours'],
+        defaults: { status: 'active', authority_type: 'institution', source_type: 'website', source_rank: 80, check_frequency_hours: 24 },
+        search: ['source_name', 'source_type', 'source_url', 'authority_type', 'last_status', 'notes']
+    },
+    bmu_recent_facts: {
+        label: 'BMU recent facts',
+        description: 'Recent facts detected from BMU sources. Approve before production use.',
+        columns: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'detected_date_label', 'session_label', 'programme', 'authority_type', 'authority_rank', 'confidence', 'status', 'currentness_label', 'admin_notes'],
+        required: ['title', 'category', 'fact_text'],
+        textColumns: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'detected_date_label', 'session_label', 'programme', 'authority_type', 'status', 'currentness_label', 'admin_notes'],
+        jsonColumns: [],
+        numericColumns: ['authority_rank', 'confidence'],
+        defaults: { status: 'pending', currentness_label: 'recent', authority_type: 'institution', authority_rank: 80, confidence: 0.7 },
+        search: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'session_label', 'programme', 'status']
     },
     academic_calendar_events: {
         label: 'Calendar',
@@ -497,11 +521,11 @@ async function _upsertStructuredRecord(tableName, config, input) {
 
     const columns = [...config.columns];
     const values = config.columns.map(column => record[column]);
-    if (tableName !== 'structured_facts') {
+    if (tableName !== 'structured_facts' && config.usesRecordHash !== false) {
         columns.unshift('record_hash');
         values.unshift(_recordHash(tableName, record));
     }
-    const duplicateUpdate = tableName === 'structured_facts'
+    const duplicateUpdate = tableName === 'structured_facts' || config.usesRecordHash === false
         ? ''
         : ` ON DUPLICATE KEY UPDATE ${config.columns.map(column => `${column} = VALUES(${column})`).join(', ')}, updated_at = NOW()`;
     const result = await query(
@@ -3635,6 +3659,61 @@ router.post('/evaluation/run-all', authenticateToken, requireAdmin, async (req, 
     } catch (error) {
         console.error('Evaluation run-all error:', error);
         res.status(500).json({ success: false, error: error.message || 'Could not run evaluation tests' });
+    }
+});
+
+router.get('/recent-sources/summary', authenticateToken, requireAdmin, async (_req, res) => {
+    try {
+        const summary = await bmuRecentSourceService.getSummary();
+        res.json({ success: true, ...summary });
+    } catch (error) {
+        console.error('Recent sources summary error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not load BMU recent sources' });
+    }
+});
+
+router.post('/recent-sources/check', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const sourceId = req.body?.sourceId ? parseInt(req.body.sourceId, 10) : null;
+        const result = await bmuRecentSourceService.checkSources({
+            sourceId,
+            dueOnly: req.body?.dueOnly === true
+        });
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'BMU_RECENT_SOURCES_CHECKED',
+            entityType: 'bmu_recent_sources',
+            entityId: sourceId || null,
+            details: result,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('Recent sources check error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not check BMU recent sources' });
+    }
+});
+
+router.post('/recent-facts/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json({ success: false, error: 'Valid recent fact id is required' });
+        const status = String(req.body?.status || '').trim().toLowerCase();
+        await bmuRecentSourceService.setFactStatus(id, status, req.user.id, String(req.body?.notes || '').trim());
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'BMU_RECENT_FACT_STATUS_UPDATED',
+            entityType: 'bmu_recent_facts',
+            entityId: id,
+            details: { status },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        res.json({ success: true, id, status });
+    } catch (error) {
+        console.error('Recent fact status error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not update recent fact status' });
     }
 });
 

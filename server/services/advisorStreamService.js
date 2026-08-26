@@ -26,6 +26,7 @@ const tts = require('./ttsService');
 const responseQualityService = require('./responseQualityService');
 const courseCatalogService = require('./courseCatalogService');
 const bmuLawService = require('./bmuLawService');
+const bmuRecentSourceService = require('./bmuRecentSourceService');
 
 let faqService = null;
 try { faqService = require('./faqService'); }
@@ -1967,6 +1968,79 @@ function _buildPureFastIntentReply(q) {
     return null;
 }
 
+function _isLatestBmuQuestion(question) {
+    const q = String(question || '').toLowerCase();
+    const hasCurrentSignal = /\b(latest|current|recent|new|newest|today|now|ongoing|announcement|announcements|notice|notices|update|updates|deadline|deadlines|202\d\s*\/\s*202\d)\b/.test(q);
+    const hasBmuSignal = /\b(bmu|bayelsa\s+medical\s+university|admission|admissions|fee|fees|tuition|registration|register|calendar|resumption|cut\s*off|cutoff|cut-off|application|apply|programme|program|course|portal|screening)\b/.test(q);
+    return hasCurrentSignal && hasBmuSignal;
+}
+
+function _compactRecentFactText(value, max = 520) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (text.length <= max) return text;
+    return `${text.slice(0, max - 1).replace(/\s+\S*$/, '')}...`;
+}
+
+function _buildRecentFactCitation(row) {
+    return {
+        title: row.title || row.source_name || 'BMU recent source',
+        source: row.source_url || row.source_name || 'BMU recent facts'
+    };
+}
+
+async function _buildRecentBmuFactsReply(question) {
+    if (!_isLatestBmuQuestion(question)) return null;
+
+    let rows = [];
+    try {
+        rows = await bmuRecentSourceService.findApprovedRecentFacts(question, { limit: 6 });
+    } catch (err) {
+        console.warn('[advisorStreamService] recent BMU facts lookup failed:', err.message);
+        return null;
+    }
+
+    if (!rows.length) {
+        return {
+            speech_text: 'I do not yet have an admin-approved recent BMU notice for that question. For current items such as admissions, cut-off marks, fees, registration, deadlines, and calendar changes, please confirm from the official BMU source or ask an admin to approve the latest item in Recent Sources.',
+            display_markdown: 'I do not yet have an **admin-approved recent BMU notice** for that question.\n\nFor high-risk current information such as **admissions, cut-off marks, fees, registration, deadlines, and calendar changes**, I should only answer from approved recent BMU sources.\n\nPlease check the official BMU website/social notice, or ask an admin to approve the latest item under **Admin -> Recent Sources**.',
+            topic_slug: 'bmu_recent_sources_pending',
+            citations: [{ title: 'BMU Recent Sources', source: 'No approved recent fact matched this question' }],
+            suggested_actions: [],
+            follow_up_questions: [
+                'What are current BMU admission cut-off marks?',
+                'What are BMU registration requirements?',
+                'What is the latest BMU academic calendar update?'
+            ],
+            needs_escalation: true,
+            confidence: 0.7,
+            _source: 'bmu_recent_facts'
+        };
+    }
+
+    const bullets = rows.map(row => {
+        const label = row.programme ? `${row.category || 'Update'} - ${row.programme}` : (row.category || 'Update');
+        const session = row.session_label ? ` (${row.session_label})` : '';
+        return `- **${label}${session}:** ${_compactRecentFactText(row.fact_text, 900)}`;
+    }).join('\n');
+    const first = rows[0];
+
+    return {
+        speech_text: `The latest approved BMU information I found says: ${_compactRecentFactText(first.fact_text, 520)}`,
+        display_markdown: `Here is the latest **admin-approved BMU information** I found:\n\n${bullets}\n\nBecause this is recent/current information, please confirm the source date and official source before taking action.`,
+        topic_slug: 'bmu_recent_facts',
+        citations: rows.map(_buildRecentFactCitation),
+        suggested_actions: [],
+        follow_up_questions: [
+            'What are current BMU admission cut-off marks?',
+            'What are BMU registration requirements?',
+            'What is the latest BMU academic calendar update?'
+        ],
+        needs_escalation: false,
+        confidence: Math.max(...rows.map(row => Number(row.confidence || 0.7))),
+        _source: 'bmu_recent_facts'
+    };
+}
+
 async function _buildFastIntentReply(question) {
     const q = String(question || '').trim().toLowerCase();
     if (!q) return null;
@@ -2049,6 +2123,9 @@ async function _buildFastIntentReply(question) {
 
     const registrationRequirementReply = await _buildRegistrationRequirementReply(q);
     if (registrationRequirementReply) return registrationRequirementReply;
+
+    const recentBmuFactsReply = await _buildRecentBmuFactsReply(q);
+    if (recentBmuFactsReply) return recentBmuFactsReply;
 
     const lawReply = bmuLawService.buildLawReply(q);
     if (lawReply) return lawReply;
@@ -3110,6 +3187,7 @@ module.exports = {
     triggerSloAlert,
     _diagnoseStaticQuestion,
     _buildFastIntentReply,
+    _buildRecentBmuFactsReply,
     _isRetrievableQuestion,
     _sanitizeInteractiveSuggestions,
     _staticFacts: {

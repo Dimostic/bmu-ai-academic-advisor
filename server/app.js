@@ -1504,6 +1504,14 @@ app.listen(PORT, async () => {
         console.warn('[App] Document Lab schema setup skipped:', err.message);
     }
 
+    try {
+        const bmuRecentSourceService = require('./services/bmuRecentSourceService');
+        await bmuRecentSourceService.ensureSchema();
+        console.log('[App] BMU recent sources schema ready');
+    } catch (err) {
+        console.warn('[App] BMU recent sources schema setup skipped:', err.message);
+    }
+
     // Sync FAISS vector index with database on startup
     // This prevents issues where documents are in DB but missing from search index
     try {

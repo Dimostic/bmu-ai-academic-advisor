@@ -53,7 +53,9 @@ const NORMALIZED_TABLES = [
     'academic_registration_requirements',
     'academic_calendar_events',
     'academic_officers',
-    'academic_rules'
+    'academic_rules',
+    'bmu_recent_sources',
+    'bmu_recent_facts'
 ];
 
 function stableHash(value) {
@@ -1308,6 +1310,67 @@ class DocumentLabService {
                 INDEX idx_academic_registration_status (status),
                 INDEX idx_academic_registration_category (student_category),
                 INDEX idx_academic_registration_session (session_label)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS bmu_recent_sources (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                source_name VARCHAR(180) NOT NULL,
+                source_type VARCHAR(60) NOT NULL DEFAULT 'website',
+                source_url TEXT NOT NULL,
+                authority_type VARCHAR(80) NOT NULL DEFAULT 'institution',
+                source_rank INT NOT NULL DEFAULT 80,
+                check_frequency_hours INT NOT NULL DEFAULT 24,
+                last_checked_at DATETIME NULL,
+                last_status VARCHAR(40) NULL,
+                last_error TEXT NULL,
+                last_content_hash CHAR(40) NULL,
+                notes TEXT NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_bmu_recent_sources_status (status),
+                INDEX idx_bmu_recent_sources_type (source_type),
+                INDEX idx_bmu_recent_sources_rank (source_rank)
+            ) ENGINE=InnoDB
+        `);
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS bmu_recent_facts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                record_hash CHAR(40) NOT NULL,
+                source_id INT NULL,
+                source_name VARCHAR(180) NULL,
+                source_type VARCHAR(60) NULL,
+                source_url TEXT NULL,
+                title VARCHAR(255) NOT NULL,
+                category VARCHAR(80) NOT NULL DEFAULT 'general',
+                fact_text TEXT NOT NULL,
+                detected_date_label VARCHAR(120) NULL,
+                session_label VARCHAR(80) NULL,
+                programme VARCHAR(255) NULL,
+                authority_type VARCHAR(80) NOT NULL DEFAULT 'institution',
+                authority_rank INT NOT NULL DEFAULT 80,
+                confidence DECIMAL(5,2) NOT NULL DEFAULT 0.70,
+                status VARCHAR(40) NOT NULL DEFAULT 'pending',
+                currentness_label VARCHAR(80) NOT NULL DEFAULT 'recent',
+                admin_notes TEXT NULL,
+                raw_json LONGTEXT NULL,
+                approved_by INT NULL,
+                approved_at DATETIME NULL,
+                rejected_by INT NULL,
+                rejected_at DATETIME NULL,
+                first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_bmu_recent_fact_hash (record_hash),
+                INDEX idx_bmu_recent_facts_status (status),
+                INDEX idx_bmu_recent_facts_category (category),
+                INDEX idx_bmu_recent_facts_programme (programme),
+                INDEX idx_bmu_recent_facts_session (session_label),
+                FULLTEXT INDEX ft_bmu_recent_facts (title, fact_text, source_name)
             ) ENGINE=InnoDB
         `);
 
