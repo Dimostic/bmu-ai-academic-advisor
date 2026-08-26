@@ -1540,6 +1540,10 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
         padding: 5px;
         gap: 5px;
         align-self: start;
+        border: 1px solid rgba(15, 61, 62, .12);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, .82);
+        box-shadow: 0 10px 24px rgba(7, 30, 32, .12);
     }
 
     body:not(.advisor-full-view) .avatar-stage-controls .icon-btn {
@@ -1654,23 +1658,71 @@ html[data-theme="dark"] .history-list .item .when { color: #b5c3c9; }
         text-overflow: ellipsis;
     }
 
-    body:not(.advisor-full-view) .composer {
+    body:not(.advisor-full-view) .voice-command-bar {
         order: 4;
-        position: sticky;
+        position: static;
+        z-index: 3;
+        flex: 0 0 auto;
+        min-height: 34px;
+        max-height: 38px;
+        margin: 0;
+        padding: 4px 0 3px;
+        border: 0;
+        border-top: 1px solid var(--line);
+        border-radius: 0;
+        background: var(--bg-elev);
+        box-shadow: none;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    body:not(.advisor-full-view) .voice-command-bar button {
+        min-height: 28px;
+        height: 28px;
+        padding: 4px 8px;
+        font-size: .72rem;
+    }
+
+    body:not(.advisor-full-view) .composer {
+        order: 5;
+        position: static;
         bottom: 0;
-        z-index: 4;
+        z-index: 6;
         flex: 0 0 auto;
         margin: 0;
-        padding: 8px;
+        min-height: 54px;
+        padding: 7px 0 0;
+        border-top: 1px solid var(--line);
         background: var(--bg-elev);
-        box-shadow: 0 -8px 18px rgba(7, 30, 32, .06);
+        box-shadow: none;
     }
 
     body:not(.advisor-full-view) .composer input[type="text"] {
         min-width: 0;
         font-size: .95rem;
         padding: 8px 10px;
+        height: 38px;
     }
+}
+
+html[data-theme="dark"] body:not(.advisor-full-view) .avatar-stage-controls {
+    background: rgba(7, 12, 14, .94);
+    border: 1px solid rgba(109, 238, 200, .24);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .48);
+}
+
+html[data-theme="dark"] body:not(.advisor-full-view) .avatar-stage-controls .icon-btn,
+html[data-theme="dark"] body:not(.advisor-full-view) .avatar-stage-controls .icon-btn--wide {
+    background: rgba(255, 255, 255, .09);
+    border-color: rgba(255, 255, 255, .18);
+    color: var(--accent-soft);
+}
+
+html[data-theme="dark"] body:not(.advisor-full-view) .avatar-stage-controls .icon-btn:hover,
+html[data-theme="dark"] body:not(.advisor-full-view) .avatar-stage-controls .icon-btn.is-active {
+    background: rgba(109, 238, 200, .16);
+    border-color: rgba(109, 238, 200, .38);
+    color: #ffffff;
 }
 
 /* Short mobile screens: dial avatar size down slightly so sticky avatar +
