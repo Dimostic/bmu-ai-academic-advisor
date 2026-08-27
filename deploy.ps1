@@ -1,5 +1,7 @@
 # Deploy BMU AI Academic Advisor to VPS (PowerShell equivalent of deploy.sh)
 # Usage: .\deploy.ps1
+# Set ADVISOR_DEPLOY_REFRESH_DATA=1 when you intentionally want to re-run
+# production extraction/seeding before validation.
 # Requires: OpenSSH client on Windows and an SSH config entry such as "bmu-server"
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +11,8 @@ $AppDir   = '/var/www/bmu-ai-academic-advisor'
 $AppName  = 'bmuaiadvisor'
 $AppEntry = 'server/app.js'
 $HealthBaseUrl = if ($env:ADVISOR_HEALTH_BASE_URL) { $env:ADVISOR_HEALTH_BASE_URL.TrimEnd('/') } else { 'https://advisor.bmuaiagent.mehetti.com' }
+$DataRefreshEnv = if ($env:ADVISOR_DEPLOY_REFRESH_DATA) { $env:ADVISOR_DEPLOY_REFRESH_DATA } else { '' }
+$RunDataRefresh = @('1', 'true', 'yes') -contains ($DataRefreshEnv.ToString().ToLowerInvariant())
 
 function Invoke-Remote([string]$Cmd) {
     Write-Host "  ssh> $Cmd" -ForegroundColor DarkGray
@@ -33,9 +37,18 @@ Invoke-Remote 'pm2 save'
 
 Start-Sleep -Seconds 3
 
-Write-Host "[5/5] Checking pm2 status + running smoke, golden advisor tests, and live health checks..."
+Write-Host "[5/6] Checking pm2 status..."
 Invoke-Remote "pm2 status $AppName"
-Invoke-Remote "cd $AppDir && npm run extract:student-courses && npm run seed:structured-authority && npm run extract:ccmas && npm run extract:ccmas:structured && npm run sync:requirements && npm run seed:admission-cycle-facts && SMOKE_TEST_STRICT=true SMOKE_TEST_URL=`"$HealthBaseUrl/api/health`" SMOKE_TEST_ADVISOR_URL=`"$HealthBaseUrl/api/advisor/health`" npm test && npm run test:structured-facts && npm run test:structured-quality && npm run test:advisor-policy && npm run test:stt-protection && npm run test:course-data-quality && npm run audit:advisor-followups && npm run test:advisor-golden"
+
+if ($RunDataRefresh) {
+    Write-Host "[data] Refreshing extracted/seeded academic records before validation..." -ForegroundColor Yellow
+    Invoke-Remote "cd $AppDir && npm run extract:student-courses && npm run seed:structured-authority && npm run extract:ccmas && npm run extract:ccmas:structured && npm run sync:requirements && npm run seed:admission-cycle-facts"
+} else {
+    Write-Host "[data] Skipping production data refresh. Set ADVISOR_DEPLOY_REFRESH_DATA=1 to run extraction/seeding intentionally." -ForegroundColor DarkYellow
+}
+
+Write-Host "[6/6] Running strict smoke, data-quality, advisor, and live health checks..."
+Invoke-Remote "cd $AppDir && SMOKE_TEST_STRICT=true SMOKE_TEST_URL=`"$HealthBaseUrl/api/health`" SMOKE_TEST_ADVISOR_URL=`"$HealthBaseUrl/api/advisor/health`" npm run test:quality-gate"
 Invoke-Remote "curl -fsS `"$HealthBaseUrl/api/health`" >/dev/null"
 Invoke-Remote "curl -fsS `"$HealthBaseUrl/api/advisor/health`" >/dev/null"
 

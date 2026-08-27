@@ -99,6 +99,7 @@
     let latestDocumentReviewHtml = '';
     let currentDocumentLabJobId = null;
     let pendingStructuredRecordsView = null;
+    let latestRecentFacts = [];
     const navButtons = document.querySelectorAll('.admin-nav button');
     const sections = {
         dashboard: renderDashboard,
@@ -2450,7 +2451,9 @@
             <div id="recentSourceStats" class="stat-row"></div>
             <div id="recentSourceList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading sources…</div></div>
             <h3 style="margin:22px 0 8px;color:var(--bg-deep);">Detected recent facts</h3>
+            <p class="lede">Review candidate facts carefully before approval. Approved current facts are used for high-risk answers about admissions, fees, cutoffs, registration, deadlines and calendar changes.</p>
             <div id="recentFactsList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading facts…</div></div>
+            <dialog id="recentFactReviewDialog" class="modal modal--wide recent-fact-review-dialog"></dialog>
         `;
         document.getElementById('recentRefreshBtn')?.addEventListener('click', loadRecentSources);
         document.getElementById('recentCheckAllBtn')?.addEventListener('click', async (ev) => {
@@ -2482,6 +2485,7 @@
             const data = await api('/api/admin/recent-sources/summary');
             const sources = data.sources || [];
             const facts = data.facts || [];
+            latestRecentFacts = facts;
             const pending = facts.filter(f => f.status === 'pending').length;
             const approved = facts.filter(f => f.status === 'approved').length;
             const lastChecked = sources
@@ -2529,6 +2533,7 @@
             escapeHtml((fact.fact_text || '').length > 260 ? fact.fact_text.slice(0, 257) + '...' : fact.fact_text || ''),
             escapeHtml(fact.source_name || fact.source_type || '—'),
             `<div class="admin-actions">
+                <button class="btn btn-ghost btn-sm" data-recent-fact-review="${escapeHtml(fact.id)}"><i class="fa-solid fa-eye"></i> Review</button>
                 ${fact.status !== 'approved' ? `<button class="btn btn-primary btn-sm" data-recent-fact-status="approved" data-id="${escapeHtml(fact.id)}"><i class="fa-solid fa-check"></i> Approve</button>` : ''}
                 ${fact.status !== 'rejected' ? `<button class="btn btn-ghost btn-sm" data-recent-fact-status="rejected" data-id="${escapeHtml(fact.id)}"><i class="fa-solid fa-ban"></i> Reject</button>` : ''}
                 <a class="btn btn-ghost btn-sm" href="${escapeHtml(fact.source_url || '#')}" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i></a>
@@ -2554,6 +2559,13 @@
     }
 
     async function handleRecentFactClick(ev) {
+        const reviewBtn = ev.target.closest('[data-recent-fact-review]');
+        if (reviewBtn) {
+            const id = parseInt(reviewBtn.dataset.recentFactReview, 10);
+            const fact = latestRecentFacts.find(item => Number(item.id) === id);
+            if (fact) openRecentFactReviewDialog(fact);
+            return;
+        }
         const btn = ev.target.closest('[data-recent-fact-status]');
         if (!btn) return;
         const id = parseInt(btn.dataset.id, 10);
@@ -2570,6 +2582,83 @@
         }
     }
 
+    function recentFactRiskLabel(fact) {
+        const text = `${fact.category || ''} ${fact.title || ''} ${fact.fact_text || ''}`.toLowerCase();
+        if (/\b(fee|fees|tuition|cut[- ]?off|admission|eligibility|registration|deadline|calendar|exam|graduation|probation|withdrawal)\b/.test(text)) {
+            return 'High-risk current fact';
+        }
+        return 'General current fact';
+    }
+
+    function openRecentFactReviewDialog(fact) {
+        const dialog = document.getElementById('recentFactReviewDialog');
+        if (!dialog) return;
+        const risk = recentFactRiskLabel(fact);
+        const statusClass = fact.status === 'approved' ? 'badge-success' : fact.status === 'rejected' ? 'badge-danger' : 'badge-info';
+        dialog.innerHTML = `
+            <form method="dialog" class="recent-fact-review-form">
+                <div class="modal-head">
+                    <div>
+                        <h2><i class="fa-solid fa-satellite-dish"></i> Review BMU recent fact</h2>
+                        <p class="lede">Approve only if the wording is accurate, current, and traceable to the source below.</p>
+                    </div>
+                    <button class="icon-btn" type="button" data-recent-dialog-close aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="recent-fact-review-grid">
+                    <section>
+                        <span class="badge ${statusClass}">${escapeHtml(fact.status || 'pending')}</span>
+                        <span class="badge badge-info">${escapeHtml(risk)}</span>
+                        <h3>${escapeHtml(fact.title || 'Recent BMU fact')}</h3>
+                        <p>${escapeHtml(fact.fact_text || '')}</p>
+                    </section>
+                    <aside>
+                        <dl>
+                            <dt>Source</dt><dd>${escapeHtml(fact.source_name || fact.source_type || 'BMU source')}</dd>
+                            <dt>Category</dt><dd>${escapeHtml(fact.category || 'general')}</dd>
+                            <dt>Session/date</dt><dd>${escapeHtml(fact.session_label || fact.detected_date_label || 'recent')}</dd>
+                            <dt>Programme</dt><dd>${escapeHtml(fact.programme || 'All / not specified')}</dd>
+                            <dt>Authority</dt><dd>${escapeHtml(fact.authority_type || 'recent')} · rank ${escapeHtml(fact.authority_rank ?? '—')}</dd>
+                            <dt>Confidence</dt><dd>${escapeHtml(fact.confidence ?? '—')}</dd>
+                        </dl>
+                    </aside>
+                </div>
+                <menu>
+                    <button class="btn btn-ghost" type="button" data-recent-dialog-close>Close</button>
+                    <button class="btn btn-ghost" type="button" data-recent-open-structured><i class="fa-solid fa-table-list"></i> Edit row</button>
+                    ${fact.status !== 'rejected' ? '<button class="btn btn-ghost" type="button" data-recent-review-status="rejected"><i class="fa-solid fa-ban"></i> Reject</button>' : ''}
+                    ${fact.status !== 'approved' ? '<button class="btn btn-primary" type="button" data-recent-review-status="approved"><i class="fa-solid fa-check"></i> Approve</button>' : ''}
+                </menu>
+            </form>
+        `;
+        dialog.querySelectorAll('[data-recent-dialog-close]').forEach(btn => btn.addEventListener('click', () => dialog.close()));
+        dialog.querySelector('[data-recent-open-structured]')?.addEventListener('click', () => {
+            dialog.close();
+            pendingStructuredRecordsView = {
+                table: 'bmu_recent_facts',
+                status: '',
+                q: fact.title || fact.fact_text || String(fact.id)
+            };
+            document.querySelector('[data-section="structuredRecords"]')?.click();
+        });
+        dialog.querySelectorAll('[data-recent-review-status]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const status = btn.dataset.recentReviewStatus;
+                btn.disabled = true;
+                try {
+                    await api(`/api/admin/recent-facts/${encodeURIComponent(fact.id)}/status`, { method: 'POST', body: { status } });
+                    toast(status === 'approved' ? 'Recent fact approved for advisor use' : 'Recent fact rejected');
+                    dialog.close();
+                    await loadRecentSources();
+                } catch (err) {
+                    toast(err.message || 'Could not update recent fact', 'error');
+                    btn.disabled = false;
+                }
+            });
+        });
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', 'open');
+    }
+
     // ------------------------------------------------ STRUCTURED RECORDS
     async function renderStructuredRecords() {
         const initialView = pendingStructuredRecordsView;
@@ -2577,6 +2666,17 @@
         main.innerHTML = `
             <h2>Structured Facts</h2>
             <p class="lede">Direct production lookup tables for exact advisor answers. Use this for corrected officers, fees, courses, programme rules, calendar dates, and approved facts.</p>
+            <div class="structured-quick-nav" aria-label="Common structured fact categories">
+                <button class="structured-quick-card" type="button" data-structured-quick="academic_programmes"><i class="fa-solid fa-graduation-cap"></i><span>Programmes</span><small>Identity, departments, duration</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="academic_rules"><i class="fa-solid fa-list-check"></i><span>Requirements</span><small>Admission, graduation, rules</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="academic_fees"><i class="fa-solid fa-money-bill-wave"></i><span>Fees</span><small>Programme totals and categories</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="academic_courses"><i class="fa-solid fa-book"></i><span>Courses</span><small>Programme, level, semester</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="academic_officers"><i class="fa-solid fa-user-tie"></i><span>Officers</span><small>Current office holders</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="academic_admission_cutoffs"><i class="fa-solid fa-ranking-star"></i><span>Cutoffs</span><small>Admission cycle marks</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="academic_registration_requirements"><i class="fa-solid fa-clipboard-list"></i><span>Registration</span><small>New and returning students</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="academic_calendar_events"><i class="fa-solid fa-calendar-days"></i><span>Calendar</span><small>Dates and deadlines</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="bmu_recent_facts"><i class="fa-solid fa-satellite-dish"></i><span>Recent</span><small>Approved current facts</small></button>
+            </div>
             <div class="admin-actions">
                 <label>Table
                     <select id="structuredTableSelect" class="input"></select>
@@ -2655,13 +2755,28 @@
                 const statusFilter = document.getElementById('structuredStatusFilter');
                 if (statusFilter) statusFilter.value = initialView.status;
             }
+            syncStructuredQuickNav();
 
             select.addEventListener('change', () => {
                 currentTable = select.value;
                 currentOffset = 0;
                 const ruleFilter = document.getElementById('structuredRuleCategoryFilter');
                 if (ruleFilter) ruleFilter.value = '';
+                syncStructuredQuickNav();
                 loadStructuredRecords();
+            });
+            document.querySelectorAll('[data-structured-quick]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const table = btn.dataset.structuredQuick;
+                    if (!tables.some(t => t.name === table)) return;
+                    currentTable = table;
+                    select.value = table;
+                    currentOffset = 0;
+                    const ruleFilter = document.getElementById('structuredRuleCategoryFilter');
+                    if (ruleFilter) ruleFilter.value = '';
+                    syncStructuredQuickNav();
+                    loadStructuredRecords();
+                });
             });
             document.getElementById('structuredRefreshBtn')?.addEventListener('click', loadStructuredRecords);
             document.getElementById('structuredStatusFilter')?.addEventListener('change', () => {
@@ -2718,6 +2833,7 @@
         async function loadStructuredRecords() {
             if (!currentTable) return;
             const info = tables.find(t => t.name === currentTable) || {};
+            syncStructuredQuickNav();
             const q = document.getElementById('structuredSearchInput')?.value || '';
             const status = document.getElementById('structuredStatusFilter')?.value || '';
             const requirementCategory = document.getElementById('structuredRuleCategoryFilter')?.value || '';
@@ -2755,6 +2871,14 @@
                 document.getElementById('structuredRecordsBody').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
                 document.getElementById('structuredPagination').innerHTML = '';
             }
+        }
+
+        function syncStructuredQuickNav() {
+            document.querySelectorAll('[data-structured-quick]').forEach(btn => {
+                const exists = tables.some(t => t.name === btn.dataset.structuredQuick);
+                btn.disabled = !exists;
+                btn.classList.toggle('active', btn.dataset.structuredQuick === currentTable);
+            });
         }
 
         function structuredPaginationRange(pagination) {

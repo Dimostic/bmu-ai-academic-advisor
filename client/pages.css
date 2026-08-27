@@ -903,6 +903,64 @@
     font-weight: 700;
     padding: 2px 7px;
 }
+.structured-quick-nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin: 14px 0;
+}
+.structured-quick-card {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    grid-template-areas:
+        "icon title"
+        "icon note";
+    gap: 2px 8px;
+    align-items: center;
+    min-height: 66px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    color: var(--text);
+    padding: 10px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .15s;
+}
+.structured-quick-card i {
+    grid-area: icon;
+    color: var(--accent);
+    font-size: 1.05rem;
+    justify-self: center;
+}
+.structured-quick-card span {
+    grid-area: title;
+    font-weight: 800;
+    line-height: 1.1;
+}
+.structured-quick-card small {
+    grid-area: note;
+    color: var(--muted);
+    font-size: .78rem;
+    line-height: 1.25;
+}
+.structured-quick-card:hover,
+.structured-quick-card.active {
+    border-color: var(--accent);
+    background: rgba(35,182,165,.08);
+    transform: translateY(-1px);
+}
+.structured-quick-card:focus-visible,
+.admin-table button:focus-visible,
+.admin-actions .btn:focus-visible {
+    outline: 3px solid rgba(35,182,165,.45);
+    outline-offset: 3px;
+}
+.structured-quick-card:disabled {
+    cursor: not-allowed;
+    opacity: .45;
+    transform: none;
+}
 .structured-advanced {
     margin-top: 12px;
     border: 1px solid var(--line);
@@ -921,15 +979,79 @@
     margin: 16px 0 0;
     padding: 0;
 }
+.recent-fact-review-dialog {
+    width: min(980px, calc(100vw - 28px));
+    max-height: min(86vh, 780px);
+    border: 0;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 0;
+    background: var(--bg-elev);
+    color: var(--text);
+}
+.recent-fact-review-form {
+    padding: 20px;
+}
+.recent-fact-review-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(240px, .6fr);
+    gap: 14px;
+    margin-top: 10px;
+}
+.recent-fact-review-grid section,
+.recent-fact-review-grid aside {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    padding: 14px;
+    min-width: 0;
+}
+.recent-fact-review-grid h3 {
+    margin: 10px 0 8px;
+    color: var(--bg-deep);
+}
+.recent-fact-review-grid p {
+    margin: 0;
+    white-space: pre-wrap;
+    line-height: 1.5;
+    word-break: break-word;
+}
+.recent-fact-review-grid dl {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 8px 10px;
+    margin: 0;
+    font-size: .9rem;
+}
+.recent-fact-review-grid dt {
+    color: var(--muted);
+    font-weight: 700;
+}
+.recent-fact-review-grid dd {
+    margin: 0;
+    word-break: break-word;
+}
+.recent-fact-review-form menu {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0 0;
+    padding: 0;
+}
 @media (max-width: 720px) {
     .structured-edit-grid {
+        grid-template-columns: 1fr;
+    }
+    .recent-fact-review-grid {
         grid-template-columns: 1fr;
     }
     .structured-edit-form menu {
         justify-content: stretch;
         flex-wrap: wrap;
     }
-    .structured-edit-form menu .btn {
+    .structured-edit-form menu .btn,
+    .recent-fact-review-form menu .btn {
         flex: 1 1 150px;
     }
 }
@@ -1135,6 +1257,21 @@ html[data-theme="dark"] .badge.badge-ok { background: rgba(47,191,158,.18); colo
 html[data-theme="dark"] .badge { background: rgba(255,255,255,.08); color: var(--muted); }
 html[data-theme="dark"] .dropzone { background: rgba(255,255,255,.03); border-color: var(--line); color: var(--muted); }
 html[data-theme="dark"] .dropzone:hover { background: rgba(47,191,158,.08); }
+html[data-theme="dark"] .structured-quick-card {
+    background: #0f1c1f;
+    border-color: var(--line);
+}
+html[data-theme="dark"] .structured-quick-card:hover,
+html[data-theme="dark"] .structured-quick-card.active {
+    background: rgba(47,191,158,.13);
+    border-color: var(--accent);
+}
+html[data-theme="dark"] .recent-fact-review-grid section,
+html[data-theme="dark"] .recent-fact-review-grid aside {
+    background: #0f1c1f;
+    border-color: var(--line);
+}
+html[data-theme="dark"] .recent-fact-review-grid h3 { color: var(--text); }
 
 /* Curate-Q&A panel cards (cards land on hard-coded #fff in some places) */
 html[data-theme="dark"] .curate-card,

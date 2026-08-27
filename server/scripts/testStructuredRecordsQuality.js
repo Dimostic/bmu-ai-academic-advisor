@@ -168,9 +168,14 @@ function closePoolAndExit(code) {
 async function tableCounts() {
     const counts = {};
     for (const table of REQUIRED_TABLES) {
-        const rows = STATUS_TABLES.has(table)
-            ? await query(`SELECT COUNT(*) AS total FROM ${table} WHERE status = 'active'`)
-            : await query(`SELECT COUNT(*) AS total FROM ${table}`);
+        let rows;
+        if (table === 'bmu_recent_facts') {
+            rows = await query(`SELECT COUNT(*) AS total FROM ${table} WHERE status = 'approved'`);
+        } else if (STATUS_TABLES.has(table)) {
+            rows = await query(`SELECT COUNT(*) AS total FROM ${table} WHERE status = 'active'`);
+        } else {
+            rows = await query(`SELECT COUNT(*) AS total FROM ${table}`);
+        }
         counts[table] = Number(rows?.[0]?.total || 0);
     }
     return counts;
@@ -369,6 +374,9 @@ async function main() {
     }
     if (programmeGaps.length) {
         warnings.push(`${programmeGaps.length} programme(s) are missing linked courses, fees, or requirements.`);
+    }
+    if (Number(counts.bmu_recent_sources || 0) > 0 && Number(counts.bmu_recent_facts || 0) === 0) {
+        warnings.push('BMU recent sources are configured, but no recent facts are approved yet. Latest/current answers will correctly ask for admin approval instead of giving a definitive answer.');
     }
 
     console.log(JSON.stringify({

@@ -61,6 +61,9 @@ function stripHtml(html) {
         .replace(/<style[\s\S]*?<\/style>/gi, ' ')
         .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
         .replace(/<meta[^>]+>/gi, ' ')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(?:p|div|section|article|li|tr|h[1-6])>/gi, '\n')
+        .replace(/<li[^>]*>/gi, '\n- ')
         .replace(/<[^>]+>/g, ' ')
         .replace(/&nbsp;/gi, ' ')
         .replace(/&amp;/gi, '&')
@@ -68,6 +71,17 @@ function stripHtml(html) {
         .replace(/&#39;/g, "'")
         .replace(/&lt;/gi, '<')
         .replace(/&gt;/gi, '>');
+}
+
+function normaliseRecentText(value, max = 18000) {
+    return String(value || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/\r/g, '\n')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+        .slice(0, max);
 }
 
 function extractTitle(html, fallback) {
@@ -118,13 +132,23 @@ function detectProgramme(text) {
 }
 
 function splitCandidateTexts(text) {
-    const cleaned = compact(text, 18000);
-    const parts = cleaned
-        .split(/(?<=[.!?])\s+|\n+| {2,}/)
+    const cleaned = normaliseRecentText(text, 18000);
+    const blockParts = cleaned
+        .split(/\n{2,}/)
+        .map(item => compact(item, 1400))
+        .filter(item => item.length >= 50 && KEYWORD_RE.test(item));
+    const sentenceParts = cleaned
+        .replace(/\n+/g, ' ')
+        .split(/(?<=[.!?])\s+| {2,}/)
         .map(item => compact(item, 1000))
         .filter(item => item.length >= 50 && KEYWORD_RE.test(item));
+    const parts = [...blockParts, ...sentenceParts];
     const merged = [];
+    const seen = new Set();
     for (const part of parts) {
+        const key = part.toLowerCase().slice(0, 260);
+        if (seen.has(key)) continue;
+        seen.add(key);
         const prev = merged[merged.length - 1] || '';
         if (prev && prev.length < 260 && classify(prev) === classify(part)) {
             merged[merged.length - 1] = compact(`${prev} ${part}`, 1200);
@@ -364,5 +388,12 @@ module.exports = {
     getSummary,
     setFactStatus,
     findApprovedRecentFacts,
-    classify
+    classify,
+    _internal: {
+        splitCandidateTexts,
+        stripHtml,
+        detectProgramme,
+        detectSession,
+        detectDateLabel
+    }
 };

@@ -824,9 +824,47 @@ html[data-theme="dark"] .avatar-stage-controls {
     color: var(--accent);
     background: rgba(17, 153, 142, 0.1);
 }
+
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.link-muted:focus-visible,
+.topic-pill:focus-visible,
+.followup-chip:focus-visible,
+.voice-command-bar button:focus-visible,
+.mic-btn:focus-visible,
+.send-btn:focus-visible,
+.clear-input-btn:focus-visible,
+.feedback-btn:focus-visible {
+    outline: 3px solid rgba(35,182,165,.55);
+    outline-offset: 3px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.transcript:focus-visible {
+    outline: 3px solid rgba(35,182,165,.38);
+    outline-offset: 2px;
+}
 .fullpage-answer-wrap,
 .fullpage-answer {
     display: none;
+}
+.fullpage-evidence {
+    position: relative;
+    z-index: 4;
+    width: min(100%, 720px);
+    margin: 6px auto 0;
+    font-size: .82rem;
+}
+.fullpage-evidence.hidden {
+    display: none !important;
+}
+.fullpage-evidence .evidence-drawer {
+    margin: 0;
+    background: rgba(255,255,255,.92);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
 }
 .composer {
     display: flex; align-items: center; gap: 8px; padding: 12px 14px;
@@ -2268,6 +2306,11 @@ html[data-theme="dark"] body.advisor-full-view .fullpage-answer {
     color: var(--text);
 }
 
+html[data-theme="dark"] .fullpage-evidence .evidence-drawer {
+    background: rgba(7, 12, 14, 0.9);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
 html[data-theme="dark"] body.advisor-full-view .fullpage-answer-clear {
     background: rgba(10, 18, 20, 0.9);
     border-color: rgba(255, 255, 255, 0.18);
@@ -2934,6 +2977,12 @@ body.advisor-full-view.touch-landscape-full-view .fullpage-answer {
     padding-bottom: 6px !important;
     font-size: .8rem !important;
     line-height: 1.25 !important;
+}
+
+body.advisor-full-view.touch-landscape-full-view .fullpage-evidence {
+    max-height: 30px !important;
+    overflow: hidden !important;
+    font-size: .72rem !important;
 }
 
 body.advisor-full-view.touch-landscape-full-view .voice-command-bar {

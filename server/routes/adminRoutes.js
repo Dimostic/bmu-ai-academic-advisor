@@ -3749,11 +3749,9 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
         await documentLabService.ensureSchema();
         const tableCounts = [];
         for (const [name, config] of Object.entries(STRUCTURED_TABLES)) {
-            const rows = await query(`
-                SELECT COUNT(*) AS total,
-                       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active
-                FROM ${name}
-            `);
+            const rows = await query(name === 'bmu_recent_facts'
+                ? `SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS active FROM ${name}`
+                : `SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active FROM ${name}`);
             tableCounts.push({
                 table: name,
                 label: config.label,
@@ -3949,6 +3947,20 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             })),
             ...invalidCourseRows.slice(0, 10).map(row => ({ severity: 'medium', area: 'Course codes', message: `${row.programme || 'Unknown'} ${row.level_label || ''}: ${row.course_code} ${row.course_title || ''}`.trim() }))
         ];
+        const recentSourceCount = tableCounts.find(row => row.table === 'bmu_recent_sources')?.active || 0;
+        const approvedRecentFactCount = tableCounts.find(row => row.table === 'bmu_recent_facts')?.active || 0;
+        if (recentSourceCount > 0 && approvedRecentFactCount === 0) {
+            warnings.push({
+                severity: 'medium',
+                area: 'Recent sources',
+                message: 'BMU recent sources are configured, but no recent facts are approved yet. Latest/current answers will ask for admin approval instead of giving a definitive answer.',
+                action: {
+                    table: 'bmu_recent_facts',
+                    q: '',
+                    label: 'Review recent facts'
+                }
+            });
+        }
 
         res.json({
             success: true,

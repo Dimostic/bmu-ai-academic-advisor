@@ -29,6 +29,8 @@
     "test:structured-facts": "node server/scripts/testStructuredFactCoverage.js",
     "test:structured-quality": "node server/scripts/testStructuredRecordsQuality.js",
     "test:recent-sources": "node server/scripts/testRecentSources.js",
+    "test:recent-source-parsing": "node server/scripts/testRecentSourceParsing.js",
+    "test:quality-gate": "npm test && npm run test:structured-facts && npm run test:structured-quality && npm run test:advisor-policy && npm run test:stt-protection && npm run test:course-data-quality && npm run test:recent-source-parsing && npm run test:recent-sources && npm run audit:advisor-followups && npm run test:advisor-golden",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
     "sync:requirements": "node server/scripts/syncStructuredRequirementFacts.js",

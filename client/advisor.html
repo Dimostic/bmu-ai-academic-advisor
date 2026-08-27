@@ -53,8 +53,8 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260827-audio-devices" />
-    <link rel="stylesheet" href="/pages.css?v=20260815-thinking-label" />
+    <link rel="stylesheet" href="/advisor.css?v=20260827-global-standards1" />
+    <link rel="stylesheet" href="/pages.css?v=20260827-global-standards1" />
 </head>
 <body>
     <header class="top-bar">
@@ -149,7 +149,7 @@
                 </button>
             </div>
             <div class="avatar-meta">
-                <div class="avatar-status" id="avatarStatus" data-state="idle">
+                <div class="avatar-status" id="avatarStatus" data-state="idle" role="status" aria-live="polite" aria-atomic="true">
                     <span class="dot"></span><span class="label">Ready</span>
                 </div>
                 <strong id="advisorName">Dr. Tari</strong>
@@ -177,7 +177,7 @@
             </div>
 
             <!-- Welcome / transcript -->
-            <div class="transcript" id="transcript" tabindex="0">
+            <div class="transcript" id="transcript" tabindex="0" aria-live="polite" aria-relevant="additions text">
                 <article class="bubble bubble--advisor bubble--welcome">
                     <header><i class="fa-solid fa-graduation-cap"></i> Welcome</header>
                     <div class="bubble-body">
@@ -194,7 +194,8 @@
             </div>
 
             <div class="fullpage-answer-wrap hidden" id="fullPageAnswerWrap">
-                <div class="fullpage-answer" id="fullPageAnswer" aria-live="polite"></div>
+                <div class="fullpage-answer" id="fullPageAnswer" aria-live="polite" aria-atomic="false"></div>
+                <div class="fullpage-evidence hidden" id="fullPageEvidence" aria-label="Answer sources"></div>
                 <div class="fullpage-feedback hidden" id="fullPageFeedback" aria-label="Rate this answer">
                     <button type="button" class="feedback-btn" data-helpful="1" title="Helpful" aria-label="Helpful">
                         <i class="fa-regular fa-thumbs-up"></i>
@@ -390,7 +391,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260824-academic-male-avatar2" defer></script>
-    <script src="/advisor.js?v=20260827-handsfree-audio" defer></script>
+    <script src="/advisor.js?v=20260827-global-standards1" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>

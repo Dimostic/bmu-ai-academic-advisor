@@ -886,6 +886,11 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false
 }));
 
+app.use((req, res, next) => {
+    res.setHeader('Permissions-Policy', 'microphone=(self), camera=(), geolocation=(), payment=(), usb=(), bluetooth=()');
+    next();
+});
+
 // CORS configuration
 app.use(cors({
     origin: process.env.NODE_ENV === 'production' 
@@ -1462,9 +1467,9 @@ app.listen(PORT, async () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
-║          🏥 BMU AI Agent Server Started                  ║
+║          BMU AI Academic Advisor Server Started          ║
 ║                                                          ║
-║   Bayelsa Medical University Policy Assistant            ║
+║   Bayelsa Medical University Academic Advisor            ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
 ║                                                          ║

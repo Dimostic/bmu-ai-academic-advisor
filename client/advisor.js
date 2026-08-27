@@ -104,6 +104,7 @@
     const guestDemoSuggestions = $('guestDemoSuggestions');
     const fullPageAnswerWrap = $('fullPageAnswerWrap');
     const fullPageAnswer = $('fullPageAnswer');
+    const fullPageEvidence = $('fullPageEvidence');
     const fullPageFeedback = $('fullPageFeedback');
     const clearAnswerBtn = $('clearAnswerBtn');
     const voiceCommandBar = $('voiceCommandBar');
@@ -1148,13 +1149,16 @@
 
     function rememberVoicePhase(phase, label) {
         if (state.voicePhase !== phase) {
+            const previousAt = state.voicePhaseUpdatedAt || Date.now();
             state.previousVoicePhase = state.voicePhase;
             state.voicePhase = phase;
             state.voicePhaseUpdatedAt = Date.now();
             state.voicePhaseHistory.push({
+                from: state.previousVoicePhase || 'unknown',
                 phase,
                 label: String(label || phase),
-                at: state.voicePhaseUpdatedAt
+                at: state.voicePhaseUpdatedAt,
+                previousDurationMs: Math.max(0, state.voicePhaseUpdatedAt - previousAt)
             });
             if (state.voicePhaseHistory.length > 20) state.voicePhaseHistory.shift();
         }
@@ -1170,6 +1174,9 @@
             hasMediaRecorder: Boolean(state.mediaRecorder),
             voicePaused: Boolean(state.voicePaused),
             voiceConversationActive: Boolean(state.voiceConversationActive),
+            lastAskInputMode: state.lastAskInputMode,
+            pendingAskInputMode: state.pendingAskInputMode,
+            lastApiEndpoint: state.lastApiEndpoint || null,
             handsFreeEnabled: Boolean(state.handsFreeEnabled),
             handsFreeStandbyActive: Boolean(state.handsFreeStandby?.active),
             history: state.voicePhaseHistory.slice()
@@ -1183,6 +1190,9 @@
         currentState = phase;
         advisorStatus.dataset.state = phase;
         advisorStatus.dataset.previousState = state.previousVoicePhase || '';
+        advisorStatus.setAttribute('aria-label', `Advisor status: ${visibleLabel}`);
+        document.documentElement.dataset.voicePhase = phase;
+        document.body.dataset.voicePhase = phase;
         advisorStatus.querySelector('.label').textContent = visibleLabel;
         const avatarMeta = advisorStatus.closest('.avatar-meta');
         if (avatarMeta) {
@@ -1675,6 +1685,9 @@
         fullPageAnswer.dataset.state = stateName;
         fullPageAnswer.classList.toggle('hidden', !value);
         fullPageAnswerWrap?.classList.toggle('hidden', !value);
+        if (!value || stateName === 'thinking' || stateName === 'transcribing') {
+            setFullPageEvidence([]);
+        }
         renderFullPageAnswer(value);
         if (clearAnswerBtn) clearAnswerBtn.hidden = !value;
         syncFullPageFeedback(stateName === 'answer' ? state.lastAdvisorMessageId : null);
@@ -1833,7 +1846,7 @@
         el.className = 'bubble bubble--advisor';
         const body = escapeHtml(formatAssistantDisplayText(text || ''));
         const evidence = Array.isArray(citations) && citations.length
-            ? `<div class="bubble-footer" aria-hidden="true"><span class="cite">${renderEvidenceSummary(citations, text || '')}</span></div>`
+            ? `<div class="bubble-footer" aria-label="Answer sources"><span class="cite">${renderEvidenceSummary(citations, text || '')}</span></div>`
             : '';
         el.innerHTML = `
             <header><i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(window.ADVISOR_NAME || 'Dr. Tari')}</header>
@@ -1851,8 +1864,9 @@
         return el;
     }
 
-    function fillBubbleMeta(bubble, { citations, suggested_actions, speech_text, audio_url, message_id }) {
+    function fillBubbleMeta(bubble, { citations, suggested_actions, speech_text, audio_url, message_id, source }) {
         if (message_id) bubble.el.dataset.messageId = String(message_id);
+        if (source) bubble.el.dataset.answerSource = String(source);
         const copyBtn = document.createElement('button');
         copyBtn.type = 'button';
         copyBtn.className = 'quick-action-btn';
@@ -1913,8 +1927,12 @@
 
         if (Array.isArray(citations) && citations.length) {
             bubble.cite.innerHTML = renderEvidenceSummary(citations, bubble.body?.textContent || speech_text || '');
-            bubble.footer.setAttribute('aria-hidden', 'true');
+            bubble.footer.removeAttribute('aria-hidden');
+            bubble.footer.setAttribute('aria-label', 'Answer sources');
             bubble.footer.classList.remove('hidden');
+            setFullPageEvidence(citations, bubble.body?.textContent || speech_text || '');
+        } else {
+            setFullPageEvidence([]);
         }
         if (bubble.playBtn) {
             bubble.playBtn.addEventListener('click', async () => {
@@ -2436,6 +2454,15 @@
                 <ul>${details}</ul>
             </details>
         `;
+    }
+
+    function setFullPageEvidence(citations = [], answerText = '') {
+        if (!fullPageEvidence) return;
+        const hasEvidence = Array.isArray(citations) && citations.length;
+        fullPageEvidence.classList.toggle('hidden', !hasEvidence);
+        fullPageEvidence.innerHTML = hasEvidence
+            ? renderEvidenceSummary(citations, answerText || state.fullPageAnswerText || '')
+            : '';
     }
 
     function maybeStartAutoFollowupListening() {
@@ -3440,7 +3467,8 @@
                     suggested_actions: final.reply?.suggested_actions || [],
                     speech_text:       final.reply?.speech_text || speechText,
                     audio_url:         final.audio?.audio_url || audioUrl,
-                    message_id:        final.messageId || final.message_id || null
+                    message_id:        final.messageId || final.message_id || null,
+                    source:            final.reply?._source || final.reply?.source || null
                 });
                 state.lastAdvisorMessageId = Number(final.messageId || final.message_id || 0) || null;
                 syncFullPageFeedback(state.lastAdvisorMessageId);
