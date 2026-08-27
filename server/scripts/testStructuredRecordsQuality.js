@@ -44,6 +44,12 @@ const CRITICAL_ROLES = [
 const MIN_ACTIVE_COURSES = parseInt(process.env.STRUCTURED_QUALITY_MIN_ACTIVE_COURSES || '1400', 10);
 const MAX_INVALID_CODES = parseInt(process.env.STRUCTURED_QUALITY_MAX_INVALID_CODES || '0', 10);
 const MAX_UNIT_CONFLICTS = parseInt(process.env.STRUCTURED_QUALITY_MAX_UNIT_CONFLICTS || '0', 10);
+const SOURCE_LIMITED_PROGRAMME_STATUSES = new Set([
+    'fee source only course catalogue not available',
+    'fee only source',
+    'source limited fee only',
+    'source limited'
+]);
 
 function normalise(value) {
     return String(value || '')
@@ -72,6 +78,10 @@ function canonicalProgrammeKey(value) {
     return text;
 }
 
+function isSourceLimitedProgrammeStatus(value) {
+    return SOURCE_LIMITED_PROGRAMME_STATUSES.has(normalise(value));
+}
+
 function aggregateProgrammeCounts(rows) {
     const counts = new Map();
     const names = new Map();
@@ -90,20 +100,47 @@ function aggregateProgrammeIdentities(rows) {
     for (const row of rows || []) {
         const key = canonicalProgrammeKey(row.programme);
         if (!key) continue;
+        const status = row.programme_status || '';
+        const sourcePath = row.source_path || '';
         if (!byKey.has(key)) {
             byKey.set(key, {
                 programme: row.programme,
                 canonicalProgramme: key,
-                programmeAliases: []
+                programmeStatus: status,
+                programmeAliases: [],
+                programmeStatuses: new Set(),
+                sourcePaths: new Set()
             });
         }
         const item = byKey.get(key);
+        if (status) item.programmeStatuses.add(status);
+        if (sourcePath) item.sourcePaths.add(sourcePath);
         if (row.programme !== item.programme && !item.programmeAliases.includes(row.programme)) {
             item.programmeAliases.push(row.programme);
         }
+        if (isSourceLimitedProgrammeStatus(item.programmeStatus) && !isSourceLimitedProgrammeStatus(status)) {
+            const previousProgramme = item.programme;
+            item.programme = row.programme;
+            item.programmeStatus = status;
+            item.programmeAliases = item.programmeAliases.filter(name => name !== row.programme);
+            if (previousProgramme !== item.programme && !item.programmeAliases.includes(previousProgramme)) {
+                item.programmeAliases.push(previousProgramme);
+            }
+        }
     }
     return [...byKey.values()]
-        .map(item => ({ ...item, programmeAliases: item.programmeAliases.sort() }))
+        .map(item => {
+            const statuses = [...item.programmeStatuses].sort();
+            return {
+                programme: item.programme,
+                canonicalProgramme: item.canonicalProgramme,
+                programmeStatus: item.programmeStatus || null,
+                programmeAliases: item.programmeAliases.sort(),
+                programmeStatuses: statuses,
+                sourcePaths: [...item.sourcePaths].sort(),
+                sourceLimited: statuses.length > 0 && statuses.every(isSourceLimitedProgrammeStatus)
+            };
+        })
         .sort((a, b) => a.programme.localeCompare(b.programme));
 }
 
@@ -224,7 +261,7 @@ async function main() {
     `);
 
     const programmeRows = await query(`
-        SELECT programme
+        SELECT programme, programme_status, source_path
         FROM academic_programmes
         WHERE status = 'active'
           AND COALESCE(programme, '') <> ''
@@ -266,7 +303,11 @@ async function main() {
         return {
             programme: row.programme,
             canonicalProgramme: key,
+            programmeStatus: row.programmeStatus,
             programmeAliases: row.programmeAliases,
+            programmeStatuses: row.programmeStatuses,
+            sourcePaths: row.sourcePaths,
+            sourceLimited: row.sourceLimited,
             linkedProgrammeNames: [...linkedNames]
                 .filter(name => name !== row.programme && !row.programmeAliases.includes(name))
                 .sort(),
@@ -279,7 +320,11 @@ async function main() {
         .map(row => ({
             programme: row.programme,
             canonicalProgramme: row.canonicalProgramme,
+            programmeStatus: row.programmeStatus,
             programmeAliases: row.programmeAliases,
+            programmeStatuses: row.programmeStatuses,
+            sourcePaths: row.sourcePaths,
+            sourceLimited: row.sourceLimited,
             linkedProgrammeNames: row.linkedProgrammeNames,
             courseCount: Number(row.course_count || 0),
             feeCount: Number(row.fee_count || 0),
@@ -290,7 +335,7 @@ async function main() {
                 Number(row.rule_count || 0) ? null : 'no requirements'
             ].filter(Boolean)
         }))
-        .filter(row => row.gaps.length);
+        .filter(row => row.gaps.length && !row.sourceLimited);
 
     const ruleRows = await query(`
         SELECT requirement_category, COUNT(*) AS count
@@ -350,6 +395,8 @@ async function main() {
         },
         programmes: {
             totalChecked: programmeIdentities.length,
+            sourceLimitedCount: programmeIdentities.filter(row => row.sourceLimited).length,
+            sourceLimitedSamples: programmeIdentities.filter(row => row.sourceLimited).slice(0, 10),
             gapCount: programmeGaps.length,
             gapSamples: programmeGaps.slice(0, 25)
         },

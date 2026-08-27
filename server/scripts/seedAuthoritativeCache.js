@@ -371,16 +371,43 @@ async function upsertAcademicFee({ programme, levelKey, studentCategory, amount,
     );
 }
 
-async function upsertAcademicProgramme({ programme, faculty = '', department = '', degree = '', durationYears = null, entryMode = '', sourcePath = 'BMU structured seed', rawText = '' }) {
+async function upsertAcademicProgramme({
+    programme,
+    faculty = '',
+    department = '',
+    degree = '',
+    durationYears = null,
+    entryMode = '',
+    availableEntryModes = '',
+    programmeStatus = '',
+    professionalRegulatoryBody = '',
+    sessionLabel = '',
+    versionLabel = '',
+    sourcePath = 'BMU structured seed',
+    rawText = ''
+}) {
     const { query } = getDb();
-    const row = { programme, faculty, department, degree, durationYears, entryMode };
+    const row = {
+        programme,
+        faculty,
+        department,
+        degree,
+        durationYears,
+        entryMode,
+        availableEntryModes,
+        programmeStatus,
+        professionalRegulatoryBody,
+        sessionLabel,
+        versionLabel
+    };
     const hash = recordHash(['academic_programmes', programme, faculty, department, degree, durationYears, entryMode, sourcePath]);
     await query(
         `INSERT INTO academic_programmes
             (record_hash, programme, faculty, department, degree, duration_years, entry_mode,
+             available_entry_modes, programme_status, professional_regulatory_body, session_label, version_label,
              authority_type, scope_label, source_path, raw_text, row_json, status)
          VALUES
-            (?, ?, ?, ?, ?, ?, ?, 'institution', 'BMU programme catalogue', ?, ?, ?, 'active')
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'institution', 'BMU programme catalogue', ?, ?, ?, 'active')
          ON DUPLICATE KEY UPDATE
             programme = VALUES(programme),
             faculty = VALUES(faculty),
@@ -388,6 +415,11 @@ async function upsertAcademicProgramme({ programme, faculty = '', department = '
             degree = VALUES(degree),
             duration_years = VALUES(duration_years),
             entry_mode = VALUES(entry_mode),
+            available_entry_modes = VALUES(available_entry_modes),
+            programme_status = VALUES(programme_status),
+            professional_regulatory_body = VALUES(professional_regulatory_body),
+            session_label = VALUES(session_label),
+            version_label = VALUES(version_label),
             authority_type = VALUES(authority_type),
             scope_label = VALUES(scope_label),
             source_path = VALUES(source_path),
@@ -395,7 +427,23 @@ async function upsertAcademicProgramme({ programme, faculty = '', department = '
             row_json = VALUES(row_json),
             status = 'active',
             updated_at = NOW()`,
-        [hash, programme, faculty || null, department || null, degree || null, durationYears, entryMode || null, sourcePath, rawText || `${programme} is listed in the BMU programme/course sources.`, JSON.stringify(row)]
+        [
+            hash,
+            programme,
+            faculty || null,
+            department || null,
+            degree || null,
+            durationYears,
+            entryMode || null,
+            availableEntryModes || null,
+            programmeStatus || null,
+            professionalRegulatoryBody || null,
+            sessionLabel || null,
+            versionLabel || null,
+            sourcePath,
+            rawText || `${programme} is listed in the BMU programme/course sources.`,
+            JSON.stringify(row)
+        ]
     );
 }
 
@@ -479,7 +527,8 @@ async function seedAcademicCoursesAndProgrammes() {
             programmeMap.set(String(programme).toLowerCase(), {
                 programme,
                 sourcePath: row.sourceTitle || 'BMU course catalogue',
-                rawText: `${programme} appears in ${row.sourceTitle || 'the BMU course catalogue'}.`
+                rawText: `${programme} appears in ${row.sourceTitle || 'the BMU course catalogue'}.`,
+                programmeStatus: 'Course source confirmed'
             });
         }
     }
@@ -491,7 +540,8 @@ async function seedAcademicCoursesAndProgrammes() {
             programmeMap.set(String(programme).toLowerCase(), {
                 programme,
                 sourcePath: 'bmu fee structures new.docx',
-                rawText: `${programme} appears in the BMU fee structure.`
+                rawText: `${programme} appears in the BMU fee structure, but no matching BMU course-catalogue rows were found during the structured seed.`,
+                programmeStatus: 'Fee source only - course catalogue not available'
             });
         }
     }
