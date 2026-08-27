@@ -992,6 +992,80 @@
 .recent-fact-review-form {
     padding: 20px;
 }
+.recent-review-path {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: center;
+    margin: 10px 0 14px;
+    padding: 11px 13px;
+    border: 1px solid rgba(35,182,165,.28);
+    border-radius: 8px;
+    background: rgba(35,182,165,.08);
+    color: var(--text);
+}
+.recent-review-path strong {
+    color: var(--bg-deep);
+}
+.recent-paste-panel {
+    margin: 12px 0 18px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    padding: 0;
+    overflow: hidden;
+}
+.recent-paste-panel > summary {
+    cursor: pointer;
+    color: var(--bg-deep);
+    font-weight: 800;
+    padding: 13px 15px;
+    border-bottom: 1px solid var(--line);
+}
+.recent-paste-panel > summary i {
+    color: var(--accent);
+    margin-right: 6px;
+}
+.recent-paste-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 14px;
+}
+.recent-paste-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: .88rem;
+    font-weight: 700;
+}
+.recent-paste-grid input,
+.recent-paste-grid textarea,
+.recent-paste-grid select {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    padding: 9px 11px;
+    font: inherit;
+}
+.recent-paste-grid textarea {
+    min-height: 160px;
+    resize: vertical;
+    line-height: 1.45;
+}
+.recent-paste-wide {
+    grid-column: 1 / -1;
+}
+.recent-paste-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
 .recent-fact-review-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(240px, .6fr);
@@ -1044,6 +1118,9 @@
         grid-template-columns: 1fr;
     }
     .recent-fact-review-grid {
+        grid-template-columns: 1fr;
+    }
+    .recent-paste-grid {
         grid-template-columns: 1fr;
     }
     .structured-edit-form menu {
@@ -1265,6 +1342,25 @@ html[data-theme="dark"] .structured-quick-card:hover,
 html[data-theme="dark"] .structured-quick-card.active {
     background: rgba(47,191,158,.13);
     border-color: var(--accent);
+}
+html[data-theme="dark"] .recent-review-path {
+    background: rgba(47,191,158,.10);
+    border-color: rgba(47,191,158,.30);
+}
+html[data-theme="dark"] .recent-review-path strong,
+html[data-theme="dark"] .recent-paste-panel > summary {
+    color: var(--text);
+}
+html[data-theme="dark"] .recent-paste-panel {
+    background: var(--bg-elev);
+    border-color: var(--line);
+}
+html[data-theme="dark"] .recent-paste-grid input,
+html[data-theme="dark"] .recent-paste-grid textarea,
+html[data-theme="dark"] .recent-paste-grid select {
+    background: #0f1c1f;
+    color: var(--text);
+    border-color: var(--line);
 }
 html[data-theme="dark"] .recent-fact-review-grid section,
 html[data-theme="dark"] .recent-fact-review-grid aside {

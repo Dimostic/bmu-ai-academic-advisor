@@ -726,10 +726,11 @@
             });
             el.querySelectorAll('[data-structured-quality-action]').forEach(btn => {
                 btn.addEventListener('click', () => {
+                    const tableName = btn.dataset.structuredQualityAction || '';
                     pendingStructuredRecordsView = {
-                        table: btn.dataset.structuredQualityAction,
+                        table: tableName,
                         q: btn.dataset.structuredQualityQ || '',
-                        status: 'active'
+                        status: tableName === 'bmu_recent_facts' ? 'pending' : 'active'
                     };
                     document.querySelector('[data-section="structuredRecords"]')?.click();
                 });
@@ -2452,6 +2453,33 @@
                 <button class="btn btn-ghost" id="recentOpenFactsBtn"><i class="fa-solid fa-table-list"></i> Open fact table</button>
                 <button class="btn btn-ghost" id="recentOpenSourcesBtn"><i class="fa-solid fa-database"></i> Open source table</button>
             </div>
+            <div class="recent-review-path">
+                <strong>Where extracted items appear:</strong>
+                <span>Admin → Recent Sources → Detected recent facts. Newly extracted facts are pending until approved or rejected here.</span>
+            </div>
+            <details class="recent-paste-panel" open>
+                <summary><i class="fa-solid fa-paste"></i> Paste official BMU notice for extraction</summary>
+                <div class="recent-paste-grid">
+                    <label>Source
+                        <select id="recentPasteSource" class="input">
+                            <option value="">Manual BMU notice</option>
+                        </select>
+                    </label>
+                    <label>Notice title
+                        <input id="recentPasteTitle" class="input" placeholder="BMU 2026/2027 admissions cut-off marks" />
+                    </label>
+                    <label class="recent-paste-wide">Source URL, if available
+                        <input id="recentPasteUrl" class="input" placeholder="https://bmu.edu.ng/..." />
+                    </label>
+                    <label class="recent-paste-wide">Notice text
+                        <textarea id="recentPasteText" class="input" placeholder="Paste the official BMU notice, social caption, website text, or circular here."></textarea>
+                    </label>
+                    <div class="recent-paste-wide recent-paste-actions">
+                        <button class="btn btn-primary" id="recentPasteExtractBtn" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> Extract pending facts</button>
+                        <span id="recentPasteResult" class="lede"></span>
+                    </div>
+                </div>
+            </details>
             <div id="recentSourceStats" class="stat-row"></div>
             <div id="recentSourceList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading sources…</div></div>
             <h3 style="margin:22px 0 8px;color:var(--bg-deep);">Detected recent facts</h3>
@@ -2474,13 +2502,14 @@
             }
         });
         document.getElementById('recentOpenFactsBtn')?.addEventListener('click', () => {
-            pendingStructuredRecordsView = { table: 'bmu_recent_facts', status: '' };
+            pendingStructuredRecordsView = { table: 'bmu_recent_facts', status: 'pending' };
             document.querySelector('[data-section="structuredRecords"]')?.click();
         });
         document.getElementById('recentOpenSourcesBtn')?.addEventListener('click', () => {
             pendingStructuredRecordsView = { table: 'bmu_recent_sources', status: '' };
             document.querySelector('[data-section="structuredRecords"]')?.click();
         });
+        document.getElementById('recentPasteExtractBtn')?.addEventListener('click', handleRecentPasteIngest);
         await loadRecentSources();
     }
 
@@ -2503,6 +2532,7 @@
                 stat('Approved facts', approved),
                 stat('Last check', lastChecked ? formatDate(lastChecked) : '—')
             ].join('');
+            renderRecentPasteSourceOptions(sources);
             document.getElementById('recentSourceList').innerHTML = renderRecentSourceCards(sources);
             document.getElementById('recentFactsList').innerHTML = renderRecentFactsTable(facts);
             document.getElementById('recentSourceList').onclick = handleRecentSourceClick;
@@ -2510,6 +2540,52 @@
         } catch (err) {
             document.getElementById('recentSourceList').innerHTML = `<p class="auth-error">${escapeHtml(err.message || 'Could not load recent sources')}</p>`;
             document.getElementById('recentFactsList').innerHTML = '';
+        }
+    }
+
+    function renderRecentPasteSourceOptions(sources) {
+        const select = document.getElementById('recentPasteSource');
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML = [
+            '<option value="">Manual BMU notice</option>',
+            ...sources.map(source => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.source_name || source.source_url || 'BMU source')}</option>`)
+        ].join('');
+        if ([...select.options].some(option => option.value === current)) select.value = current;
+    }
+
+    async function handleRecentPasteIngest(ev) {
+        const btn = ev?.currentTarget;
+        const resultEl = document.getElementById('recentPasteResult');
+        const sourceId = document.getElementById('recentPasteSource')?.value || '';
+        const title = document.getElementById('recentPasteTitle')?.value || '';
+        const sourceUrl = document.getElementById('recentPasteUrl')?.value || '';
+        const text = document.getElementById('recentPasteText')?.value || '';
+        if (text.trim().length < 40) {
+            toast('Paste more BMU notice text before extraction', 'error');
+            return;
+        }
+        if (btn) btn.disabled = true;
+        if (resultEl) resultEl.textContent = 'Extracting candidate facts…';
+        try {
+            const r = await api('/api/admin/recent-sources/ingest-text', {
+                method: 'POST',
+                body: {
+                    sourceId: sourceId ? Number(sourceId) : null,
+                    title,
+                    sourceUrl,
+                    text
+                }
+            });
+            const message = `Detected ${r.detected || 0}; new ${r.inserted || 0}; refreshed ${r.updated || 0}. Review below before approval.`;
+            if (resultEl) resultEl.textContent = message;
+            toast(message);
+            await loadRecentSources();
+        } catch (err) {
+            if (resultEl) resultEl.textContent = '';
+            toast(err.message || 'Could not extract recent facts', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
         }
     }
 
@@ -2530,9 +2606,9 @@
     }
 
     function renderRecentFactsTable(facts) {
-        if (!facts.length) return '<p class="empty">No recent facts detected yet. Click “Check all sources”.</p>';
+        if (!facts.length) return '<p class="empty">No recent facts detected yet. Click “Check all sources”, or paste an official BMU notice above and extract it.</p>';
         const rows = facts.map(fact => [
-            `<span class="badge ${fact.status === 'approved' ? 'badge-success' : fact.status === 'rejected' ? 'badge-danger' : 'badge-info'}">${escapeHtml(fact.status || 'pending')}</span>`,
+            `<span class="badge ${fact.status === 'approved' ? 'badge-success' : fact.status === 'rejected' ? 'badge-danger' : fact.status === 'pending' ? 'badge-warn' : 'badge-info'}">${escapeHtml(fact.status || 'pending')}</span>`,
             `<div><strong>${escapeHtml(fact.title || 'Recent BMU fact')}</strong><div style="color:var(--muted);font-size:.82rem;">${escapeHtml(fact.category || 'general')} · ${escapeHtml(fact.session_label || fact.detected_date_label || 'recent')}</div></div>`,
             escapeHtml((fact.fact_text || '').length > 260 ? fact.fact_text.slice(0, 257) + '...' : fact.fact_text || ''),
             escapeHtml(fact.source_name || fact.source_type || '—'),
@@ -2639,7 +2715,7 @@
             dialog.close();
             pendingStructuredRecordsView = {
                 table: 'bmu_recent_facts',
-                status: '',
+                status: 'pending',
                 q: fact.title || fact.fact_text || String(fact.id)
             };
             document.querySelector('[data-section="structuredRecords"]')?.click();
@@ -2679,7 +2755,7 @@
                 <button class="structured-quick-card" type="button" data-structured-quick="academic_admission_cutoffs"><i class="fa-solid fa-ranking-star"></i><span>Cutoffs</span><small>Admission cycle marks</small></button>
                 <button class="structured-quick-card" type="button" data-structured-quick="academic_registration_requirements"><i class="fa-solid fa-clipboard-list"></i><span>Registration</span><small>New and returning students</small></button>
                 <button class="structured-quick-card" type="button" data-structured-quick="academic_calendar_events"><i class="fa-solid fa-calendar-days"></i><span>Calendar</span><small>Dates and deadlines</small></button>
-                <button class="structured-quick-card" type="button" data-structured-quick="bmu_recent_facts"><i class="fa-solid fa-satellite-dish"></i><span>Recent</span><small>Approved current facts</small></button>
+                <button class="structured-quick-card" type="button" data-structured-quick="bmu_recent_facts"><i class="fa-solid fa-satellite-dish"></i><span>Recent</span><small>Pending/approved notices</small></button>
             </div>
             <div class="admin-actions">
                 <label>Table
@@ -2690,12 +2766,7 @@
                 </label>
                 <button class="btn btn-ghost" id="structuredClearSearchBtn" type="button"><i class="fa-solid fa-xmark"></i> Clear search</button>
                 <label>Status
-                    <select id="structuredStatusFilter" class="input">
-                        <option value="">Any status</option>
-                        <option value="active" selected>Active</option>
-                        <option value="draft">Draft</option>
-                        <option value="inactive">Archived</option>
-                    </select>
+                    <select id="structuredStatusFilter" class="input"></select>
                 </label>
                 <label id="structuredRuleCategoryLabel" style="display:none;">Requirement
                     <select id="structuredRuleCategoryFilter" class="input">
@@ -2751,13 +2822,10 @@
                 ? initialView.table
                 : tables[0]?.name || '';
             select.value = currentTable;
+            syncStructuredStatusFilter(Object.prototype.hasOwnProperty.call(initialView || {}, 'status') ? initialView.status : undefined);
             if (initialView?.q) {
                 const searchInput = document.getElementById('structuredSearchInput');
                 if (searchInput) searchInput.value = initialView.q;
-            }
-            if (initialView?.status) {
-                const statusFilter = document.getElementById('structuredStatusFilter');
-                if (statusFilter) statusFilter.value = initialView.status;
             }
             syncStructuredQuickNav();
 
@@ -2766,6 +2834,7 @@
                 currentOffset = 0;
                 const ruleFilter = document.getElementById('structuredRuleCategoryFilter');
                 if (ruleFilter) ruleFilter.value = '';
+                syncStructuredStatusFilter();
                 syncStructuredQuickNav();
                 loadStructuredRecords();
             });
@@ -2778,6 +2847,7 @@
                     currentOffset = 0;
                     const ruleFilter = document.getElementById('structuredRuleCategoryFilter');
                     if (ruleFilter) ruleFilter.value = '';
+                    syncStructuredStatusFilter();
                     syncStructuredQuickNav();
                     loadStructuredRecords();
                 });
@@ -2883,6 +2953,49 @@
                 btn.disabled = !exists;
                 btn.classList.toggle('active', btn.dataset.structuredQuick === currentTable);
             });
+        }
+
+        function structuredStatusOptions(tableName) {
+            if (tableName === 'bmu_recent_facts') {
+                return [
+                    { value: '', label: 'Any status' },
+                    { value: 'pending', label: 'Pending review' },
+                    { value: 'approved', label: 'Approved' },
+                    { value: 'rejected', label: 'Rejected' },
+                    { value: 'inactive', label: 'Archived' }
+                ];
+            }
+            if (tableName === 'bmu_recent_sources') {
+                return [
+                    { value: '', label: 'Any status' },
+                    { value: 'active', label: 'Active' },
+                    { value: 'inactive', label: 'Archived' }
+                ];
+            }
+            return [
+                { value: '', label: 'Any status' },
+                { value: 'active', label: 'Active' },
+                { value: 'draft', label: 'Draft' },
+                { value: 'inactive', label: 'Archived' }
+            ];
+        }
+
+        function structuredDefaultStatus(tableName) {
+            return tableName === 'bmu_recent_facts' ? 'pending' : 'active';
+        }
+
+        function syncStructuredStatusFilter(preferredStatus) {
+            const filter = document.getElementById('structuredStatusFilter');
+            if (!filter) return;
+            const options = structuredStatusOptions(currentTable);
+            const previous = preferredStatus !== undefined ? String(preferredStatus || '') : String(filter.value || '');
+            filter.innerHTML = options
+                .map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+                .join('');
+            const fallback = structuredDefaultStatus(currentTable);
+            filter.value = options.some(option => option.value === previous)
+                ? previous
+                : (options.some(option => option.value === fallback) ? fallback : '');
         }
 
         function structuredPaginationRange(pagination) {
@@ -3020,6 +3133,8 @@
             academic_courses: ['programme', 'level_label', 'semester_label', 'course_code', 'course_title', 'credit_units', 'status'],
             academic_calendar_events: ['event_title', 'event_date_label', 'session_label', 'status'],
             academic_rules: ['rule_type', 'requirement_category', 'programme', 'entry_mode', 'requirement_text', 'source_path', 'status'],
+            bmu_recent_facts: ['status', 'title', 'category', 'fact_text', 'session_label', 'programme', 'source_name', 'confidence'],
+            bmu_recent_sources: ['source_name', 'source_type', 'source_url', 'last_status', 'last_checked_at', 'status'],
             structured_facts: ['fact_type', 'subject', 'predicate_name', 'human_text', 'authority_rank', 'status']
         };
         const preferred = byTable[tableInfo.name] || all.slice(0, 6);
@@ -3029,8 +3144,10 @@
     function formatStructuredGridCell(column, value) {
         const text = String(value ?? '');
         if (column === 'status') {
-            const cls = text.toLowerCase() === 'active' ? 'badge-success'
-                : text.toLowerCase() === 'inactive' ? 'badge-danger'
+            const status = text.toLowerCase();
+            const cls = status === 'active' || status === 'approved' ? 'badge-success'
+                : status === 'inactive' || status === 'rejected' ? 'badge-danger'
+                : status === 'draft' || status === 'pending' ? 'badge-warn'
                 : 'badge-info';
             return `<span class="badge ${cls}">${escapeHtml(text || '—')}</span>`;
         }
@@ -3072,13 +3189,13 @@
                     <button class="icon-btn" type="button" data-structured-dialog-close aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div class="structured-edit-grid">
-                    ${simpleColumns.map(column => renderStructuredRecordField(column, record[column], requiredFields.has(column))).join('')}
+                    ${simpleColumns.map(column => renderStructuredRecordField(column, record[column], requiredFields.has(column), tableName)).join('')}
                 </div>
                 ${advancedColumns.length ? `
                     <details class="structured-advanced">
                         <summary>Advanced source and system fields</summary>
                         <div class="structured-edit-grid">
-                            ${advancedColumns.map(column => renderStructuredRecordField(column, record[column], requiredFields.has(column))).join('')}
+                            ${advancedColumns.map(column => renderStructuredRecordField(column, record[column], requiredFields.has(column), tableName)).join('')}
                         </div>
                     </details>
                 ` : ''}
@@ -3124,13 +3241,13 @@
         else dialog.setAttribute('open', 'open');
     }
 
-    function renderStructuredRecordField(column, value, required = false) {
+    function renderStructuredRecordField(column, value, required = false, tableName = '') {
         const isLong = /text|json|source_path|raw_text|human_text|value_json|row_json/.test(column);
         const label = structuredFieldLabel(column);
         const requiredAttr = required ? ' required' : '';
         const requiredMark = required ? ' <span class="required-indicator">Required</span>' : '';
         const placeholder = structuredFieldPlaceholder(column);
-        const fixedOptions = structuredFieldSelectOptions(column);
+        const fixedOptions = structuredFieldSelectOptions(column, tableName);
         if (fixedOptions.length) {
             const current = String(value || fixedOptions[0] || '');
             return `<label>${escapeHtml(label)}${requiredMark}<select data-structured-field="${escapeHtml(column)}"${requiredAttr}>
@@ -3147,7 +3264,13 @@
         return `<label>${escapeHtml(label)}${requiredMark}<input data-structured-field="${escapeHtml(column)}" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder)}"${listAttr}${requiredAttr} />${listMarkup}</label>`;
     }
 
-    function structuredFieldSelectOptions(column) {
+    function structuredFieldSelectOptions(column, tableName = '') {
+        if (column === 'status' && tableName === 'bmu_recent_facts') {
+            return ['pending', 'approved', 'rejected', 'inactive'];
+        }
+        if (column === 'status' && tableName === 'bmu_recent_sources') {
+            return ['active', 'inactive'];
+        }
         const options = {
             status: ['active', 'draft', 'inactive'],
             programme_status: ['active', 'pending_review', 'paused', 'withdrawn', 'inactive'],
@@ -3225,6 +3348,15 @@
             professional_exam_requirement: 'Professional examination requirement',
             duration_limits: 'Minimum/maximum duration rule',
             approval_condition: 'Senate/professional-body approval condition',
+            source_name: 'BMU Official Website, BMU Facebook, admin pasted notice...',
+            source_type: 'website, social_facebook, manual_paste...',
+            source_url: 'https://bmu.edu.ng/...',
+            title: 'BMU 2026/2027 admissions cut-off marks',
+            category: 'admissions, fees, registration, calendar...',
+            fact_text: 'Exact detected fact awaiting review',
+            detected_date_label: '27 August 2026',
+            confidence: '0.74',
+            admin_notes: 'Reason for approval, rejection, correction, or expiry',
             row_json: '{"programme":"Medical Laboratory Science","level":"300 level"}'
         };
         return placeholders[column] || '';
@@ -3286,6 +3418,15 @@
             professional_exam_requirement: 'Professional exam requirement',
             duration_limits: 'Duration limits',
             approval_condition: 'Approval condition',
+            source_name: 'Source name',
+            source_type: 'Source type',
+            source_url: 'Source URL',
+            title: 'Notice title',
+            category: 'Category',
+            fact_text: 'Detected fact text',
+            detected_date_label: 'Detected date',
+            confidence: 'Confidence',
+            admin_notes: 'Admin notes',
             raw_text: 'Exact wording',
             row_json: 'Structured row'
         };

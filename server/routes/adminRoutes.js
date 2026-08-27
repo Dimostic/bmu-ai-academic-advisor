@@ -3738,6 +3738,39 @@ router.post('/recent-sources/check', authenticateToken, requireAdmin, async (req
     }
 });
 
+router.post('/recent-sources/ingest-text', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const result = await bmuRecentSourceService.ingestText({
+            sourceId: req.body?.sourceId ? parseInt(req.body.sourceId, 10) : null,
+            title: String(req.body?.title || '').trim(),
+            text: String(req.body?.text || ''),
+            sourceName: String(req.body?.sourceName || '').trim(),
+            sourceType: String(req.body?.sourceType || '').trim() || 'manual_paste',
+            sourceUrl: String(req.body?.sourceUrl || '').trim(),
+            authorityType: String(req.body?.authorityType || '').trim() || 'institution',
+            sourceRank: req.body?.sourceRank
+        });
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'BMU_RECENT_FACTS_INGESTED',
+            entityType: 'bmu_recent_facts',
+            details: {
+                detected: result.detected,
+                inserted: result.inserted,
+                updated: result.updated,
+                sourceId: req.body?.sourceId || null,
+                title: req.body?.title || null
+            },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('Recent sources text ingest error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not ingest recent BMU notice text' });
+    }
+});
+
 router.post('/recent-facts/:id/status', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);
@@ -3963,18 +3996,18 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
                 programme: row.programme,
                 canonicalProgramme: row.canonicalProgramme,
                 programmeStatus: row.programmeStatus,
-            programmeAliases: row.programmeAliases,
-            programmeStatuses: row.programmeStatuses,
-            sourcePaths: row.sourcePaths,
-            sourceLimited: row.sourceLimited,
-            linkedProgrammeNames: row.linkedProgrammeNames,
-            courseCount: Number(row.course_count || 0),
-            feeCount: Number(row.fee_count || 0),
+                programmeAliases: row.programmeAliases,
+                programmeStatuses: row.programmeStatuses,
+                sourcePaths: row.sourcePaths,
+                sourceLimited: row.sourceLimited,
+                linkedProgrammeNames: row.linkedProgrammeNames,
+                courseCount: Number(row.course_count || 0),
+                feeCount: Number(row.fee_count || 0),
                 ruleCount: Number(row.rule_count || 0),
                 gaps: [
                     Number(row.course_count || 0) ? null : 'no courses',
                     Number(row.fee_count || 0) ? null : 'no fees',
-                Number(row.rule_count || 0) ? null : 'no requirements'
+                    Number(row.rule_count || 0) ? null : 'no requirements'
                 ].filter(Boolean)
             }));
         const programmeGaps = programmeCoverage

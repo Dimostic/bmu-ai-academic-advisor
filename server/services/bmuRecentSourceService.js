@@ -133,6 +133,25 @@ function detectProgramme(text) {
 
 function splitCandidateTexts(text) {
     const cleaned = normaliseRecentText(text, 18000);
+    const lineParts = [];
+    let activeHeading = '';
+    for (const rawLine of cleaned.split(/\n+/)) {
+        const line = compact(rawLine.replace(/^[\-*\u2022]\s*/, '').replace(/^\d+[\).]\s*/, ''), 900);
+        if (!line) continue;
+        const looksLikeHeading = line.length <= 120
+            && /^(cut\s*off|cutoff|eligibility|application|registration|fees?|deadline|calendar|requirements?|process|programme|program)/i.test(line);
+        if (looksLikeHeading) {
+            activeHeading = line.replace(/:$/, '');
+            continue;
+        }
+        const isFactLine = line.length >= 18
+            && line.length <= 900
+            && (KEYWORD_RE.test(line) || /\b(?:merit|minimum|score|credit|years?|semester|session|fee|pay|apply|verify|login)\b/i.test(line))
+            && (/\d/.test(line) || KEYWORD_RE.test(line));
+        if (isFactLine) {
+            lineParts.push(activeHeading ? `${activeHeading}: ${line}` : line);
+        }
+    }
     const blockParts = cleaned
         .split(/\n{2,}/)
         .map(item => compact(item, 1400))
@@ -142,7 +161,7 @@ function splitCandidateTexts(text) {
         .split(/(?<=[.!?])\s+| {2,}/)
         .map(item => compact(item, 1000))
         .filter(item => item.length >= 50 && KEYWORD_RE.test(item));
-    const parts = [...blockParts, ...sentenceParts];
+    const parts = [...lineParts, ...blockParts, ...sentenceParts];
     const merged = [];
     const seen = new Set();
     for (const part of parts) {
@@ -248,7 +267,89 @@ async function upsertFact(source, title, factText, raw = {}) {
             raw_json = VALUES(raw_json),
             updated_at = NOW()
     `, params);
-    return { recordHash, inserted: result.affectedRows === 1 };
+    const rows = await query(`
+        SELECT id, status
+        FROM bmu_recent_facts
+        WHERE record_hash = ?
+        LIMIT 1
+    `, [recordHash]);
+    return {
+        recordHash,
+        id: rows?.[0]?.id || null,
+        status: rows?.[0]?.status || 'pending',
+        inserted: result.affectedRows === 1,
+        updated: result.affectedRows !== 1
+    };
+}
+
+async function ingestText({
+    text,
+    title = '',
+    sourceId = null,
+    sourceName = '',
+    sourceType = 'manual_paste',
+    sourceUrl = '',
+    authorityType = 'institution',
+    sourceRank = 88
+} = {}) {
+    await ensureSchema();
+    const cleaned = normaliseRecentText(text, 22000);
+    if (cleaned.length < 40) {
+        throw new Error('Paste enough official BMU notice text to extract candidate facts');
+    }
+
+    let source = null;
+    if (sourceId) {
+        const rows = await query(`
+            SELECT *
+            FROM bmu_recent_sources
+            WHERE id = ?
+            LIMIT 1
+        `, [sourceId]);
+        source = rows?.[0] || null;
+        if (!source) throw new Error('Recent source not found');
+        if (sourceUrl) {
+            source = { ...source, source_url: sourceUrl };
+        }
+    } else {
+        source = {
+            id: null,
+            source_name: sourceName || 'Admin pasted BMU notice',
+            source_type: sourceType || 'manual_paste',
+            source_url: sourceUrl || 'admin://recent-source-paste',
+            authority_type: authorityType || 'institution',
+            source_rank: Number(sourceRank || 88)
+        };
+    }
+
+    const sourceTitle = compact(title || source.source_name || 'BMU pasted notice', 180);
+    const candidates = splitCandidateTexts(cleaned);
+    const facts = [];
+    for (const factText of candidates) {
+        facts.push(await upsertFact(source, sourceTitle, factText, {
+            sourceTitle,
+            ingestMode: 'manual_paste'
+        }));
+    }
+
+    if (source.id) {
+        await query(`
+            UPDATE bmu_recent_sources
+            SET last_checked_at = NOW(),
+                last_status = 'manual_ingest',
+                last_error = NULL,
+                last_content_hash = ?,
+                updated_at = NOW()
+            WHERE id = ?
+        `, [hash(cleaned), source.id]);
+    }
+
+    return {
+        detected: candidates.length,
+        inserted: facts.filter(item => item.inserted).length,
+        updated: facts.filter(item => item.updated).length,
+        facts
+    };
 }
 
 async function checkSource(source) {
@@ -385,6 +486,7 @@ async function findApprovedRecentFacts(question, { limit = 6 } = {}) {
 module.exports = {
     ensureSchema,
     checkSources,
+    ingestText,
     getSummary,
     setFactStatus,
     findApprovedRecentFacts,
