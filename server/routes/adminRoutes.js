@@ -3793,6 +3793,49 @@ router.post('/recent-facts/:id/status', authenticateToken, requireAdmin, async (
     }
 });
 
+router.get('/recent-facts/:id/structured-suggestions', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json({ success: false, error: 'Valid recent fact id is required' });
+        const fact = await bmuRecentSourceService.getRecentFact(id);
+        if (!fact) return res.status(404).json({ success: false, error: 'Recent fact not found' });
+        const suggestions = bmuRecentSourceService.buildStructuredSuggestions(fact);
+        res.json({ success: true, factId: id, suggestions });
+    } catch (error) {
+        console.error('Recent fact structured suggestions error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not build structured suggestions' });
+    }
+});
+
+router.post('/recent-facts/:id/promote-structured', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json({ success: false, error: 'Valid recent fact id is required' });
+        const result = await bmuRecentSourceService.promoteStructuredSuggestions(id, {
+            suggestionIndex: req.body?.suggestionIndex,
+            all: req.body?.all === true,
+            adminUserId: req.user.id
+        });
+        await AuditTrail.log({
+            userId: req.user.id,
+            action: 'BMU_RECENT_FACT_PROMOTED_TO_STRUCTURED',
+            entityType: 'bmu_recent_facts',
+            entityId: id,
+            details: {
+                promotedCount: result.promotedCount,
+                tables: result.promoted.map(item => item.table)
+            },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        _invalidateStructuredLookupCache();
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('Recent fact structured promotion error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not promote structured suggestion' });
+    }
+});
+
 router.get('/structured-records/tables', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await documentLabService.ensureSchema();

@@ -42,6 +42,35 @@ const DEFAULT_SOURCES = [
 ];
 
 const KEYWORD_RE = /\b(admission|admissions|apply|application|cut\s*off|cutoff|cut-off|utme|jamb|fee|fees|tuition|registration|register|deadline|resumption|calendar|semester|session|programme|program|course|scholarship|screening|matriculation|convocation|orientation|accreditation|notice|announcement|202[0-9]\/202[0-9]|202[0-9])\b/i;
+const APPLICATION_PORTAL_FALLBACK = 'https://bmu.edu.ng/accounts/login/?next=/admissions/apply/';
+const ADMISSIONS_PAGE_FALLBACK = 'https://bmu.edu.ng/admissions/';
+
+const CUTOFF_PROGRAMME_ALIASES = [
+    { programme: 'Medicine and Surgery (MBBS)', aliases: ['medicine and surgery mbbs', 'medicine and surgery', 'mbbs', 'medicine surgery'] },
+    { programme: 'Pharmacy (Pharm.D)', aliases: ['pharmacy pharm d', 'pharmacy pharmd', 'pharm d', 'pharmd', 'pharmacy'] },
+    { programme: 'Nursing Science (B.NSc)', aliases: ['nursing science b nsc', 'nursing science bnsc', 'bnsc', 'nursing science', 'nursing'] },
+    { programme: 'Medical Laboratory Sciences (BMLS)', aliases: ['medical laboratory sciences bmls', 'medical laboratory science bmls', 'medical laboratory sciences', 'medical laboratory science', 'bmls', 'med lab'] },
+    { programme: 'Optometry (O.D)', aliases: ['optometry o d', 'optometry od', 'optometry'] },
+    { programme: 'Radiography & Radiation Sciences', aliases: ['radiography and radiation sciences', 'radiography radiation sciences', 'radiography and radiation science', 'radiography'] },
+    { programme: 'Physiotherapy', aliases: ['physiotheraphy', 'physiotherapy'] },
+    { programme: 'Community / Public Health', aliases: ['community public health', 'community and public health', 'community health', 'public health'] },
+    { programme: 'Other Programs', aliases: ['other programs', 'other programmes', 'other program', 'other programme'] }
+];
+
+const PROMOTABLE_STRUCTURED_TABLES = {
+    academic_admission_cutoffs: [
+        'source_fact_id', 'programme', 'admission_cycle', 'entry_mode', 'merit_cutoff',
+        'cutoff_label', 'eligibility_text', 'application_process', 'contact_text',
+        'authority_type', 'scope_label', 'currentness_label', 'source_path',
+        'raw_text', 'row_json', 'status'
+    ],
+    academic_registration_requirements: [
+        'source_fact_id', 'student_category', 'programme', 'level_label',
+        'semester_label', 'session_label', 'requirement_type', 'requirement_text',
+        'deadline_label', 'portal_url', 'authority_type', 'scope_label',
+        'currentness_label', 'source_path', 'raw_text', 'row_json', 'status'
+    ]
+};
 
 function hash(value) {
     return crypto.createHash('sha1').update(String(value || '')).digest('hex');
@@ -53,6 +82,357 @@ function compact(value, max = 1200) {
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, max);
+}
+
+function normaliseKey(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/\bprogramme\b/g, 'program')
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function canonicalCutoffProgramme(value) {
+    const key = normaliseKey(value);
+    if (!key) return null;
+    for (const item of CUTOFF_PROGRAMME_ALIASES) {
+        if (item.aliases.some(alias => key === normaliseKey(alias) || key.includes(normaliseKey(alias)))) {
+            return item.programme;
+        }
+    }
+    return compact(value, 120);
+}
+
+function sourcePathForFact(fact) {
+    const title = compact(fact?.title || '', 220);
+    const source = compact(fact?.source_url || fact?.source_name || fact?.source_type || '', 300);
+    if (title && source) return `${title} (${source})`;
+    return title || source || 'BMU recent source';
+}
+
+function extractSection(text, startRe, stopRe) {
+    const value = normaliseRecentText(text, 22000);
+    const start = value.search(startRe);
+    if (start < 0) return '';
+    const sliced = value.slice(start);
+    const stop = sliced.slice(1).search(stopRe);
+    return compact(stop >= 0 ? sliced.slice(0, stop + 1) : sliced, 1800);
+}
+
+function cleanNoticeListText(value, max = 1000) {
+    return compact(String(value || '')
+        .replace(/^[^:]{0,80}:\s*/i, '')
+        .replace(/\s*(?:^|\n)\s*[-*\u2022]\s*/g, '; ')
+        .replace(/\s*(?:^|\n)\s*\d+[\).]\s*/g, '; ')
+        .replace(/\s+;/g, ';')
+        .replace(/(?:;\s*){2,}/g, '; ')
+        .replace(/^;\s*/, '')
+        .replace(/\s+/g, ' '), max);
+}
+
+function extractEligibilityText(text) {
+    const section = extractSection(text, /\beligibility\s+criteria\b/i, /\b(application\s+process|for\s+further|thank\s+you|cut\s*off\s+marks?)\b/i);
+    if (section) return cleanNoticeListText(section, 1000);
+    const lines = normaliseRecentText(text, 22000)
+        .split(/\n+/)
+        .map(line => cleanNoticeListText(line, 500))
+        .filter(line => /\b(minimum score|utme|jamb|age|16 years|o'?level|ssce|credits?|english language|biology|chemistry|physics|mathematics)\b/i.test(line));
+    return compact([...new Set(lines)].join('; '), 1000);
+}
+
+function extractApplicationProcess(text) {
+    const section = extractSection(text, /\b(application\s+process|application\s+flow|how\s+to\s+apply)\b/i, /\b(for\s+further|thank\s+you|cut\s*off\s+marks?|eligibility\s+criteria)\b/i);
+    if (section) return cleanNoticeListText(section, 1200);
+    const lines = normaliseRecentText(text, 22000)
+        .split(/\n+/)
+        .map(line => cleanNoticeListText(line, 500))
+        .filter(line => /\b(create an account|verify|login|log in|programme of choice|click on apply|fill application|upload|required documents|application fee|pay)\b/i.test(line));
+    return compact([...new Set(lines)].join('; '), 1200);
+}
+
+function extractContactText(text) {
+    const value = normaliseRecentText(text, 22000);
+    const phone = value.match(/\+?\d[\d\s-]{7,}\d/)?.[0];
+    const officer = value.match(/\b(?:Prof\.?|Dr\.?|Mr\.?|Mrs\.?|Ms\.?)\s+[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,4}\s+Admissions\s+Officer\b/i)?.[0]
+        || value.match(/\b(?:Prof\.?|Dr\.?|Mr\.?|Mrs\.?|Ms\.?)\s+[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,4}\b(?=[\s\S]{0,80}\bAdmissions\s+Officer\b)/i)?.[0];
+    const pieces = [];
+    if (phone) pieces.push(`Phone: ${compact(phone, 40)}`);
+    if (officer) pieces.push(`Admissions Officer: ${compact(officer.replace(/\s+Admissions\s+Officer\b/i, ''), 120)}`);
+    return pieces.join('. ');
+}
+
+function extractPortalUrl(text, fact = {}) {
+    const value = String(text || '');
+    const inlineUrl = value.match(/https?:\/\/[^\s)]+/i)?.[0];
+    if (inlineUrl && /apply|admission|portal|login/i.test(inlineUrl)) return inlineUrl;
+    if (/\b(create an account|verify|login|log in|click on apply|application fee)\b/i.test(value)) return APPLICATION_PORTAL_FALLBACK;
+    const sourceUrl = String(fact.source_url || '').match(/https?:\/\/[^\s)]+/i)?.[0];
+    if (sourceUrl && /apply|admission|portal|login/i.test(sourceUrl)) return sourceUrl;
+    return ADMISSIONS_PAGE_FALLBACK;
+}
+
+function extractCutoffRows(text) {
+    const value = normaliseRecentText(text, 22000).replace(/[–—]/g, '-');
+    const patterns = [
+        /\b(Medicine\s+and\s+Surgery\s*\(?MBBS\)?|MBBS|Pharmacy\s*\(?Pharm\.?\s*D\)?|Pharm\.?\s*D|Nursing\s+Science\s*\(?B\.?\s*NSc\)?|Medical\s+Laborator(?:y|ies)\s+Sciences?\s*\(?BMLS\)?|Optometry\s*\(?O\.?\s*D\)?|Radiography\s*(?:&|and)?\s*Radiation\s+Sciences?|Physiother(?:a|e)phy|Community\s*\/\s*Public\s+Health|Community\s+(?:\/\s*)?Public\s+Health|Community\s+Health|Public\s+Health|Other\s+Programs?|Other\s+Programmes?)\s*(?::|-)\s*(?:Merit\s*(?::|-)\s*)?(\d{3})\b/gi,
+        /\b(Medicine\s+and\s+Surgery|Pharmacy|Nursing\s+Science|Medical\s+Laboratory\s+Sciences?|Optometry|Radiography(?:\s+and\s+Radiation\s+Sciences?)?|Physiother(?:a|e)phy|Community\s+Health|Public\s+Health)\b[\s\S]{0,50}?\bcut\s*off\s*(?:mark)?\s*(?:is|:|-)?\s*(\d{3})\b/gi
+    ];
+    const rows = [];
+    const seen = new Set();
+    for (const pattern of patterns) {
+        for (const match of value.matchAll(pattern)) {
+            const programme = canonicalCutoffProgramme(match[1]);
+            const cutoff = Number(match[2]);
+            if (!programme || !cutoff || cutoff < 100 || cutoff > 400) continue;
+            const key = `${programme}|${cutoff}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            rows.push({ programme, cutoff, rawLabel: compact(match[0], 180) });
+        }
+    }
+    return rows;
+}
+
+function structuredRecordHash(table, record) {
+    if (table === 'academic_admission_cutoffs') {
+        return hash([
+            table,
+            record.programme,
+            record.admission_cycle,
+            record.merit_cutoff,
+            record.source_path
+        ].map(value => String(value ?? '')).join('|'));
+    }
+    if (table === 'academic_registration_requirements') {
+        return hash([
+            table,
+            record.student_category,
+            record.session_label,
+            record.requirement_type,
+            record.requirement_text,
+            record.source_path
+        ].map(value => String(value ?? '')).join('|'));
+    }
+    return hash([table, ...Object.keys(record).sort().map(key => `${key}:${record[key] ?? ''}`)].join('|').toLowerCase());
+}
+
+function buildStructuredSuggestions(factOrText = {}) {
+    const fact = typeof factOrText === 'string' ? { fact_text: factOrText } : (factOrText || {});
+    const text = normaliseRecentText([fact.title, fact.fact_text].filter(Boolean).join('\n'), 22000);
+    if (!text) return [];
+
+    const session = detectSession(text) || fact.session_label || '';
+    const sourcePath = sourcePathForFact(fact);
+    const eligibilityText = extractEligibilityText(text);
+    const applicationProcess = extractApplicationProcess(text);
+    const contactText = extractContactText(text);
+    const portalUrl = extractPortalUrl(text, fact);
+    const rawText = compact(text, 1800);
+    const suggestions = [];
+
+    for (const row of extractCutoffRows(text)) {
+        const record = {
+            source_fact_id: fact.id || null,
+            programme: row.programme,
+            admission_cycle: session || 'current admission cycle',
+            entry_mode: 'UTME',
+            merit_cutoff: row.cutoff,
+            cutoff_label: `Merit - ${row.cutoff}`,
+            eligibility_text: eligibilityText || null,
+            application_process: applicationProcess || null,
+            contact_text: contactText || null,
+            authority_type: fact.authority_type || 'institution',
+            scope_label: 'BMU admissions',
+            currentness_label: 'current',
+            source_path: sourcePath,
+            raw_text: rawText,
+            row_json: JSON.stringify({
+                source_fact_id: fact.id || null,
+                recent_fact_title: fact.title || null,
+                source_url: fact.source_url || null,
+                extracted_from: 'bmu_recent_facts',
+                raw_cutoff_label: row.rawLabel
+            }),
+            status: 'active'
+        };
+        suggestions.push({
+            table: 'academic_admission_cutoffs',
+            tableLabel: 'Admission cutoffs',
+            title: `${row.programme} cutoff`,
+            summary: `${row.programme}: ${record.cutoff_label}${session ? ` for ${session}` : ''}`,
+            confidence: eligibilityText || applicationProcess ? 0.92 : 0.86,
+            reviewNotes: [
+                'Confirm the admission cycle/session before promotion.',
+                'Cutoff marks are high-risk and should remain tied to this source.'
+            ],
+            record
+        });
+    }
+
+    if (applicationProcess) {
+        const record = {
+            source_fact_id: fact.id || null,
+            student_category: 'applicant / new student',
+            programme: null,
+            level_label: null,
+            semester_label: null,
+            session_label: session || null,
+            requirement_type: 'online_application',
+            requirement_text: applicationProcess,
+            deadline_label: null,
+            portal_url: portalUrl,
+            authority_type: fact.authority_type || 'institution',
+            scope_label: 'BMU registration/admissions process',
+            currentness_label: 'current',
+            source_path: sourcePath,
+            raw_text: rawText,
+            row_json: JSON.stringify({
+                source_fact_id: fact.id || null,
+                recent_fact_title: fact.title || null,
+                source_url: fact.source_url || null,
+                extracted_from: 'bmu_recent_facts'
+            }),
+            status: 'active'
+        };
+        suggestions.push({
+            table: 'academic_registration_requirements',
+            tableLabel: 'Registration requirements',
+            title: 'New applicant online application flow',
+            summary: applicationProcess,
+            confidence: 0.88,
+            reviewNotes: [
+                'Confirm that this is still the current application flow.',
+                'Add semester or deadline details later if BMU publishes them.'
+            ],
+            record
+        });
+    }
+
+    if (eligibilityText) {
+        const record = {
+            source_fact_id: fact.id || null,
+            student_category: 'applicant / new student',
+            programme: fact.programme || null,
+            level_label: null,
+            semester_label: null,
+            session_label: session || null,
+            requirement_type: 'admission_eligibility',
+            requirement_text: eligibilityText,
+            deadline_label: null,
+            portal_url: ADMISSIONS_PAGE_FALLBACK,
+            authority_type: fact.authority_type || 'institution',
+            scope_label: 'BMU admissions eligibility',
+            currentness_label: 'current',
+            source_path: sourcePath,
+            raw_text: rawText,
+            row_json: JSON.stringify({
+                source_fact_id: fact.id || null,
+                recent_fact_title: fact.title || null,
+                source_url: fact.source_url || null,
+                extracted_from: 'bmu_recent_facts'
+            }),
+            status: 'active'
+        };
+        suggestions.push({
+            table: 'academic_registration_requirements',
+            tableLabel: 'Registration requirements',
+            title: 'Applicant admission eligibility',
+            summary: eligibilityText,
+            confidence: 0.86,
+            reviewNotes: [
+                'Eligibility rules are high-risk. Confirm exact wording before promotion.'
+            ],
+            record
+        });
+    }
+
+    return suggestions.map((suggestion, index) => ({
+        ...suggestion,
+        index,
+        id: hash(`${suggestion.table}|${structuredRecordHash(suggestion.table, suggestion.record)}`)
+    }));
+}
+
+async function getRecentFact(id) {
+    await ensureSchema();
+    const rows = await query(`
+        SELECT *
+        FROM bmu_recent_facts
+        WHERE id = ?
+        LIMIT 1
+    `, [id]);
+    return rows?.[0] || null;
+}
+
+async function upsertStructuredSuggestionRecord(suggestion) {
+    const table = suggestion?.table;
+    const columns = PROMOTABLE_STRUCTURED_TABLES[table];
+    if (!columns) throw new Error('This suggestion cannot be promoted to a structured table');
+
+    const record = suggestion.record || {};
+    const insertColumns = ['record_hash', ...columns];
+    const recordHash = structuredRecordHash(table, record);
+    const values = [recordHash, ...columns.map(column => record[column] ?? null)];
+    const updates = columns
+        .map(column => `${column} = VALUES(${column})`)
+        .concat("status = 'active'", 'updated_at = NOW()')
+        .join(', ');
+    const result = await query(`
+        INSERT INTO ${table} (${insertColumns.join(', ')})
+        VALUES (${insertColumns.map(() => '?').join(', ')})
+        ON DUPLICATE KEY UPDATE ${updates}
+    `, values);
+    const rows = await query(`SELECT id FROM ${table} WHERE record_hash = ? LIMIT 1`, [recordHash]);
+    return {
+        table,
+        recordHash,
+        recordId: rows?.[0]?.id || result?.insertId || null
+    };
+}
+
+async function promoteStructuredSuggestions(factId, { suggestionIndex = null, all = false, adminUserId = null } = {}) {
+    await ensureSchema();
+    const fact = await getRecentFact(factId);
+    if (!fact) throw new Error('Recent fact not found');
+    const suggestions = buildStructuredSuggestions(fact);
+    if (!suggestions.length) throw new Error('No structured suggestions were detected for this recent fact');
+
+    const hasIndex = suggestionIndex !== null
+        && suggestionIndex !== undefined
+        && String(suggestionIndex).trim() !== ''
+        && Number.isInteger(Number(suggestionIndex));
+    const selected = all
+        ? suggestions
+        : (hasIndex ? [suggestions[Number(suggestionIndex)]].filter(Boolean) : []);
+    if (!selected.length) throw new Error('Structured suggestion not found');
+
+    const promoted = [];
+    for (const suggestion of selected) {
+        const result = await upsertStructuredSuggestionRecord(suggestion);
+        promoted.push({ ...result, suggestion });
+    }
+
+    const note = compact([
+        fact.admin_notes || '',
+        `Promoted ${promoted.length} structured record(s): ${promoted.map(item => `${item.table}#${item.recordId || item.recordHash}`).join(', ')}`
+    ].filter(Boolean).join('\n'), 1800);
+    await query(`
+        UPDATE bmu_recent_facts
+        SET status = 'approved',
+            approved_by = COALESCE(approved_by, ?),
+            approved_at = COALESCE(approved_at, NOW()),
+            admin_notes = ?,
+            updated_at = NOW()
+        WHERE id = ?
+    `, [adminUserId || null, note, factId]);
+
+    return {
+        factId,
+        promotedCount: promoted.length,
+        promoted
+    };
 }
 
 function stripHtml(html) {
@@ -432,7 +812,14 @@ async function getSummary() {
         ORDER BY FIELD(status, 'pending', 'approved', 'rejected', 'inactive'), last_seen_at DESC, id DESC
         LIMIT 80
     `);
-    return { sources, counts, facts };
+    return {
+        sources,
+        counts,
+        facts: facts.map(fact => ({
+            ...fact,
+            structured_suggestion_count: buildStructuredSuggestions(fact).length
+        }))
+    };
 }
 
 async function setFactStatus(id, status, adminUserId, notes = '') {
@@ -490,12 +877,18 @@ module.exports = {
     getSummary,
     setFactStatus,
     findApprovedRecentFacts,
+    getRecentFact,
+    buildStructuredSuggestions,
+    promoteStructuredSuggestions,
     classify,
     _internal: {
         splitCandidateTexts,
         stripHtml,
         detectProgramme,
         detectSession,
-        detectDateLabel
+        detectDateLabel,
+        extractCutoffRows,
+        extractEligibilityText,
+        extractApplicationProcess
     }
 };

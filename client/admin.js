@@ -2609,7 +2609,7 @@
         if (!facts.length) return '<p class="empty">No recent facts detected yet. Click “Check all sources”, or paste an official BMU notice above and extract it.</p>';
         const rows = facts.map(fact => [
             `<span class="badge ${fact.status === 'approved' ? 'badge-success' : fact.status === 'rejected' ? 'badge-danger' : fact.status === 'pending' ? 'badge-warn' : 'badge-info'}">${escapeHtml(fact.status || 'pending')}</span>`,
-            `<div><strong>${escapeHtml(fact.title || 'Recent BMU fact')}</strong><div style="color:var(--muted);font-size:.82rem;">${escapeHtml(fact.category || 'general')} · ${escapeHtml(fact.session_label || fact.detected_date_label || 'recent')}</div></div>`,
+            `<div><strong>${escapeHtml(fact.title || 'Recent BMU fact')}</strong><div style="color:var(--muted);font-size:.82rem;">${escapeHtml(fact.category || 'general')} · ${escapeHtml(fact.session_label || fact.detected_date_label || 'recent')}${Number(fact.structured_suggestion_count || 0) ? ` · ${escapeHtml(fact.structured_suggestion_count)} structured suggestion(s)` : ''}</div></div>`,
             escapeHtml((fact.fact_text || '').length > 260 ? fact.fact_text.slice(0, 257) + '...' : fact.fact_text || ''),
             escapeHtml(fact.source_name || fact.source_type || '—'),
             `<div class="admin-actions">
@@ -2702,6 +2702,16 @@
                         </dl>
                     </aside>
                 </div>
+                <section class="recent-structured-suggestions" id="recentStructuredSuggestions">
+                    <div class="recent-structured-head">
+                        <div>
+                            <h3><i class="fa-solid fa-table-list"></i> Structured record suggestions</h3>
+                            <p class="lede">Promote high-risk facts here so the advisor can answer from exact lookup tables.</p>
+                        </div>
+                        <button class="btn btn-primary btn-sm" type="button" data-recent-promote-all style="display:none;"><i class="fa-solid fa-layer-group"></i> Promote all</button>
+                    </div>
+                    <div id="recentStructuredSuggestionList"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Checking for structured rows...</div></div>
+                </section>
                 <menu>
                     <button class="btn btn-ghost" type="button" data-recent-dialog-close>Close</button>
                     <button class="btn btn-ghost" type="button" data-recent-open-structured><i class="fa-solid fa-table-list"></i> Edit row</button>
@@ -2735,8 +2745,105 @@
                 }
             });
         });
+        loadRecentFactStructuredSuggestions(fact.id, dialog);
         if (typeof dialog.showModal === 'function') dialog.showModal();
         else dialog.setAttribute('open', 'open');
+    }
+
+    async function loadRecentFactStructuredSuggestions(factId, dialog) {
+        const list = dialog.querySelector('#recentStructuredSuggestionList');
+        const promoteAll = dialog.querySelector('[data-recent-promote-all]');
+        if (!list) return;
+        try {
+            const r = await api(`/api/admin/recent-facts/${encodeURIComponent(factId)}/structured-suggestions`);
+            const suggestions = r.suggestions || [];
+            list.innerHTML = renderRecentStructuredSuggestions(suggestions);
+            if (promoteAll) {
+                promoteAll.style.display = suggestions.length > 1 ? '' : 'none';
+                promoteAll.onclick = () => promoteRecentStructuredSuggestion(factId, null, true, promoteAll, dialog);
+            }
+            list.onclick = async ev => {
+                const promoteBtn = ev.target.closest('[data-recent-promote-suggestion]');
+                if (promoteBtn) {
+                    await promoteRecentStructuredSuggestion(factId, promoteBtn.dataset.recentPromoteSuggestion, false, promoteBtn, dialog);
+                    return;
+                }
+                const tableBtn = ev.target.closest('[data-recent-open-suggestion-table]');
+                if (tableBtn) {
+                    dialog.close();
+                    pendingStructuredRecordsView = {
+                        table: tableBtn.dataset.recentOpenSuggestionTable,
+                        status: 'active',
+                        q: tableBtn.dataset.recentSuggestionQuery || ''
+                    };
+                    document.querySelector('[data-section="structuredRecords"]')?.click();
+                }
+            };
+        } catch (err) {
+            list.innerHTML = `<p class="auth-error">${escapeHtml(err.message || 'Could not load structured suggestions')}</p>`;
+            if (promoteAll) promoteAll.style.display = 'none';
+        }
+    }
+
+    function renderRecentStructuredSuggestions(suggestions) {
+        if (!suggestions.length) {
+            return '<p class="empty">No structured rows were detected from this fact. Use Edit row for manual correction, or keep it as an approved recent text fact.</p>';
+        }
+        return `<div class="recent-structured-list">${suggestions.map(suggestion => {
+            const record = suggestion.record || {};
+            const query = record.programme || record.requirement_type || suggestion.title || '';
+            return `
+                <article class="recent-structured-card">
+                    <div class="recent-structured-card-head">
+                        <div>
+                            <span class="badge badge-info">${escapeHtml(suggestion.tableLabel || suggestion.table)}</span>
+                            <h4>${escapeHtml(suggestion.title || 'Structured suggestion')}</h4>
+                        </div>
+                        <span class="badge ${Number(suggestion.confidence || 0) >= 0.9 ? 'badge-success' : 'badge-warn'}">${escapeHtml(Math.round(Number(suggestion.confidence || 0) * 100))}%</span>
+                    </div>
+                    <p>${escapeHtml(suggestion.summary || '')}</p>
+                    ${renderRecentSuggestionFields(record)}
+                    ${(suggestion.reviewNotes || []).length ? `<ul class="recent-structured-notes">${suggestion.reviewNotes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : ''}
+                    <div class="admin-actions">
+                        <button class="btn btn-primary btn-sm" type="button" data-recent-promote-suggestion="${escapeHtml(suggestion.index)}"><i class="fa-solid fa-check-double"></i> Promote row</button>
+                        <button class="btn btn-ghost btn-sm" type="button" data-recent-open-suggestion-table="${escapeHtml(suggestion.table)}" data-recent-suggestion-query="${escapeHtml(query)}"><i class="fa-solid fa-table"></i> Open table</button>
+                    </div>
+                </article>
+            `;
+        }).join('')}</div>`;
+    }
+
+    function renderRecentSuggestionFields(record) {
+        const priority = [
+            'programme', 'admission_cycle', 'entry_mode', 'merit_cutoff', 'cutoff_label',
+            'student_category', 'session_label', 'requirement_type', 'requirement_text',
+            'eligibility_text', 'application_process', 'contact_text', 'portal_url', 'source_path'
+        ];
+        const fields = priority
+            .filter(key => record[key] !== undefined && record[key] !== null && String(record[key]).trim())
+            .slice(0, 8);
+        if (!fields.length) return '';
+        return `<dl class="recent-structured-fields">${fields.map(key => `
+            <dt>${escapeHtml(structuredFieldLabel(key))}</dt>
+            <dd>${escapeHtml(String(record[key]).length > 260 ? String(record[key]).slice(0, 257) + '...' : record[key])}</dd>
+        `).join('')}</dl>`;
+    }
+
+    async function promoteRecentStructuredSuggestion(factId, suggestionIndex, all, btn, dialog) {
+        if (btn) btn.disabled = true;
+        try {
+            const r = await api(`/api/admin/recent-facts/${encodeURIComponent(factId)}/promote-structured`, {
+                method: 'POST',
+                body: all ? { all: true } : { suggestionIndex: Number(suggestionIndex) }
+            });
+            toast(`Promoted ${r.promotedCount || 0} structured record(s)`);
+            await loadRecentSources();
+            await loadRecentFactStructuredSuggestions(factId, dialog);
+        } catch (err) {
+            toast(err.message || 'Could not promote structured record', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
     }
 
     // ------------------------------------------------ STRUCTURED RECORDS

@@ -1113,6 +1113,72 @@
     margin: 16px 0 0;
     padding: 0;
 }
+.recent-structured-suggestions {
+    margin-top: 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    padding: 14px;
+}
+.recent-structured-head,
+.recent-structured-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.recent-structured-head h3,
+.recent-structured-card h4 {
+    margin: 0;
+    color: var(--bg-deep);
+}
+.recent-structured-head .lede {
+    margin: 4px 0 0;
+}
+.recent-structured-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+.recent-structured-card {
+    border: 1px solid rgba(35,182,165,.24);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    padding: 13px;
+    min-width: 0;
+}
+.recent-structured-card p {
+    color: var(--text);
+    line-height: 1.45;
+    margin: 10px 0;
+    word-break: break-word;
+}
+.recent-structured-fields {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 6px 10px;
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(35,182,165,.07);
+    font-size: .86rem;
+}
+.recent-structured-fields dt {
+    color: var(--muted);
+    font-weight: 800;
+}
+.recent-structured-fields dd {
+    margin: 0;
+    word-break: break-word;
+}
+.recent-structured-notes {
+    margin: 8px 0 12px;
+    padding-left: 18px;
+    color: var(--muted);
+    font-size: .86rem;
+    line-height: 1.4;
+}
 @media (max-width: 720px) {
     .structured-edit-grid {
         grid-template-columns: 1fr;
@@ -1130,6 +1196,14 @@
     .structured-edit-form menu .btn,
     .recent-fact-review-form menu .btn {
         flex: 1 1 150px;
+    }
+    .recent-structured-list {
+        grid-template-columns: 1fr;
+    }
+    .recent-structured-head,
+    .recent-structured-card-head {
+        align-items: stretch;
+        flex-direction: column;
     }
 }
 
@@ -1368,6 +1442,21 @@ html[data-theme="dark"] .recent-fact-review-grid aside {
     border-color: var(--line);
 }
 html[data-theme="dark"] .recent-fact-review-grid h3 { color: var(--text); }
+html[data-theme="dark"] .recent-structured-suggestions {
+    background: #0f1c1f;
+    border-color: var(--line);
+}
+html[data-theme="dark"] .recent-structured-card {
+    background: var(--bg-elev);
+    border-color: rgba(47,191,158,.24);
+}
+html[data-theme="dark"] .recent-structured-head h3,
+html[data-theme="dark"] .recent-structured-card h4 {
+    color: var(--text);
+}
+html[data-theme="dark"] .recent-structured-fields {
+    background: rgba(47,191,158,.08);
+}
 
 /* Curate-Q&A panel cards (cards land on hard-coded #fff in some places) */
 html[data-theme="dark"] .curate-card,
