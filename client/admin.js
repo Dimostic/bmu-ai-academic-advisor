@@ -242,20 +242,6 @@
                 });
             }
         }
-
-        if (mobileStrip) {
-            mobileStrip.innerHTML = `
-                <div style="${tone} border-radius: 16px; padding: 12px 14px; border: 1px solid; display:flex; align-items:center; justify-content:space-between; gap: 10px; box-shadow: 0 14px 24px rgba(0,0,0,.06); backdrop-filter: blur(10px);">
-                    <div style="min-width: 0;">
-                        <div style="font-weight: 800; font-size: .95rem; line-height: 1.1;">Advisor ${escapeHtml(statusLabel)}</div>
-                        <div style="opacity: .9; font-size: .82rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            p95 ${escapeHtml(String(Number(metrics.p95LatencyMs || 0)))} ms · ${escapeHtml(Number(metrics.errorRatePct || 0).toFixed(2))}% error
-                        </div>
-                    </div>
-                    <span class="badge ${status === 'alert' ? 'badge-danger' : status === 'warning' ? 'badge-warn' : 'badge-ok'}">${escapeHtml(statusLabel)}</span>
-                </div>
-            `;
-        }
     }
 
     async function renderAdvisorOpsPage() {
@@ -656,6 +642,19 @@
                     })
                 )
                 : '<p class="empty">No programme coverage gaps detected.</p>';
+            const sourceLimitedSamples = (programmes.sourceLimitedSamples || []).slice(0, full ? 25 : 0);
+            const sourceLimitedRows = sourceLimitedSamples.length
+                ? table(
+                    ['Programme', 'Status', 'Known sources', 'Coverage', 'Action'],
+                    sourceLimitedSamples.map(row => [
+                        escapeHtml(row.programme || '—'),
+                        escapeHtml((row.programmeStatuses || []).join(', ') || row.programmeStatus || 'source limited'),
+                        escapeHtml((row.sourcePaths || []).join('; ') || '—'),
+                        escapeHtml(`Courses ${row.courseCount || 0} · Fees ${row.feeCount || 0} · Requirements ${row.ruleCount || 0}`),
+                        `<button class="btn btn-ghost btn-sm" data-structured-quality-action="academic_programmes" data-structured-quality-q="${escapeHtml(row.programme || row.canonicalProgramme || '')}"><i class="fa-solid fa-magnifying-glass"></i> Open programme</button>`
+                    ])
+                )
+                : '<p class="empty">No source-limited programme identities detected.</p>';
             const incompleteLevelSamples = (courses.incompleteLevelSamples || []).slice(0, full ? 50 : 0);
             const incompleteLevelRows = incompleteLevelSamples.length
                 ? table(
@@ -691,6 +690,8 @@
                     ${stat('High warnings', highWarnings)}
                     ${stat('Medium warnings', mediumWarnings)}
                     ${stat('Programmes with gaps', programmes.gapCount ?? 0)}
+                    ${stat('Source-limited', programmes.sourceLimitedCount ?? 0)}
+                    ${stat('Active course records', courses.activeCount ?? 0)}
                     ${stat('Course programmes', courses.programmeCount ?? 0)}
                     ${stat('Invalid code samples', courses.invalidCodeCount ?? 0)}
                     ${stat('Unit conflicts', courses.unitConflictCount ?? 0)}
@@ -708,6 +709,9 @@
                 ${full ? `
                     <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Programme coverage gaps</h4>
                     ${programmeGapRows}
+                    <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Source-limited programme identities</h4>
+                    <p class="empty" style="margin-top:-2px;">These are not treated as quality failures. They identify programme names that are only present in a narrow source, such as a fee schedule, and need an authoritative programme/course source before Dr. Tari should answer detailed academic questions from them.</p>
+                    ${sourceLimitedRows}
                     <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Likely incomplete course levels</h4>
                     ${incompleteLevelRows}
                     <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Invalid course code samples</h4>

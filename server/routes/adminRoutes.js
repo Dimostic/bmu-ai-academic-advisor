@@ -347,11 +347,27 @@ function _normaliseHeader(value) {
         .replace(/^_+|_+$/g, '');
 }
 
-function _canonicalProgrammeKey(value) {
-    const text = String(value || '')
+function _normaliseText(value) {
+    return String(value || '')
         .toLowerCase()
-        .replace(/&/g, ' and ')
         .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+const SOURCE_LIMITED_PROGRAMME_STATUSES = new Set([
+    'fee source only course catalogue not available',
+    'fee only source',
+    'source limited fee only',
+    'source limited'
+]);
+
+function _isSourceLimitedProgrammeStatus(value) {
+    return SOURCE_LIMITED_PROGRAMME_STATUSES.has(_normaliseText(value));
+}
+
+function _canonicalProgrammeKey(value) {
+    const text = _normaliseText(String(value || '').replace(/&/g, ' and '))
         .replace(/\bbachelor\s+of\b/g, '')
         .replace(/\bbsc\b/g, '')
         .replace(/\bb\s*sc\b/g, '')
@@ -387,20 +403,47 @@ function _aggregateProgrammeIdentities(rows) {
     for (const row of rows || []) {
         const key = _canonicalProgrammeKey(row.programme);
         if (!key) continue;
+        const status = row.programme_status || '';
+        const sourcePath = row.source_path || '';
         if (!byKey.has(key)) {
             byKey.set(key, {
                 programme: row.programme,
                 canonicalProgramme: key,
-                programmeAliases: []
+                programmeStatus: status,
+                programmeAliases: [],
+                programmeStatuses: new Set(),
+                sourcePaths: new Set()
             });
         }
         const item = byKey.get(key);
+        if (status) item.programmeStatuses.add(status);
+        if (sourcePath) item.sourcePaths.add(sourcePath);
         if (row.programme !== item.programme && !item.programmeAliases.includes(row.programme)) {
             item.programmeAliases.push(row.programme);
         }
+        if (_isSourceLimitedProgrammeStatus(item.programmeStatus) && !_isSourceLimitedProgrammeStatus(status)) {
+            const previousProgramme = item.programme;
+            item.programme = row.programme;
+            item.programmeStatus = status;
+            item.programmeAliases = item.programmeAliases.filter(name => name !== row.programme);
+            if (previousProgramme !== item.programme && !item.programmeAliases.includes(previousProgramme)) {
+                item.programmeAliases.push(previousProgramme);
+            }
+        }
     }
     return [...byKey.values()]
-        .map(item => ({ ...item, programmeAliases: item.programmeAliases.sort() }))
+        .map(item => {
+            const statuses = [...item.programmeStatuses].sort();
+            return {
+                programme: item.programme,
+                canonicalProgramme: item.canonicalProgramme,
+                programmeStatus: item.programmeStatus || null,
+                programmeAliases: item.programmeAliases.sort(),
+                programmeStatuses: statuses,
+                sourcePaths: [...item.sourcePaths].sort(),
+                sourceLimited: statuses.length > 0 && statuses.every(_isSourceLimitedProgrammeStatus)
+            };
+        })
         .sort((a, b) => a.programme.localeCompare(b.programme));
 }
 
@@ -3798,6 +3841,11 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             ORDER BY programme, level_label, course_code
             LIMIT 25
         `);
+        const activeCourseCountRows = await query(`
+            SELECT COUNT(*) AS count
+            FROM academic_courses
+            WHERE status = 'active'
+        `);
 
         const courseUnitConflictRows = await query(`
             SELECT
@@ -3855,7 +3903,7 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
         });
 
         const programmeRows = await query(`
-            SELECT programme
+            SELECT programme, programme_status, source_path
             FROM academic_programmes
             WHERE status = 'active'
               AND COALESCE(programme, '') <> ''
@@ -3897,7 +3945,11 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             return {
                 programme: row.programme,
                 canonicalProgramme: key,
+                programmeStatus: row.programmeStatus,
                 programmeAliases: row.programmeAliases,
+                programmeStatuses: row.programmeStatuses,
+                sourcePaths: row.sourcePaths,
+                sourceLimited: row.sourceLimited,
                 linkedProgrammeNames: [...linkedNames]
                     .filter(name => name !== row.programme && !row.programmeAliases.includes(name))
                     .sort(),
@@ -3906,22 +3958,27 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
                 rule_count: ruleCounts.counts.get(key) || 0
             };
         });
-        const programmeGaps = programmeGapRows
+        const programmeCoverage = programmeGapRows
             .map(row => ({
                 programme: row.programme,
                 canonicalProgramme: row.canonicalProgramme,
-                programmeAliases: row.programmeAliases,
-                linkedProgrammeNames: row.linkedProgrammeNames,
-                courseCount: Number(row.course_count || 0),
-                feeCount: Number(row.fee_count || 0),
+                programmeStatus: row.programmeStatus,
+            programmeAliases: row.programmeAliases,
+            programmeStatuses: row.programmeStatuses,
+            sourcePaths: row.sourcePaths,
+            sourceLimited: row.sourceLimited,
+            linkedProgrammeNames: row.linkedProgrammeNames,
+            courseCount: Number(row.course_count || 0),
+            feeCount: Number(row.fee_count || 0),
                 ruleCount: Number(row.rule_count || 0),
                 gaps: [
                     Number(row.course_count || 0) ? null : 'no courses',
                     Number(row.fee_count || 0) ? null : 'no fees',
-                    Number(row.rule_count || 0) ? null : 'no requirements'
+                Number(row.rule_count || 0) ? null : 'no requirements'
                 ].filter(Boolean)
-            }))
-            .filter(row => row.gaps.length);
+            }));
+        const programmeGaps = programmeCoverage
+            .filter(row => row.gaps.length && !row.sourceLimited);
 
         const ruleRows = await query(`
             SELECT requirement_category, COUNT(*) AS count
@@ -3945,7 +4002,16 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
                     label: 'Review rows'
                 }
             })),
-            ...invalidCourseRows.slice(0, 10).map(row => ({ severity: 'medium', area: 'Course codes', message: `${row.programme || 'Unknown'} ${row.level_label || ''}: ${row.course_code} ${row.course_title || ''}`.trim() }))
+            ...invalidCourseRows.slice(0, 10).map(row => ({
+                severity: 'medium',
+                area: 'Course codes',
+                message: `${row.programme || 'Unknown'} ${row.level_label || ''}: ${row.course_code} ${row.course_title || ''}`.trim(),
+                action: {
+                    table: 'academic_courses',
+                    q: row.course_code || row.course_title || row.programme || '',
+                    label: 'Review row'
+                }
+            }))
         ];
         const recentSourceCount = tableCounts.find(row => row.table === 'bmu_recent_sources')?.active || 0;
         const approvedRecentFactCount = tableCounts.find(row => row.table === 'bmu_recent_facts')?.active || 0;
@@ -3971,6 +4037,7 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
                 missingCriticalRoles: missingOfficerRoles
             },
             courses: {
+                activeCount: Number(activeCourseCountRows?.[0]?.count || 0),
                 programmeCount: courseCoverage.length,
                 invalidCodeCount: Number(invalidCourseCountRows?.[0]?.count || 0),
                 invalidCodeSamples: invalidCourseRows,
@@ -3980,6 +4047,8 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             },
             programmes: {
                 totalChecked: programmeIdentities.length,
+                sourceLimitedCount: programmeCoverage.filter(row => row.sourceLimited).length,
+                sourceLimitedSamples: programmeCoverage.filter(row => row.sourceLimited).slice(0, 10),
                 gapCount: programmeGaps.length,
                 gapSamples: programmeGaps.slice(0, 25)
             },

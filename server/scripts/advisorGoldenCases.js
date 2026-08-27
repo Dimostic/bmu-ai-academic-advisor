@@ -252,6 +252,26 @@ module.exports = [
         mustContain: ['university']
     },
     {
+        name: 'cutoff-mbbs-2026-2027',
+        question: 'What is the 2026/2027 admission cutoff for MBBS?',
+        mustContain: ['2026/2027', 'medicine and surgery', '279']
+    },
+    {
+        name: 'cutoff-other-programmes-2026-2027',
+        question: 'What is the admission cutoff for other BMU programmes?',
+        mustContain: ['2026/2027', 'other programs', '150']
+    },
+    {
+        name: 'registration-new-student-application-flow',
+        question: 'What is the BMU application process for new students?',
+        mustContain: ['create', 'verify', 'upload', 'application fee']
+    },
+    {
+        name: 'registration-new-student-eligibility',
+        question: 'What are BMU admission application requirements for new students?',
+        mustContain: ['150', '16', 'five']
+    },
+    {
         name: 'about-bmu',
         question: 'Tell me about BMU',
         mustContain: ['bayelsa medical university', 'yenagoa']
