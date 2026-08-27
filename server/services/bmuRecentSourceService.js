@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const { query } = require('../../config/db');
 const documentLabService = require('./documentLabService');
 
+let recentFactsSchemaPatchEnsured = false;
+
 const DEFAULT_SOURCES = [
     {
         source_name: 'BMU Official Website',
@@ -418,15 +420,19 @@ async function promoteStructuredSuggestions(factId, { suggestionIndex = null, al
         fact.admin_notes || '',
         `Promoted ${promoted.length} structured record(s): ${promoted.map(item => `${item.table}#${item.recordId || item.recordHash}`).join(', ')}`
     ].filter(Boolean).join('\n'), 1800);
+    const expiresAt = inferRecentFactExpiry(fact);
     await query(`
         UPDATE bmu_recent_facts
         SET status = 'approved',
             approved_by = COALESCE(approved_by, ?),
             approved_at = COALESCE(approved_at, NOW()),
+            currentness_label = 'current',
+            expires_at = COALESCE(expires_at, ?),
             admin_notes = ?,
             updated_at = NOW()
         WHERE id = ?
-    `, [adminUserId || null, note, factId]);
+    `, [adminUserId || null, expiresAt, note, factId]);
+    await supersedeOlderRecentFacts(factId);
 
     return {
         factId,
@@ -484,6 +490,34 @@ function classify(text) {
 function detectSession(text) {
     const match = String(text || '').match(/\b(20\d{2})\s*\/\s*(20\d{2})\b/);
     return match ? `${match[1]}/${match[2]}` : null;
+}
+
+function formatMysqlDateTime(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+    return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function inferRecentFactExpiry(factOrText = {}) {
+    const fact = typeof factOrText === 'string' ? { fact_text: factOrText } : (factOrText || {});
+    const text = [fact.title, fact.fact_text, fact.session_label].filter(Boolean).join('\n');
+    const category = fact.category || classify(text);
+    const session = fact.session_label || detectSession(text);
+    const sessionMatch = String(session || '').match(/\b(20\d{2})\s*\/\s*(20\d{2})\b/);
+    if (sessionMatch && /admissions?|registration|calendar|fees|programmes/.test(category)) {
+        return `${sessionMatch[2]}-09-30 23:59:59`;
+    }
+
+    const now = new Date();
+    const daysByCategory = {
+        admissions: 395,
+        registration: 220,
+        calendar: 220,
+        fees: 545,
+        programmes: 730,
+        general: 365
+    };
+    const days = daysByCategory[category] || 365;
+    return formatMysqlDateTime(new Date(now.getTime() + days * 24 * 60 * 60 * 1000));
 }
 
 function detectDateLabel(text) {
@@ -561,6 +595,7 @@ function splitCandidateTexts(text) {
 
 async function ensureSchema() {
     await documentLabService.ensureSchema();
+    await ensureRecentFactsSchemaPatch();
     for (const source of DEFAULT_SOURCES) {
         const sourceHash = hash(`${source.source_name}|${source.source_url}`);
         await query(`
@@ -582,6 +617,32 @@ async function ensureSchema() {
             source.source_url
         ]);
     }
+}
+
+async function ensureRecentFactsSchemaPatch() {
+    if (recentFactsSchemaPatchEnsured) return;
+    const requiredColumns = [
+        ['expires_at', 'expires_at DATETIME NULL AFTER currentness_label'],
+        ['superseded_by', 'superseded_by INT NULL AFTER expires_at']
+    ];
+    for (const [column, ddl] of requiredColumns) {
+        const rows = await query('SHOW COLUMNS FROM bmu_recent_facts LIKE ?', [column]);
+        if (!rows.length) {
+            await query(`ALTER TABLE bmu_recent_facts ADD COLUMN ${ddl}`);
+        }
+    }
+
+    const requiredIndexes = [
+        ['idx_bmu_recent_facts_currentness', 'ALTER TABLE bmu_recent_facts ADD INDEX idx_bmu_recent_facts_currentness (currentness_label)'],
+        ['idx_bmu_recent_facts_expiry', 'ALTER TABLE bmu_recent_facts ADD INDEX idx_bmu_recent_facts_expiry (expires_at)']
+    ];
+    for (const [indexName, ddl] of requiredIndexes) {
+        const rows = await query('SHOW INDEX FROM bmu_recent_facts WHERE Key_name = ?', [indexName]);
+        if (!rows.length) {
+            await query(ddl);
+        }
+    }
+    recentFactsSchemaPatchEnsured = true;
 }
 
 async function fetchText(url) {
@@ -792,6 +853,7 @@ async function checkSources({ sourceId = null, dueOnly = false } = {}) {
 
 async function getSummary() {
     await ensureSchema();
+    await expireStaleRecentFacts();
     const sources = await query(`
         SELECT id, source_name, source_type, source_url, authority_type, source_rank,
                check_frequency_hours, last_checked_at, last_status, last_error, status
@@ -807,7 +869,7 @@ async function getSummary() {
     const facts = await query(`
         SELECT id, title, category, fact_text, detected_date_label, session_label, programme,
                source_name, source_type, source_url, confidence, status, currentness_label,
-               first_seen_at, last_seen_at, approved_at
+               expires_at, superseded_by, first_seen_at, last_seen_at, approved_at
         FROM bmu_recent_facts
         ORDER BY FIELD(status, 'pending', 'approved', 'rejected', 'inactive'), last_seen_at DESC, id DESC
         LIMIT 80
@@ -829,18 +891,80 @@ async function setFactStatus(id, status, adminUserId, notes = '') {
     const fields = ['status = ?', 'admin_notes = ?', 'updated_at = NOW()'];
     const params = [status, notes || null];
     if (status === 'approved') {
-        fields.push('approved_by = ?', 'approved_at = NOW()', 'rejected_by = NULL', 'rejected_at = NULL');
-        params.push(adminUserId || null);
+        const fact = await getRecentFact(id);
+        fields.push(
+            'approved_by = ?',
+            'approved_at = NOW()',
+            "currentness_label = 'current'",
+            'expires_at = COALESCE(expires_at, ?)',
+            'rejected_by = NULL',
+            'rejected_at = NULL'
+        );
+        params.push(adminUserId || null, inferRecentFactExpiry(fact || {}));
     } else if (status === 'rejected') {
-        fields.push('rejected_by = ?', 'rejected_at = NOW()');
+        fields.push('rejected_by = ?', 'rejected_at = NOW()', "currentness_label = 'rejected'");
         params.push(adminUserId || null);
+    } else if (status === 'inactive') {
+        fields.push("currentness_label = 'superseded'");
+    } else if (status === 'pending') {
+        fields.push("currentness_label = 'recent'");
     }
     params.push(id);
     await query(`UPDATE bmu_recent_facts SET ${fields.join(', ')} WHERE id = ?`, params);
+    if (status === 'approved') {
+        await supersedeOlderRecentFacts(id);
+    }
+}
+
+async function expireStaleRecentFacts() {
+    await ensureSchema();
+    const result = await query(`
+        UPDATE bmu_recent_facts
+        SET status = 'inactive',
+            currentness_label = 'superseded',
+            admin_notes = TRIM(CONCAT(COALESCE(admin_notes, ''), CASE WHEN admin_notes IS NULL OR admin_notes = '' THEN '' ELSE '\n' END, 'Automatically expired after its review window.')),
+            updated_at = NOW()
+        WHERE status = 'approved'
+          AND expires_at IS NOT NULL
+          AND expires_at < NOW()
+    `);
+    return result?.affectedRows || 0;
+}
+
+async function supersedeOlderRecentFacts(factId) {
+    const rows = await query(`
+        SELECT id, category, programme, session_label
+        FROM bmu_recent_facts
+        WHERE id = ?
+        LIMIT 1
+    `, [factId]);
+    const fact = rows?.[0];
+    if (!fact || !/^(admissions|registration|calendar|fees)$/.test(String(fact.category || ''))) return 0;
+    const sessionMatch = String(fact.session_label || '').match(/\b(20\d{2})\s*\/\s*(20\d{2})\b/);
+    if (!sessionMatch) return 0;
+    const sessionStart = Number(sessionMatch[1]);
+    if (!Number.isFinite(sessionStart)) return 0;
+
+    const result = await query(`
+        UPDATE bmu_recent_facts
+        SET status = 'inactive',
+            currentness_label = 'superseded',
+            superseded_by = ?,
+            admin_notes = TRIM(CONCAT(COALESCE(admin_notes, ''), CASE WHEN admin_notes IS NULL OR admin_notes = '' THEN '' ELSE '\n' END, 'Superseded by newer approved recent fact #', ?)),
+            updated_at = NOW()
+        WHERE id <> ?
+          AND status = 'approved'
+          AND category = ?
+          AND (programme <=> ? OR ? IS NULL)
+          AND session_label REGEXP '^20[0-9]{2}/20[0-9]{2}$'
+          AND CAST(SUBSTRING_INDEX(session_label, '/', 1) AS UNSIGNED) < ?
+    `, [factId, factId, factId, fact.category, fact.programme || null, fact.programme || null, sessionStart]);
+    return result?.affectedRows || 0;
 }
 
 async function findApprovedRecentFacts(question, { limit = 6 } = {}) {
     await ensureSchema();
+    await expireStaleRecentFacts();
     const q = compact(question, 400);
     const tokens = q
         .toLowerCase()
@@ -851,7 +975,7 @@ async function findApprovedRecentFacts(question, { limit = 6 } = {}) {
     const categoryHints = [];
     const category = classify(q);
     if (category !== 'general') categoryHints.push(category);
-    const where = ["status = 'approved'"];
+    const where = ["status = 'approved'", "(currentness_label IN ('current', 'recent') OR currentness_label IS NULL)", "(expires_at IS NULL OR expires_at >= NOW())"];
     const params = [];
     if (categoryHints.length) {
         where.push(`category IN (${categoryHints.map(() => '?').join(',')})`);
@@ -865,7 +989,7 @@ async function findApprovedRecentFacts(question, { limit = 6 } = {}) {
         SELECT *
         FROM bmu_recent_facts
         WHERE ${where.join(' AND ')}
-        ORDER BY authority_rank DESC, last_seen_at DESC, id DESC
+        ORDER BY authority_rank DESC, expires_at DESC, last_seen_at DESC, id DESC
         LIMIT ?
     `, [...params, Math.max(1, Math.min(12, limit))]);
 }
@@ -877,9 +1001,12 @@ module.exports = {
     getSummary,
     setFactStatus,
     findApprovedRecentFacts,
+    expireStaleRecentFacts,
+    supersedeOlderRecentFacts,
     getRecentFact,
     buildStructuredSuggestions,
     promoteStructuredSuggestions,
+    inferRecentFactExpiry,
     classify,
     _internal: {
         splitCandidateTexts,
@@ -889,6 +1016,7 @@ module.exports = {
         detectDateLabel,
         extractCutoffRows,
         extractEligibilityText,
-        extractApplicationProcess
+        extractApplicationProcess,
+        inferRecentFactExpiry
     }
 };

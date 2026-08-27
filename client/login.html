@@ -137,12 +137,17 @@
             return localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token') || '';
         }
 
+        function hasCookieSessionMarker() {
+            return /(?:^|;\s*)bmu_auth_present=1(?:;|$)/.test(document.cookie || '');
+        }
+
         async function verifyExistingSession() {
             const existing = getStoredToken();
-            if (!existing) return false;
+            if (!existing && !hasCookieSessionMarker()) return false;
             try {
                 const r = await fetch('/api/users/me', {
-                    headers: { Authorization: 'Bearer ' + existing },
+                    headers: existing ? { Authorization: 'Bearer ' + existing } : {},
+                    credentials: 'same-origin',
                     cache: 'no-store'
                 });
                 if (!r.ok) {
@@ -219,6 +224,7 @@
                 const r = await fetch('/api/users/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
                     body: JSON.stringify(payload)
                 });
                 const data = await r.json();
@@ -252,6 +258,7 @@
                         'Content-Type': 'application/json',
                         Authorization: 'Bearer ' + data.token
                     },
+                    credentials: 'same-origin',
                     body: JSON.stringify({ gender: serverAdvisorGender })
                 }).catch(() => { /* non-fatal — local copy already saved */ });
 

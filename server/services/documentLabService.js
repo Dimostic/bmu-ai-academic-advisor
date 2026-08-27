@@ -1355,6 +1355,8 @@ class DocumentLabService {
                 confidence DECIMAL(5,2) NOT NULL DEFAULT 0.70,
                 status VARCHAR(40) NOT NULL DEFAULT 'pending',
                 currentness_label VARCHAR(80) NOT NULL DEFAULT 'recent',
+                expires_at DATETIME NULL,
+                superseded_by INT NULL,
                 admin_notes TEXT NULL,
                 raw_json LONGTEXT NULL,
                 approved_by INT NULL,
@@ -1367,6 +1369,8 @@ class DocumentLabService {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uq_bmu_recent_fact_hash (record_hash),
                 INDEX idx_bmu_recent_facts_status (status),
+                INDEX idx_bmu_recent_facts_currentness (currentness_label),
+                INDEX idx_bmu_recent_facts_expiry (expires_at),
                 INDEX idx_bmu_recent_facts_category (category),
                 INDEX idx_bmu_recent_facts_programme (programme),
                 INDEX idx_bmu_recent_facts_session (session_label),
@@ -1469,6 +1473,10 @@ class DocumentLabService {
         await this._ensureColumn('academic_rules', 'currentness_label', 'VARCHAR(80) NULL');
         await this._ensureIndex('academic_rules', 'idx_academic_rules_category', 'requirement_category');
         await this._ensureIndex('academic_rules', 'idx_academic_rules_entry_mode', 'entry_mode');
+        await this._ensureColumn('bmu_recent_facts', 'expires_at', 'DATETIME NULL');
+        await this._ensureColumn('bmu_recent_facts', 'superseded_by', 'INT NULL');
+        await this._ensureIndex('bmu_recent_facts', 'idx_bmu_recent_facts_currentness', 'currentness_label');
+        await this._ensureIndex('bmu_recent_facts', 'idx_bmu_recent_facts_expiry', 'expires_at');
 
         schemaEnsured = true;
         return true;

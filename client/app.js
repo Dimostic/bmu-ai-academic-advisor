@@ -245,7 +245,8 @@ async function apiFetch(path, { method = 'GET', headers = {}, body = null, isFor
     const res = await fetch(url, {
         method,
         headers: finalHeaders,
-        body: body && !isForm ? JSON.stringify(body) : body
+        body: body && !isForm ? JSON.stringify(body) : body,
+        credentials: 'same-origin'
     });
 
     let data = null;

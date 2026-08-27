@@ -37,14 +37,15 @@
     let _existingToken = '';
     try { _existingToken = sessionStorage.getItem('bmu_token') || localStorage.getItem('bmu_token') || ''; }
     catch (_) { _existingToken = ''; }
+    const hasCookieSessionMarker = () => /(?:^|;\s*)bmu_auth_present=1(?:;|$)/.test(document.cookie || '');
     const _guestDemoRequested = advisorViewParams.get('demo') === '1';
     const _isGuestDemo = _guestDemoRequested;
-    if (!_existingToken && !_isGuestDemo) {
+    if (!_existingToken && !hasCookieSessionMarker() && !_isGuestDemo) {
         writeEarlyAuthTrace('advisor_js_gate_no_token', { hasSessionStorage: (() => {
             try { return Boolean(sessionStorage.getItem('bmu_token')); } catch (_) { return false; }
         })(), hasLocalStorage: (() => {
             try { return Boolean(localStorage.getItem('bmu_token')); } catch (_) { return false; }
-        })() });
+        })(), hasCookieMarker: hasCookieSessionMarker() });
         const here = location.pathname + location.search;
         const params = new URLSearchParams();
         params.set('next', here || '/advisor');
@@ -779,6 +780,7 @@
         try { localStorage.removeItem('bmu_user'); } catch (_) {}
         try { localStorage.removeItem('bmu_advisor_session'); } catch (_) {}
         try { localStorage.removeItem('bmu_advisor_sessions'); } catch (_) {}
+        try { document.cookie = 'bmu_auth_present=; Max-Age=0; path=/; SameSite=Lax'; } catch (_) {}
     }
 
     function writeAuthTrace(step, details = {}) {
@@ -839,6 +841,10 @@
 
     function authHeaders() {
         return (!state.guestDemo?.enabled && state.token) ? { Authorization: `Bearer ${state.token}` } : {};
+    }
+
+    function hasAuthSession() {
+        return !state.guestDemo?.enabled && Boolean(state.token || hasCookieSessionMarker());
     }
 
     writeAuthTrace('advisor_js_loaded', { guestDemo: Boolean(state.guestDemo?.enabled) });
@@ -1122,22 +1128,32 @@
     let currentGesture = 'none';
     let browAnchors = null;
     let recognition = null;
-    const VOICE_PHASES = new Set(['idle', 'listening', 'transcribing', 'thinking', 'speaking', 'paused', 'error']);
+    const VOICE_PHASES = new Set(['idle', 'listening', 'speech-detected', 'transcribing', 'thinking', 'generating-audio', 'speaking', 'paused', 'error']);
     const VOICE_PHASE_ALIASES = {
         talking: 'speaking',
         processing: 'thinking',
-        generating: 'thinking',
+        generating: 'generating-audio',
         waiting: 'paused',
         ready: 'idle',
         cancelled: 'idle',
         canceled: 'idle'
     };
+    const voiceStateController = window.BMUAdvisorVoiceStateController
+        ? new window.BMUAdvisorVoiceStateController({
+            phases: [...VOICE_PHASES],
+            aliases: VOICE_PHASE_ALIASES,
+            maxHistory: 30
+        })
+        : null;
 
     function normaliseVoicePhase(stateName, label = '') {
+        if (voiceStateController) return voiceStateController.normalise(stateName, label);
         const raw = String(stateName || 'idle').toLowerCase().trim();
+        const text = `${raw} ${label || ''}`.toLowerCase();
+        if (/generat.+(audio|voice)|audio.+generat/.test(text)) return 'generating-audio';
         if (VOICE_PHASES.has(raw)) return raw;
         if (VOICE_PHASE_ALIASES[raw]) return VOICE_PHASE_ALIASES[raw];
-        const text = `${raw} ${label || ''}`.toLowerCase();
+        if (/speech.?detected|voice.?detected|heard/.test(text)) return 'speech-detected';
         if (/transcrib/.test(text)) return 'transcribing';
         if (/listen/.test(text)) return 'listening';
         if (/speak|talk|voice/.test(text)) return 'speaking';
@@ -1148,6 +1164,14 @@
     }
 
     function rememberVoicePhase(phase, label) {
+        if (voiceStateController) {
+            const snapshot = voiceStateController.transition(phase, label);
+            state.previousVoicePhase = snapshot.previousPhase;
+            state.voicePhase = snapshot.phase;
+            state.voicePhaseUpdatedAt = snapshot.updatedAt;
+            state.voicePhaseHistory = snapshot.history;
+            return;
+        }
         if (state.voicePhase !== phase) {
             const previousAt = state.voicePhaseUpdatedAt || Date.now();
             state.previousVoicePhase = state.voicePhase;
@@ -1179,6 +1203,7 @@
             lastApiEndpoint: state.lastApiEndpoint || null,
             handsFreeEnabled: Boolean(state.handsFreeEnabled),
             handsFreeStandbyActive: Boolean(state.handsFreeStandby?.active),
+            controller: voiceStateController ? voiceStateController.snapshot() : null,
             history: state.voicePhaseHistory.slice()
         };
     };
@@ -1204,9 +1229,9 @@
         }
         const speaking = phase === 'speaking';
         document.body.classList.toggle('is-speaking', speaking);
-        document.body.classList.toggle('is-thinking', phase === 'thinking' || phase === 'transcribing');
+        document.body.classList.toggle('is-thinking', phase === 'thinking' || phase === 'transcribing' || phase === 'generating-audio');
         document.body.classList.toggle('is-transcribing', phase === 'transcribing');
-        document.body.classList.toggle('is-listening', phase === 'listening');
+        document.body.classList.toggle('is-listening', phase === 'listening' || phase === 'speech-detected');
         document.body.classList.toggle('is-paused', phase === 'paused');
 
         if (state.speakingFocusTimer) {
@@ -1564,7 +1589,8 @@
         const init = {
             method: opts.method || 'GET',
             headers: { 'Content-Type': 'application/json', ...authHeaders(), ...guestDemoHeaders(), ...(opts.headers || {}) },
-            body: opts.body ? JSON.stringify(opts.body) : undefined
+            body: opts.body ? JSON.stringify(opts.body) : undefined,
+            credentials: 'same-origin'
         };
         state.lastApiEndpoint = path;
         const res = await fetch(path, init);
@@ -2046,7 +2072,7 @@
     }
 
     async function loadHistoryList(force = false) {
-        if (!state.token) return;
+        if (!hasAuthSession()) return;
         if (state.loadingHistory) return;
         if (state.historyLoaded && !force) return;
         state.loadingHistory = true;
@@ -3309,6 +3335,7 @@
                 method: 'POST',
                 signal: askController.signal,
                 headers: { 'Content-Type': 'application/json', ...authHeaders(), ...guestDemoHeaders() },
+                credentials: 'same-origin',
                 body: JSON.stringify({
                     question: q,
                     sessionToken: state.sessionToken,
@@ -3412,7 +3439,7 @@
                     } else if (event === 'speech_ready') {
                         speechText = data.speech_text || '';
                         // Avatar status hint: voice is being prepared.
-                        setAvatarState('thinking', 'Generating voice');
+                        setAvatarState('generating-audio', 'Generating audio');
                         if (bubble.body?.dataset.thinking === '1') {
                             setAdvisorBubbleThinking(bubble, true, 'Preparing the answer');
                         }
@@ -3529,7 +3556,7 @@
             sendBtn.disabled = state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit;
             updateClearInputButton();
             if (!audioStarted) setAvatarState('idle', state.voicePaused ? 'Waiting' : 'Ready');
-            if (state.token && state.historyLoaded) {
+            if (hasAuthSession() && state.historyLoaded) {
                 loadHistoryList(true).catch(() => {});
             }
             // Refresh the quota badge — usage went up by one (or stayed
@@ -4638,6 +4665,7 @@
                         method: 'POST',
                         signal: sttController?.signal,
                         headers: { ...authHeaders(), ...guestDemoHeaders() },
+                        credentials: 'same-origin',
                         body: form
                     });
                     const data = await res.json();
@@ -4963,7 +4991,7 @@
         state.historyDesktopOpen = false;
         syncHistoryLayout();
     });
-    if (state.token) {
+    if (hasAuthSession()) {
         historyToggle?.classList.remove('hidden');
         if (advisorFullView) {
             historyPane.classList.add('hidden');
@@ -4992,7 +5020,7 @@
         if (isTouchLandscapeMobileLayout()) {
             state.topMenuCollapsed = true;
         }
-        if (state.token) {
+        if (hasAuthSession()) {
             if (isMobileLayout()) {
                 historyPane.classList.remove('hidden');
                 historyPane.classList.remove('is-open');
@@ -5194,12 +5222,13 @@
     // We don't have a /api/advisor/me endpoint yet, so probe an admin-only
     // endpoint cheaply and reveal the link only if it returns 200.
     (async () => {
-        if (!state.token) return;
+        if (!hasAuthSession()) return;
         try {
             state.lastApiEndpoint = '/api/admin/stats';
             const res = await fetch('/api/admin/stats', {
                 headers: { ...authHeaders() },
-                cache: 'no-store'
+                cache: 'no-store',
+                credentials: 'same-origin'
             });
             writeAuthTrace('advisor_admin_probe', {
                 status: res.status,
@@ -5453,7 +5482,7 @@
         // -------------------------------------------------------------------
         let user = null;
         try { user = JSON.parse(localStorage.getItem('bmu_user') || sessionStorage.getItem('bmu_user') || 'null'); } catch (_) {}
-        if (!user && state.token) {
+        if (!user && (state.token || hasCookieSessionMarker())) {
             // Fall back to /api/users/me if we somehow didn't cache the user,
             // but do not redirect from this optional profile lookup. A valid
             // token can still use the advisor even if this cosmetic call fails.
@@ -5461,7 +5490,8 @@
                 state.lastApiEndpoint = '/api/users/me';
                 const r = await fetch('/api/users/me', {
                     headers: { ...authHeaders() },
-                    cache: 'no-store'
+                    cache: 'no-store',
+                    credentials: 'same-origin'
                 });
                 const me = await r.json().catch(() => ({}));
                 writeAuthTrace('advisor_profile_probe', { status: r.status, endpoint: '/api/users/me', success: Boolean(me?.success) });
@@ -5543,7 +5573,8 @@
             try {
                 const res = await fetch('/api/advisor/usage', {
                     headers: { ...authHeaders() },
-                    cache: 'no-store'
+                    cache: 'no-store',
+                    credentials: 'same-origin'
                 });
                 const u = await res.json().catch(() => ({}));
                 writeAuthTrace('advisor_usage_probe', { status: res.status, endpoint: '/api/advisor/usage', success: Boolean(u?.success) });

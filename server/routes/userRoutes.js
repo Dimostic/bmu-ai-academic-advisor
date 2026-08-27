@@ -2,7 +2,15 @@ const express = require('express');
 const crypto = require('crypto');
 const User = require('../models/User');
 const AuditTrail = require('../models/AuditTrail');
-const { authenticateToken, requireAdmin, requireSuperAdmin, generateToken } = require('../middleware/auth');
+const {
+    authenticateToken,
+    requireAdmin,
+    requireSuperAdmin,
+    optionalAuth,
+    generateToken,
+    setAuthCookies,
+    clearAuthCookies
+} = require('../middleware/auth');
 const { 
     registerValidation, 
     loginValidation, 
@@ -289,6 +297,7 @@ router.post('/login', loginValidation, async (req, res) => {
 
         // Generate token
         const token = generateToken(user);
+        setAuthCookies(res, token);
 
         // Update last login
         await User.updateLastLogin(user.id);
@@ -304,6 +313,11 @@ router.post('/login', loginValidation, async (req, res) => {
         res.json({
             success: true,
             token,
+            auth: {
+                cookie: true,
+                bearer: true,
+                marker: true
+            },
             user: {
                 id: user.id,
                 email: user.email,
@@ -535,20 +549,24 @@ router.post('/reset-password', passwordResetValidation, async (req, res) => {
     }
 });
 
-// Logout (client-side token removal, but log the action)
-router.post('/logout', authenticateToken, async (req, res) => {
+// Logout clears server cookies even when the browser token has already expired.
+router.post('/logout', optionalAuth, async (req, res) => {
     try {
-        await AuditTrail.log({
-            userId: req.user.id,
-            action: 'USER_LOGOUT',
-            ipAddress: req.ip
-        });
+        if (req.user?.id) {
+            await AuditTrail.log({
+                userId: req.user.id,
+                action: 'USER_LOGOUT',
+                ipAddress: req.ip
+            });
+        }
 
+        clearAuthCookies(res);
         res.json({ 
             success: true, 
             message: 'Logged out successfully' 
         });
     } catch (error) {
+        clearAuthCookies(res);
         res.json({ success: true });
     }
 });

@@ -121,13 +121,13 @@ const STRUCTURED_TABLES = {
     bmu_recent_facts: {
         label: 'BMU recent facts',
         description: 'Recent facts detected from BMU sources. Approve before production use.',
-        columns: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'detected_date_label', 'session_label', 'programme', 'authority_type', 'authority_rank', 'confidence', 'status', 'currentness_label', 'admin_notes'],
+        columns: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'detected_date_label', 'session_label', 'programme', 'authority_type', 'authority_rank', 'confidence', 'status', 'currentness_label', 'expires_at', 'superseded_by', 'admin_notes'],
         required: ['title', 'category', 'fact_text'],
-        textColumns: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'detected_date_label', 'session_label', 'programme', 'authority_type', 'status', 'currentness_label', 'admin_notes'],
+        textColumns: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'detected_date_label', 'session_label', 'programme', 'authority_type', 'status', 'currentness_label', 'expires_at', 'admin_notes'],
         jsonColumns: [],
-        numericColumns: ['authority_rank', 'confidence'],
+        numericColumns: ['authority_rank', 'confidence', 'superseded_by'],
         defaults: { status: 'pending', currentness_label: 'recent', authority_type: 'institution', authority_rank: 80, confidence: 0.7 },
-        search: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'session_label', 'programme', 'status']
+        search: ['source_name', 'source_type', 'source_url', 'title', 'category', 'fact_text', 'session_label', 'programme', 'status', 'currentness_label']
     },
     academic_calendar_events: {
         label: 'Calendar',

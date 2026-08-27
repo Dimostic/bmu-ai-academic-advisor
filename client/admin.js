@@ -18,20 +18,24 @@
 
     // ------------------------------------------------------------------ Auth
     const token = localStorage.getItem('bmu_token') || sessionStorage.getItem('bmu_token');
+    function hasCookieSessionMarker() {
+        return /(?:^|;\s*)bmu_auth_present=1(?:;|$)/.test(document.cookie || '');
+    }
     function clearAuthCache() {
         try { localStorage.removeItem('bmu_token'); } catch (_) {}
         try { sessionStorage.removeItem('bmu_token'); } catch (_) {}
         try { localStorage.removeItem('bmu_user'); } catch (_) {}
         try { localStorage.removeItem('bmu_advisor_session'); } catch (_) {}
         try { localStorage.removeItem('bmu_advisor_sessions'); } catch (_) {}
+        try { document.cookie = 'bmu_auth_present=; Max-Age=0; path=/; SameSite=Lax'; } catch (_) {}
     }
-    if (!token) {
+    if (!token && !hasCookieSessionMarker()) {
         location.replace('/login?next=/admin');
         return;
     }
 
     function authHeaders(extra) {
-        return Object.assign({ Authorization: 'Bearer ' + token }, extra || {});
+        return Object.assign(token ? { Authorization: 'Bearer ' + token } : {}, extra || {});
     }
 
     async function api(path, opts) {
@@ -41,7 +45,8 @@
             headers: authHeaders(opts.body && !opts.formData ? { 'Content-Type': 'application/json' } : {}),
             body: opts.body
                 ? (opts.formData ? opts.body : JSON.stringify(opts.body))
-                : undefined
+                : undefined,
+            credentials: 'same-origin'
         };
         const res = await fetch(path, init);
         if (res.status === 401 || res.status === 403) {
@@ -87,7 +92,14 @@
                 <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out
             </button>
         `;
-        document.getElementById('logoutBtn').addEventListener('click', () => {
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/users/logout', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    credentials: 'same-origin'
+                });
+            } catch (_) {}
             clearAuthCache();
             location.replace('/');
         });
@@ -2609,7 +2621,7 @@
         if (!facts.length) return '<p class="empty">No recent facts detected yet. Click “Check all sources”, or paste an official BMU notice above and extract it.</p>';
         const rows = facts.map(fact => [
             `<span class="badge ${fact.status === 'approved' ? 'badge-success' : fact.status === 'rejected' ? 'badge-danger' : fact.status === 'pending' ? 'badge-warn' : 'badge-info'}">${escapeHtml(fact.status || 'pending')}</span>`,
-            `<div><strong>${escapeHtml(fact.title || 'Recent BMU fact')}</strong><div style="color:var(--muted);font-size:.82rem;">${escapeHtml(fact.category || 'general')} · ${escapeHtml(fact.session_label || fact.detected_date_label || 'recent')}${Number(fact.structured_suggestion_count || 0) ? ` · ${escapeHtml(fact.structured_suggestion_count)} structured suggestion(s)` : ''}</div></div>`,
+            `<div><strong>${escapeHtml(fact.title || 'Recent BMU fact')}</strong><div style="color:var(--muted);font-size:.82rem;">${escapeHtml(fact.category || 'general')} · ${escapeHtml(fact.session_label || fact.detected_date_label || 'recent')}${fact.expires_at ? ` · expires ${escapeHtml(formatDate(fact.expires_at))}` : ''}${Number(fact.structured_suggestion_count || 0) ? ` · ${escapeHtml(fact.structured_suggestion_count)} structured suggestion(s)` : ''}</div></div>`,
             escapeHtml((fact.fact_text || '').length > 260 ? fact.fact_text.slice(0, 257) + '...' : fact.fact_text || ''),
             escapeHtml(fact.source_name || fact.source_type || '—'),
             `<div class="admin-actions">
@@ -2696,6 +2708,8 @@
                             <dt>Source</dt><dd>${escapeHtml(fact.source_name || fact.source_type || 'BMU source')}</dd>
                             <dt>Category</dt><dd>${escapeHtml(fact.category || 'general')}</dd>
                             <dt>Session/date</dt><dd>${escapeHtml(fact.session_label || fact.detected_date_label || 'recent')}</dd>
+                            <dt>Currentness</dt><dd>${escapeHtml(fact.currentness_label || 'recent')}</dd>
+                            <dt>Expires</dt><dd>${escapeHtml(fact.expires_at ? formatDate(fact.expires_at) : 'Not set')}</dd>
                             <dt>Programme</dt><dd>${escapeHtml(fact.programme || 'All / not specified')}</dd>
                             <dt>Authority</dt><dd>${escapeHtml(fact.authority_type || 'recent')} · rank ${escapeHtml(fact.authority_rank ?? '—')}</dd>
                             <dt>Confidence</dt><dd>${escapeHtml(fact.confidence ?? '—')}</dd>
@@ -2907,6 +2921,7 @@
                 </label>
             </div>
             <div id="structuredTableInfo" class="stat-row"></div>
+            <div id="structuredWorkflowGuide"></div>
             <div id="structuredImportResult"></div>
             <div id="structuredRecordsBody"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
             <div id="structuredPagination" class="admin-actions structured-pagination"></div>
@@ -3025,6 +3040,8 @@
                 stat('Records', info.count ?? '—'),
                 stat('Required', (info.required || []).join(', ') || '—')
             ].join('');
+            const guide = document.getElementById('structuredWorkflowGuide');
+            if (guide) guide.innerHTML = renderStructuredWorkflowGuide(currentTable, info);
             document.getElementById('structuredRecordsBody').innerHTML = '<div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading records…</div>';
             try {
                 const params = new URLSearchParams({ limit: String(pageSize), offset: String(currentOffset) });
@@ -3043,6 +3060,7 @@
                     stat('Total matched', pagination.total ?? records.length),
                     stat('Required', (tableInfo.required || []).join(', ') || '—')
                 ].join('');
+                if (guide) guide.innerHTML = renderStructuredWorkflowGuide(currentTable, tableInfo);
                 document.getElementById('structuredRecordsBody').innerHTML = records.length
                     ? renderStructuredRecordsGrid(tableInfo, records)
                     : `<p class="empty">${escapeHtml(q || status || requirementCategory ? 'No records found for the current search and filters.' : 'No records found. Download the template and import new records.')}</p>`;
@@ -3172,6 +3190,63 @@
             }
         }
 
+        function renderStructuredWorkflowGuide(tableName, tableInfo = {}) {
+            const guides = {
+                academic_programmes: {
+                    title: 'Programme identity workflow',
+                    checks: ['Confirm programme name, faculty/college, department, degree and entry modes.', 'Keep admission and graduation rules in Programme requirements, not in the identity row.', 'Set status to active only for currently offered programmes.']
+                },
+                academic_rules: {
+                    title: 'Programme requirements workflow',
+                    checks: ['Use one row per admission, graduation, progression, examination or transfer rule.', 'Choose the requirement category first; source and currentness stay in Advanced fields.', 'For high-risk rules, preserve the exact approved wording in Requirement text.']
+                },
+                academic_fees: {
+                    title: 'Fees workflow',
+                    checks: ['Use one row per programme, session, level/category and student category.', 'Enter the human amount and the numeric amount when known.', 'Do not mark fees active without a source document or approved notice.']
+                },
+                academic_courses: {
+                    title: 'Courses workflow',
+                    checks: ['Use one row per course, programme, level and semester.', 'Keep course code, title and credit units exactly as BMU source documents state them.', 'Archive duplicate or invalid source rows instead of editing unrelated programmes.']
+                },
+                academic_officers: {
+                    title: 'Officers workflow',
+                    checks: ['Use one row per office or role.', 'For vacant roles, leave the officer name blank and state the vacancy in exact wording.', 'Use profile/source notes for aliases such as Pro-Chancellor and Chairman of Governing Council.']
+                },
+                academic_admission_cutoffs: {
+                    title: 'Admission cutoffs workflow',
+                    checks: ['Use one row per programme and admission cycle.', 'Cutoff marks are session-specific; confirm the year before activating.', 'Expired cycles should be superseded or inactive, not deleted.']
+                },
+                academic_registration_requirements: {
+                    title: 'Registration workflow',
+                    checks: ['Use one row per student group, session/semester and requirement type.', 'Separate new-student application steps from returning-student semester registration.', 'Add deadlines and portal URLs when BMU publishes them.']
+                },
+                academic_calendar_events: {
+                    title: 'Calendar workflow',
+                    checks: ['Use one row per event or date range.', 'Keep session labels explicit and avoid mixing old and current calendars.', 'Prefer approved BMU calendar notices for deadlines.']
+                },
+                bmu_recent_facts: {
+                    title: 'Recent-source review workflow',
+                    checks: ['Approve only facts that are accurate, current and traceable to BMU sources.', 'Promote cutoffs, registration and other high-risk facts into structured tables.', 'Set or confirm Review expiry so time-sensitive facts stop being definitive when stale.']
+                },
+                bmu_recent_sources: {
+                    title: 'Recent-source monitoring workflow',
+                    checks: ['Use official BMU website/social URLs only.', 'Higher source rank means stronger authority during review.', 'Social sources still require admin approval before advisor use.']
+                }
+            };
+            const guide = guides[tableName] || {
+                title: `${tableInfo.label || 'Structured facts'} workflow`,
+                checks: ['Edit visible fields first.', 'Open Advanced fields only for source, authority and currentness metadata.', 'Keep high-risk facts tied to an approved source.']
+            };
+            return `
+                <section class="structured-workflow-guide" aria-label="${escapeHtml(guide.title)}">
+                    <div>
+                        <strong><i class="fa-solid fa-route"></i> ${escapeHtml(guide.title)}</strong>
+                        <p>${guide.checks.map(escapeHtml).join(' ')}</p>
+                    </div>
+                </section>
+            `;
+        }
+
         async function importStructuredRecords(tableName, file) {
             if (!tableName || !file) return;
             const fd = new FormData();
@@ -3282,7 +3357,7 @@
         if (!dialog) return;
         const isNew = !!options.isNew;
         const columns = tableInfo.columns || [];
-        const advanced = new Set(['value_json', 'row_json', 'source_path', 'status', 'authority_type', 'scope_label', 'currentness_label', 'record_hash']);
+        const advanced = new Set(['value_json', 'row_json', 'source_path', 'status', 'authority_type', 'scope_label', 'currentness_label', 'expires_at', 'superseded_by', 'record_hash']);
         const requiredFields = new Set(tableInfo.required || []);
         const simpleColumns = columns.filter(column => !advanced.has(column));
         const advancedColumns = columns.filter(column => advanced.has(column));
@@ -3378,6 +3453,9 @@
         if (column === 'status' && tableName === 'bmu_recent_sources') {
             return ['active', 'inactive'];
         }
+        if (column === 'currentness_label' && tableName === 'bmu_recent_facts') {
+            return ['recent', 'current', 'pending_review', 'superseded', 'rejected', 'historical'];
+        }
         const options = {
             status: ['active', 'draft', 'inactive'],
             programme_status: ['active', 'pending_review', 'paused', 'withdrawn', 'inactive'],
@@ -3464,6 +3542,8 @@
             detected_date_label: '27 August 2026',
             confidence: '0.74',
             admin_notes: 'Reason for approval, rejection, correction, or expiry',
+            expires_at: 'Leave blank for no expiry, or use YYYY-MM-DD HH:mm:ss.',
+            superseded_by: 'ID of the newer fact that replaces this one',
             row_json: '{"programme":"Medical Laboratory Science","level":"300 level"}'
         };
         return placeholders[column] || '';
@@ -3534,6 +3614,8 @@
             detected_date_label: 'Detected date',
             confidence: 'Confidence',
             admin_notes: 'Admin notes',
+            expires_at: 'Review expiry',
+            superseded_by: 'Superseded by fact ID',
             raw_text: 'Exact wording',
             row_json: 'Structured row'
         };
