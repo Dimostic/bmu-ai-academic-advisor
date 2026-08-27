@@ -975,6 +975,50 @@ html[data-theme="dark"] .avatar-stage-controls {
     flex: 0 0 auto;
 }
 
+.handsfree-settings {
+    display: grid;
+    gap: 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    background: #f8fbfa;
+}
+
+.handsfree-toggle {
+    flex-direction: row !important;
+    align-items: flex-start;
+    gap: 10px !important;
+    color: var(--text) !important;
+}
+
+.handsfree-toggle input {
+    flex: 0 0 auto;
+    margin-top: 3px;
+}
+
+.handsfree-toggle span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.handsfree-toggle strong {
+    font-size: .94rem;
+    color: var(--text);
+}
+
+.handsfree-toggle small {
+    color: var(--muted);
+    font-size: .78rem;
+    line-height: 1.35;
+}
+
+.handsfree-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
 .audio-settings-note {
     min-height: 18px;
     margin: 0;
@@ -984,13 +1028,15 @@ html[data-theme="dark"] .avatar-stage-controls {
 }
 
 html[data-theme="dark"] .audio-settings-panel select,
-html[data-theme="dark"] .audio-toggle-list label {
+html[data-theme="dark"] .audio-toggle-list label,
+html[data-theme="dark"] .handsfree-settings {
     background: rgba(255,255,255,.06);
     border-color: rgba(255,255,255,.15);
 }
 
 @media (max-width: 560px) {
-    .audio-toggle-list {
+    .audio-toggle-list,
+    .handsfree-settings-grid {
         grid-template-columns: 1fr;
     }
 }

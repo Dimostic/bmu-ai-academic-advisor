@@ -344,6 +344,33 @@
                 <label><input type="checkbox" id="noiseSuppressionToggle" /> Noise suppression</label>
                 <label><input type="checkbox" id="autoGainToggle" /> Auto gain</label>
             </div>
+            <section class="handsfree-settings" aria-label="Hands-free listening">
+                <label class="handsfree-toggle">
+                    <input type="checkbox" id="handsFreeToggle" />
+                    <span>
+                        <strong>Hands-free standby</strong>
+                        <small>When enabled, the selected mic waits locally for clear speech, then starts listening.</small>
+                    </span>
+                </label>
+                <div class="handsfree-settings-grid">
+                    <label>
+                        Sensitivity
+                        <select id="handsFreeSensitivitySelect">
+                            <option value="normal">Balanced</option>
+                            <option value="low">Noisy room</option>
+                            <option value="high">Soft voice</option>
+                        </select>
+                    </label>
+                    <label>
+                        Standby timeout
+                        <select id="handsFreeTimeoutSelect">
+                            <option value="30000">30 seconds</option>
+                            <option value="60000">60 seconds</option>
+                            <option value="120000">2 minutes</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
             <p class="audio-settings-note" id="audioSettingsNote"></p>
             <menu>
                 <button type="button" class="btn btn-ghost" id="refreshAudioDevicesBtn">
@@ -363,7 +390,7 @@
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260824-academic-male-avatar2" defer></script>
-    <script src="/advisor.js?v=20260827-audio-devices" defer></script>
+    <script src="/advisor.js?v=20260827-handsfree-audio" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>

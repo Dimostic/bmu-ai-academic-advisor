@@ -117,6 +117,9 @@
     const echoCancellationToggle = $('echoCancellationToggle');
     const noiseSuppressionToggle = $('noiseSuppressionToggle');
     const autoGainToggle = $('autoGainToggle');
+    const handsFreeToggle = $('handsFreeToggle');
+    const handsFreeSensitivitySelect = $('handsFreeSensitivitySelect');
+    const handsFreeTimeoutSelect = $('handsFreeTimeoutSelect');
     const refreshAudioDevicesBtn = $('refreshAudioDevicesBtn');
     const testAudioOutputBtn = $('testAudioOutputBtn');
     const saveAudioSettingsBtn = $('saveAudioSettingsBtn');
@@ -145,6 +148,9 @@
     const SERVER_STT_MAX_RECORDING_MS = 45000;
     const SERVER_STT_UPLOAD_TIMEOUT_MS = 25000;
     const BROWSER_TTS_VOICE_CACHE_KEY = 'bmu_advisor_browser_tts_voice_v1';
+    const HANDS_FREE_TIMEOUTS = new Set([30000, 60000, 120000]);
+    const HANDS_FREE_DEFAULT_TIMEOUT_MS = 30000;
+    const HANDS_FREE_REARM_DELAY_MS = 650;
 
     // ---------- State ----------
     const state = {
@@ -198,6 +204,38 @@
             autoGainControl: (() => {
                 try { return localStorage.getItem('bmu_advisor_auto_gain') !== '0'; } catch (_) { return true; }
             })()
+        },
+        handsFreeEnabled: (() => {
+            try { return localStorage.getItem('bmu_advisor_handsfree_enabled') === '1'; } catch (_) { return false; }
+        })(),
+        handsFreeSensitivity: (() => {
+            try {
+                const saved = localStorage.getItem('bmu_advisor_handsfree_sensitivity') || 'normal';
+                return ['low', 'normal', 'high'].includes(saved) ? saved : 'normal';
+            } catch (_) {
+                return 'normal';
+            }
+        })(),
+        handsFreeTimeoutMs: (() => {
+            try {
+                const saved = Number(localStorage.getItem('bmu_advisor_handsfree_timeout_ms'));
+                return HANDS_FREE_TIMEOUTS.has(saved) ? saved : HANDS_FREE_DEFAULT_TIMEOUT_MS;
+            } catch (_) {
+                return HANDS_FREE_DEFAULT_TIMEOUT_MS;
+            }
+        })(),
+        handsFreeStandby: {
+            active: false,
+            starting: false,
+            stream: null,
+            audioCtx: null,
+            analyser: null,
+            source: null,
+            sample: null,
+            monitorTimer: null,
+            startTimer: null,
+            startedAt: 0,
+            lastLabelAt: 0
         },
         mediaDevices: {
             inputs: [],
@@ -1132,6 +1170,8 @@
             hasMediaRecorder: Boolean(state.mediaRecorder),
             voicePaused: Boolean(state.voicePaused),
             voiceConversationActive: Boolean(state.voiceConversationActive),
+            handsFreeEnabled: Boolean(state.handsFreeEnabled),
+            handsFreeStandbyActive: Boolean(state.handsFreeStandby?.active),
             history: state.voicePhaseHistory.slice()
         };
     };
@@ -2422,6 +2462,10 @@
             if (isMobileSpeechDevice()) {
                 if (!state.voiceConversationActive) return;
             }
+            if (state.handsFreeEnabled) {
+                scheduleHandsFreeStandby(HANDS_FREE_REARM_DELAY_MS);
+                return;
+            }
             startListening({
                 autoFollowup: true,
                 noSpeechMs: isMobileSpeechDevice() ? MOBILE_AUTO_FOLLOWUP_LISTEN_MS : getConversationListenWindowMs()
@@ -2442,6 +2486,210 @@
         if (state.autoFollowupTimer) {
             clearTimeout(state.autoFollowupTimer);
             state.autoFollowupTimer = null;
+        }
+    }
+
+    function supportsHandsFreeStandby() {
+        return Boolean(
+            navigator.mediaDevices?.getUserMedia
+            && window.MediaRecorder
+            && (window.AudioContext || window.webkitAudioContext)
+        );
+    }
+
+    function normaliseHandsFreeSensitivity(value) {
+        return ['low', 'normal', 'high'].includes(value) ? value : 'normal';
+    }
+
+    function handsFreeSensitivityConfig() {
+        const value = normaliseHandsFreeSensitivity(state.handsFreeSensitivity);
+        if (value === 'low') {
+            return { minThreshold: 0.010, factor: 2.35, sustainedMs: 520, label: 'Noisy room' };
+        }
+        if (value === 'high') {
+            return { minThreshold: 0.0055, factor: 1.55, sustainedMs: 260, label: 'Soft voice' };
+        }
+        return { minThreshold: 0.007, factor: 1.9, sustainedMs: 360, label: 'Balanced' };
+    }
+
+    function getHandsFreeTimeoutMs() {
+        const value = Number(state.handsFreeTimeoutMs);
+        return HANDS_FREE_TIMEOUTS.has(value) ? value : HANDS_FREE_DEFAULT_TIMEOUT_MS;
+    }
+
+    function readMicRms(analyser, sample) {
+        analyser.getByteTimeDomainData(sample);
+        let sum = 0;
+        for (let i = 0; i < sample.length; i += 1) {
+            const centered = (sample[i] - 128) / 128;
+            sum += centered * centered;
+        }
+        return Math.sqrt(sum / sample.length);
+    }
+
+    function canUseHandsFreeStandby() {
+        if (!state.handsFreeEnabled) return false;
+        if (!supportsHandsFreeStandby()) return false;
+        if (!serverSttAvailable) return false;
+        if (state.voicePaused || state.recording || recognition || state.mediaRecorder) return false;
+        if (document.hidden || isAdvisorSpeechActive()) return false;
+        if (audioSettingsDlg?.open) return false;
+        if (questionInput?.value.trim()) return false;
+        if (state.currentAskController || state.currentSttController) return false;
+        if (state.guestDemo.enabled && state.guestDemo.used >= state.guestDemo.limit) return false;
+        return true;
+    }
+
+    function stopHandsFreeStandby({ keepStream = false, label = 'Ready' } = {}) {
+        const standby = state.handsFreeStandby;
+        if (standby.startTimer) clearTimeout(standby.startTimer);
+        if (standby.monitorTimer) clearInterval(standby.monitorTimer);
+        standby.startTimer = null;
+        standby.monitorTimer = null;
+        standby.starting = false;
+        try { standby.source?.disconnect(); } catch (_) {}
+        try { standby.audioCtx?.close(); } catch (_) {}
+        if (standby.stream && !keepStream) {
+            try { standby.stream.getTracks().forEach(track => track.stop()); } catch (_) {}
+        }
+        standby.active = false;
+        standby.source = null;
+        standby.analyser = null;
+        standby.audioCtx = null;
+        standby.sample = null;
+        standby.startedAt = 0;
+        standby.lastLabelAt = 0;
+        standby.stream = null;
+        if (state.voicePhase === 'idle' && /hands-free/i.test(advisorStatus?.querySelector('.label')?.textContent || '')) {
+            setAvatarState('idle', label);
+        }
+    }
+
+    function scheduleHandsFreeStandby(delay = HANDS_FREE_REARM_DELAY_MS) {
+        const standby = state.handsFreeStandby;
+        if (standby.startTimer) clearTimeout(standby.startTimer);
+        standby.startTimer = null;
+        if (!canUseHandsFreeStandby()) return;
+        stopWakeWordListener();
+        standby.startTimer = setTimeout(() => {
+            standby.startTimer = null;
+            startHandsFreeStandby().catch((err) => {
+                console.warn('[advisor] hands-free standby failed:', err?.message || err);
+            });
+        }, Math.max(120, delay));
+    }
+
+    function scheduleIdleVoiceStandby(delay = 900) {
+        if (state.handsFreeEnabled && supportsHandsFreeStandby() && serverSttAvailable) scheduleHandsFreeStandby(delay);
+        else scheduleWakeWordListener(delay);
+    }
+
+    function triggerHandsFreeListening(stream) {
+        if (!stream) return;
+        stopHandsFreeStandby({ keepStream: true, label: 'Listening' });
+        state.voicePaused = false;
+        state.voiceConversationActive = true;
+        state.lastVoiceGestureAt = Date.now();
+        enableSpeechOutput();
+        setAvatarState('listening', 'Listening');
+        startListening({
+            autoFollowup: true,
+            forceServerStt: true,
+            stream,
+            noSpeechMs: isMobileSpeechDevice() ? MOBILE_AUTO_FOLLOWUP_LISTEN_MS : getConversationListenWindowMs()
+        });
+    }
+
+    async function startHandsFreeStandby() {
+        if (!canUseHandsFreeStandby()) return;
+        const standby = state.handsFreeStandby;
+        if (standby.active || standby.starting) return;
+        standby.starting = true;
+        stopWakeWordListener();
+        let stream = null;
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            stream = await navigator.mediaDevices.getUserMedia(buildAudioInputConstraints());
+            if (!canUseHandsFreeStandby()) {
+                standby.starting = false;
+                stream.getTracks().forEach(track => track.stop());
+                return;
+            }
+            const audioCtx = new AudioCtx();
+            if (audioCtx.state === 'suspended') {
+                try { await audioCtx.resume(); } catch (_) {}
+            }
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            const source = audioCtx.createMediaStreamSource(stream);
+            source.connect(analyser);
+
+            standby.active = true;
+            standby.starting = false;
+            standby.stream = stream;
+            standby.audioCtx = audioCtx;
+            standby.analyser = analyser;
+            standby.source = source;
+            standby.sample = new Uint8Array(128);
+            standby.startedAt = Date.now();
+            standby.lastLabelAt = 0;
+
+            const cfg = handsFreeSensitivityConfig();
+            const timeoutMs = getHandsFreeTimeoutMs();
+            let noiseFloor = 0.008;
+            let candidateAt = 0;
+            let triggered = false;
+            setAvatarState('idle', `Hands-free standby ${Math.ceil(timeoutMs / 1000)}s`);
+
+            standby.monitorTimer = setInterval(() => {
+                if (triggered) return;
+                if (!canUseHandsFreeStandby()) {
+                    stopHandsFreeStandby();
+                    return;
+                }
+                const rms = readMicRms(analyser, standby.sample);
+                const now = Date.now();
+                noiseFloor = (noiseFloor * 0.94) + (Math.min(rms, 0.035) * 0.06);
+                const threshold = Math.max(cfg.minThreshold, Math.min(0.045, noiseFloor * cfg.factor));
+                if (rms > threshold) {
+                    if (!candidateAt) candidateAt = now;
+                    if (now - candidateAt >= cfg.sustainedMs) {
+                        triggered = true;
+                        const activeStream = standby.stream;
+                        triggerHandsFreeListening(activeStream);
+                    }
+                    return;
+                }
+                candidateAt = 0;
+                if (now - standby.startedAt >= timeoutMs) {
+                    stopHandsFreeStandby({ label: 'Ready' });
+                    return;
+                }
+                if (now - standby.lastLabelAt >= 1000) {
+                    standby.lastLabelAt = now;
+                    const remaining = Math.max(1, Math.ceil((timeoutMs - (now - standby.startedAt)) / 1000));
+                    setAvatarState('idle', `Hands-free standby ${remaining}s`);
+                }
+            }, 120);
+        } catch (err) {
+            if (stream) {
+                try { stream.getTracks().forEach(track => track.stop()); } catch (_) {}
+            }
+            standby.starting = false;
+            const unavailableSelectedMic = state.selectedAudioInputId
+                && /notfound|not found|overconstrained|constraint|device/i.test(`${err?.name || ''} ${err?.message || ''}`);
+            if (unavailableSelectedMic) {
+                state.selectedAudioInputId = '';
+                try { localStorage.removeItem('bmu_advisor_audio_input_id'); } catch (_) {}
+                refreshAudioDevices().catch(() => {});
+                toast('Selected microphone is unavailable. Switched back to the default microphone.', 'error');
+            } else if (/notallowed|denied|permission/i.test(`${err?.name || ''} ${err?.message || ''}`)) {
+                state.handsFreeEnabled = false;
+                try { localStorage.setItem('bmu_advisor_handsfree_enabled', '0'); } catch (_) {}
+                renderAudioDeviceOptions();
+                toast('Hands-free standby needs microphone permission. It has been turned off.', 'error');
+            }
+            setAvatarState('idle', 'Ready');
         }
     }
 
@@ -2484,6 +2732,7 @@
 
     function cancelActiveListening({ clearText = false, label = 'Ready' } = {}) {
         clearAutoFollowupTimer();
+        stopHandsFreeStandby({ label });
         state.cancelVoiceListening = true;
         state.discardVoiceRecording = true;
         cancelActiveStt();
@@ -2512,6 +2761,7 @@
     function stopAdvisorActivity({ clearText = false, label = 'Stopped', keepWake = true } = {}) {
         cancelActiveAsk();
         cancelActiveStt();
+        stopHandsFreeStandby({ label });
         stopCurrentAudio();
         if (state.recording || recognition || state.mediaRecorder) {
             cancelActiveListening({ clearText, label });
@@ -2536,6 +2786,7 @@
             state.voiceConversationActive = true;
             state.lastVoiceGestureAt = Date.now();
             enableSpeechOutput();
+            stopHandsFreeStandby({ label: 'Ready' });
             if (source === 'wake') {
                 stopWakeWordListener();
                 let wakeStartedListening = false;
@@ -2555,6 +2806,7 @@
         if (action === 'stop') {
             state.voicePaused = false;
             state.voiceConversationActive = false;
+            stopHandsFreeStandby({ label: 'Stopped' });
             stopAdvisorActivity({ label: 'Stopped', keepWake: true });
             toast('Stopped');
             return true;
@@ -2562,6 +2814,7 @@
         if (action === 'clear') {
             state.voicePaused = false;
             state.voiceConversationActive = false;
+            stopHandsFreeStandby({ label: 'Cleared' });
             stopAdvisorActivity({ clearText: true, label: 'Cleared', keepWake: true });
             toast('Cleared');
             return true;
@@ -2570,6 +2823,7 @@
             state.voicePaused = false;
             state.voiceConversationActive = true;
             state.lastVoiceGestureAt = Date.now();
+            stopHandsFreeStandby({ label: 'Restarting' });
             stopAdvisorActivity({ clearText: true, label: 'Restarting', keepWake: false });
             enableSpeechOutput();
             setTimeout(() => startListening(), source === 'voice' ? 250 : 80);
@@ -2578,6 +2832,7 @@
         if (action === 'wait') {
             state.voicePaused = true;
             state.voiceConversationActive = false;
+            stopHandsFreeStandby({ label: 'Waiting' });
             stopAdvisorActivity({ label: 'Waiting', keepWake: true });
             setAvatarState('idle', 'Waiting');
             toast('Waiting. Say “Dr. Tari, continue” when ready.');
@@ -3362,12 +3617,30 @@
         if (echoCancellationToggle) echoCancellationToggle.checked = Boolean(state.audioCleanup.echoCancellation);
         if (noiseSuppressionToggle) noiseSuppressionToggle.checked = Boolean(state.audioCleanup.noiseSuppression);
         if (autoGainToggle) autoGainToggle.checked = Boolean(state.audioCleanup.autoGainControl);
+        if (handsFreeToggle) {
+            handsFreeToggle.checked = Boolean(state.handsFreeEnabled);
+            handsFreeToggle.disabled = !supportsHandsFreeStandby() || !serverSttAvailable;
+        }
+        if (handsFreeSensitivitySelect) {
+            handsFreeSensitivitySelect.value = normaliseHandsFreeSensitivity(state.handsFreeSensitivity);
+            handsFreeSensitivitySelect.disabled = !state.handsFreeEnabled || !supportsHandsFreeStandby() || !serverSttAvailable;
+        }
+        if (handsFreeTimeoutSelect) {
+            handsFreeTimeoutSelect.value = String(getHandsFreeTimeoutMs());
+            handsFreeTimeoutSelect.disabled = !state.handsFreeEnabled || !supportsHandsFreeStandby() || !serverSttAvailable;
+        }
 
         if (audioSettingsNote) {
             const notes = [];
             if (!supportsMediaDeviceSelection()) notes.push('This browser does not support microphone device selection.');
             if (!supportsAudioOutputSelection()) notes.push('Speaker selection is not supported in this browser.');
             if (state.selectedAudioInputId && !serverSttAvailable) notes.push('Selected microphones require server transcription to be available.');
+            if (state.handsFreeEnabled && serverSttAvailable) {
+                notes.push('Hands-free standby listens locally for clear speech, then starts transcription.');
+            }
+            if (state.handsFreeEnabled && !serverSttAvailable) {
+                notes.push('Hands-free standby requires server transcription.');
+            }
             notes.push('System/computer audio cannot be used as a microphone in normal browser mic mode.');
             audioSettingsNote.textContent = notes.join(' ');
         }
@@ -3404,20 +3677,32 @@
     }
 
     function persistAudioSettingsFromControls() {
+        const restartHandsFree = Boolean(state.handsFreeEnabled || handsFreeToggle?.checked);
         state.selectedAudioInputId = audioInputSelect?.value || '';
         state.selectedAudioOutputId = audioOutputSelect?.value || '';
         state.audioCleanup.echoCancellation = Boolean(echoCancellationToggle?.checked);
         state.audioCleanup.noiseSuppression = Boolean(noiseSuppressionToggle?.checked);
         state.audioCleanup.autoGainControl = Boolean(autoGainToggle?.checked);
+        state.handsFreeEnabled = Boolean(handsFreeToggle?.checked && supportsHandsFreeStandby() && serverSttAvailable);
+        state.handsFreeSensitivity = normaliseHandsFreeSensitivity(handsFreeSensitivitySelect?.value || state.handsFreeSensitivity);
+        const timeoutMs = Number(handsFreeTimeoutSelect?.value || state.handsFreeTimeoutMs);
+        state.handsFreeTimeoutMs = HANDS_FREE_TIMEOUTS.has(timeoutMs) ? timeoutMs : HANDS_FREE_DEFAULT_TIMEOUT_MS;
         try {
             localStorage.setItem('bmu_advisor_audio_input_id', state.selectedAudioInputId);
             localStorage.setItem('bmu_advisor_audio_output_id', state.selectedAudioOutputId);
             localStorage.setItem('bmu_advisor_echo_cancellation', state.audioCleanup.echoCancellation ? '1' : '0');
             localStorage.setItem('bmu_advisor_noise_suppression', state.audioCleanup.noiseSuppression ? '1' : '0');
             localStorage.setItem('bmu_advisor_auto_gain', state.audioCleanup.autoGainControl ? '1' : '0');
+            localStorage.setItem('bmu_advisor_handsfree_enabled', state.handsFreeEnabled ? '1' : '0');
+            localStorage.setItem('bmu_advisor_handsfree_sensitivity', state.handsFreeSensitivity);
+            localStorage.setItem('bmu_advisor_handsfree_timeout_ms', String(state.handsFreeTimeoutMs));
         } catch (_) {}
         updateMicAvailability();
         renderAudioDeviceOptions();
+        if (restartHandsFree) {
+            stopHandsFreeStandby({ label: 'Ready' });
+            if (state.handsFreeEnabled) scheduleHandsFreeStandby(220);
+        }
     }
 
     async function applySelectedAudioOutput(audio) {
@@ -3479,6 +3764,7 @@
     }
 
     async function openAudioSettings() {
+        stopHandsFreeStandby({ label: 'Ready' });
         await refreshAudioDevices({ requestPermission: true });
         renderAudioDeviceOptions();
         if (typeof audioSettingsDlg?.showModal === 'function') audioSettingsDlg.showModal();
@@ -3488,6 +3774,7 @@
     function closeAudioSettings() {
         if (typeof audioSettingsDlg?.close === 'function') audioSettingsDlg.close();
         else audioSettingsDlg?.removeAttribute('open');
+        if (state.handsFreeEnabled) scheduleHandsFreeStandby(500);
     }
 
     /** Update the mic button to reflect what speech-to-text actually works
@@ -3643,7 +3930,7 @@
         setAvatarState('idle', 'Ready');
         toast("I couldn't hear that clearly. Please try again in English or type the question.", 'error');
         scheduleVoiceRetryAfterError();
-        scheduleWakeWordListener(900);
+        scheduleIdleVoiceStandby(900);
     }
 
     function scheduleVoiceRetryAfterError(delayMs = 4300) {
@@ -3656,6 +3943,10 @@
             if (state.voicePhase === 'thinking' || state.voicePhase === 'transcribing' || isAdvisorSpeechActive()) return;
             if (questionInput?.disabled || (!shouldUseBrowserSpeechRecognition() && !serverSttAvailable)) return;
             state.voiceConversationActive = true;
+            if (state.handsFreeEnabled) {
+                scheduleHandsFreeStandby(120);
+                return;
+            }
             startListening({ autoFollowup: true, noSpeechMs: getConversationListenWindowMs() });
         }, delayMs);
     }
@@ -3751,10 +4042,13 @@
 
     function syncWakeCommandUi() {
         const hideOnMobile = isMobileSpeechDevice();
-        const available = shouldUseWakeWordRecognition();
+        const blockedByHandsFree = Boolean(state.handsFreeEnabled && supportsHandsFreeStandby() && serverSttAvailable);
+        const available = shouldUseWakeWordRecognition() && !blockedByHandsFree;
         const active = Boolean(state.wakeWordEnabled && available);
         const armed = Boolean(active && wakeRecognition);
-        const title = !available
+        const title = blockedByHandsFree
+            ? 'Wake command is off while hands-free standby is enabled.'
+            : !available
             ? 'Wake command is only available on desktop Chrome or Edge. Use the mic button on mobile.'
             : state.wakeWordEnabled
                 ? armed
@@ -3783,6 +4077,11 @@
     }
 
     function toggleWakeCommand() {
+        if (state.handsFreeEnabled) {
+            toast('Turn off hands-free standby before using the desktop wake command.', 'error');
+            syncWakeCommandUi();
+            return;
+        }
         if (!shouldUseWakeWordRecognition()) {
             toast('Wake command is not reliable on this device. Please tap the mic or Continue.', 'error');
             syncWakeCommandUi();
@@ -3806,13 +4105,14 @@
     }
 
     function scheduleWakeWordListener(delay = 900) {
+        if (state.handsFreeEnabled && supportsHandsFreeStandby() && serverSttAvailable) return;
         if (!state.wakeWordEnabled || !shouldUseWakeWordRecognition()) return;
         if (wakeNeedsUserGesture) return;
         if (isAdvisorSpeechActive()) {
             if (wakeRestartTimer) clearTimeout(wakeRestartTimer);
             wakeRestartTimer = setTimeout(() => {
                 wakeRestartTimer = null;
-                scheduleWakeWordListener(900);
+                scheduleIdleVoiceStandby(900);
             }, Math.max(900, delay));
             return;
         }
@@ -3824,6 +4124,7 @@
     }
 
     function startWakeWordListener() {
+        if (state.handsFreeEnabled && supportsHandsFreeStandby() && serverSttAvailable) return;
         if (!state.wakeWordEnabled || !shouldUseWakeWordRecognition()) return;
         if (wakeNeedsUserGesture) return;
         if (isAdvisorSpeechActive()) {
@@ -3906,11 +4207,13 @@
 
     function startListening(options = {}) {
         if (state.recording) return;
+        const standbyStream = options.stream || null;
+        if (!standbyStream) stopHandsFreeStandby({ label: 'Ready' });
         clearAutoFollowupTimer();
         state.voicePaused = false;
         state.cancelVoiceListening = false;
         state.discardVoiceRecording = false;
-        const browserSpeechOk = shouldUseBrowserSpeechRecognition();
+        const browserSpeechOk = !standbyStream && !options.forceServerStt && shouldUseBrowserSpeechRecognition();
         const noSpeechMs = Number(options.noSpeechMs) > 0
             ? Number(options.noSpeechMs)
             : getConversationListenWindowMs();
@@ -3922,6 +4225,9 @@
         // bail out with a friendly toast rather than starting a recording
         // we know will fail at upload time.
         if (!browserSpeechOk && !serverSttAvailable) {
+            if (standbyStream) {
+                try { standbyStream.getTracks().forEach(track => track.stop()); } catch (_) {}
+            }
             toast('Voice input is not supported in this browser. Please type your question, or use Chrome / Edge.', 'error');
             return;
         }
@@ -3991,7 +4297,7 @@
                 } catch (_) { /* ignore */ }
                 recognition = null;
                 setAvatarState('idle', label);
-                scheduleWakeWordListener(900);
+                scheduleIdleVoiceStandby(900);
             };
             const submitTranscript = () => {
                 if (submitting) return;
@@ -4028,7 +4334,7 @@
                 } catch (_) { /* ignore */ }
                 recognition = null;
                 askAfterTranscriptPreview(280);
-                scheduleWakeWordListener(1400);
+                scheduleIdleVoiceStandby(1400);
             };
             const queueVoiceSubmit = (delay = LISTENING_SILENCE_MS) => {
                 clearPendingVoiceSubmit();
@@ -4194,7 +4500,7 @@
                     return;
                 }
                 finishListeningUi('Ready');
-                scheduleWakeWordListener(900);
+                scheduleIdleVoiceStandby(900);
             };
             try {
                 recognition.start();
@@ -4206,14 +4512,18 @@
                 finishListeningUi('Ready');
             }
         } else {
-            startServerRecording({ noSpeechMs, autoFollowup });
+            startServerRecording({ noSpeechMs, autoFollowup, stream: standbyStream });
         }
     }
 
     async function startServerRecording(options = {}) {
         const noSpeechMs = Number(options.noSpeechMs) > 0 ? Number(options.noSpeechMs) : getConversationListenWindowMs();
         const autoFollowup = Boolean(options.autoFollowup);
+        let stream = options.stream || null;
         if (!serverSttAvailable) {
+            if (stream) {
+                try { stream.getTracks().forEach(track => track.stop()); } catch (_) {}
+            }
             updateMicAvailability();
             toast('Voice input is not available in this browser yet. Please type your question, or use Chrome / Edge with microphone access enabled.', 'error');
             setAvatarState('idle', 'Ready');
@@ -4222,7 +4532,7 @@
         }
         try {
             stopWakeWordListener();
-            const stream = await navigator.mediaDevices.getUserMedia(buildAudioInputConstraints());
+            if (!stream) stream = await navigator.mediaDevices.getUserMedia(buildAudioInputConstraints());
             const preferredMime = [
                 'audio/webm;codecs=opus',
                 'audio/webm',
@@ -4280,7 +4590,7 @@
                         ? 'Tap mic or Continue'
                         : 'Ready';
                     setAvatarState('idle', idleLabel);
-                    scheduleWakeWordListener(900);
+                    scheduleIdleVoiceStandby(900);
                     return;
                 }
                 setAvatarState('transcribing', 'Transcribing');
@@ -4311,7 +4621,7 @@
                             return;
                         }
                         if (consumeLocalVoiceCommand(normalized)) {
-                            scheduleWakeWordListener(900);
+                            scheduleIdleVoiceStandby(900);
                             return;
                         }
                         questionInput.value = normalized;
@@ -4344,7 +4654,7 @@
                     if (sttTimeout) clearTimeout(sttTimeout);
                     if (state.currentSttController === sttController) state.currentSttController = null;
                 }
-                scheduleWakeWordListener(900);
+                scheduleIdleVoiceStandby(900);
             };
             recorder.start();
             state.mediaRecorder = recorder;
@@ -4423,6 +4733,9 @@
                 setTimeout(() => stopRecorder(false), LISTENING_SILENCE_MS);
             }
         } catch (err) {
+            if (stream) {
+                try { stream.getTracks().forEach(track => track.stop()); } catch (_) {}
+            }
             console.warn('[advisor] getUserMedia failed:', err.message);
             const unavailableSelectedMic = state.selectedAudioInputId
                 && /notfound|not found|overconstrained|constraint|device/i.test(`${err?.name || ''} ${err?.message || ''}`);
@@ -4455,7 +4768,7 @@
                 state.recording = false;
                 syncMicButtonsUi(false);
                 askAfterTranscriptPreview(280);
-                scheduleWakeWordListener(1400);
+                scheduleIdleVoiceStandby(1400);
                 return;
             }
         }
@@ -4463,7 +4776,7 @@
         state.recording = false;
         syncMicButtonsUi(false);
         setAvatarState('idle', 'Ready');
-        scheduleWakeWordListener(900);
+        scheduleIdleVoiceStandby(900);
     }
 
     micBtn.addEventListener('click', () => {
@@ -4494,14 +4807,21 @@
         btn.addEventListener('click', openAudioSettings);
     });
     audioSettingsCloseBtn?.addEventListener('click', closeAudioSettings);
+    audioSettingsDlg?.addEventListener('close', () => {
+        if (state.handsFreeEnabled) scheduleHandsFreeStandby(500);
+    });
     refreshAudioDevicesBtn?.addEventListener('click', () => refreshAudioDevices({ requestPermission: true }));
     testAudioOutputBtn?.addEventListener('click', testSelectedAudioOutput);
     saveAudioSettingsBtn?.addEventListener('click', () => {
         persistAudioSettingsFromControls();
         closeAudioSettings();
-        toast(state.selectedAudioInputId ? `Microphone set to ${selectedAudioInputLabel()}` : 'Audio settings saved');
+        if (state.handsFreeEnabled) {
+            toast(`Hands-free standby on using ${selectedAudioInputLabel()}`);
+        } else {
+            toast(state.selectedAudioInputId ? `Microphone set to ${selectedAudioInputLabel()}` : 'Audio settings saved');
+        }
     });
-    [audioInputSelect, audioOutputSelect, echoCancellationToggle, noiseSuppressionToggle, autoGainToggle]
+    [audioInputSelect, audioOutputSelect, echoCancellationToggle, noiseSuppressionToggle, autoGainToggle, handsFreeToggle, handsFreeSensitivitySelect, handsFreeTimeoutSelect]
         .filter(Boolean)
         .forEach((el) => el.addEventListener('change', persistAudioSettingsFromControls));
 
@@ -4509,10 +4829,11 @@
 
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
+            stopHandsFreeStandby({ label: 'Ready' });
             stopWakeWordListener();
             return;
         }
-        scheduleWakeWordListener(700);
+        scheduleIdleVoiceStandby(700);
     });
 
     if (avatarMuteBtn) {
@@ -5083,7 +5404,9 @@
         renderAudioDeviceOptions();
         updateGuestDemoUi();
         syncWakeCommandUi();
-        if (state.wakeWordEnabled) {
+        if (state.handsFreeEnabled) {
+            scheduleHandsFreeStandby(1100);
+        } else if (state.wakeWordEnabled) {
             bindWakeWordGestureArmer();
             scheduleWakeWordListener(1100);
         }
