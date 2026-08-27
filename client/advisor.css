@@ -919,6 +919,82 @@ html[data-theme="dark"] .avatar-stage-controls {
     width: calc(100vw - 12px);
 }
 
+.modal--audio-settings {
+    max-width: min(560px, calc(100vw - 16px));
+}
+
+.audio-settings-panel {
+    gap: 14px;
+}
+
+.audio-settings-panel header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.audio-settings-panel header h2 {
+    margin: 0;
+}
+
+.audio-settings-panel select {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 12px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+}
+
+.audio-settings-panel select:focus {
+    border-color: var(--accent);
+}
+
+.audio-toggle-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.audio-toggle-list label {
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #f8fbfa;
+    color: var(--text);
+    font-weight: 700;
+}
+
+.audio-toggle-list input {
+    flex: 0 0 auto;
+}
+
+.audio-settings-note {
+    min-height: 18px;
+    margin: 0;
+    color: var(--muted);
+    font-size: .86rem;
+    line-height: 1.4;
+}
+
+html[data-theme="dark"] .audio-settings-panel select,
+html[data-theme="dark"] .audio-toggle-list label {
+    background: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.15);
+}
+
+@media (max-width: 560px) {
+    .audio-toggle-list {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* -------- Handbook (FAQ) browser -------- */
 .handbook {
     display: flex;

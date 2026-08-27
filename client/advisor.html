@@ -53,7 +53,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/advisor.css?v=20260826-normal-chat-wrap" />
+    <link rel="stylesheet" href="/advisor.css?v=20260827-audio-devices" />
     <link rel="stylesheet" href="/pages.css?v=20260815-thinking-label" />
 </head>
 <body>
@@ -116,6 +116,9 @@
             <div class="avatar-stage-controls" aria-label="Speech controls">
                 <button type="button" id="avatarMicBtn" class="icon-btn" title="Speak to advisor" aria-pressed="false">
                     <i class="fa-solid fa-microphone"></i>
+                </button>
+                <button type="button" id="avatarAudioSettingsBtn" class="icon-btn" title="Audio settings" aria-label="Audio settings">
+                    <i class="fa-solid fa-sliders"></i>
                 </button>
                 <button type="button" id="avatarMuteBtn" class="icon-btn" title="Mute advisor" aria-pressed="false">
                     <i class="fa-solid fa-volume-high"></i>
@@ -221,6 +224,9 @@
                 <button type="button" data-voice-command="continue" title="Resume listening">
                     <i class="fa-solid fa-play"></i><span>Continue</span>
                 </button>
+                <button type="button" id="audioSettingsBtn" title="Audio settings">
+                    <i class="fa-solid fa-sliders"></i><span>Audio</span>
+                </button>
                 <button type="button" id="wakeCommandBtn" class="wake-command-btn" aria-pressed="false" title="Enable voice wake command">
                     <i class="fa-solid fa-ear-listen"></i><span>Wake</span>
                 </button>
@@ -317,13 +323,47 @@
         </form>
     </dialog>
 
+    <dialog id="audioSettingsDialog" class="modal modal--audio-settings">
+        <form method="dialog" id="audioSettingsForm" class="audio-settings-panel">
+            <header>
+                <h2><i class="fa-solid fa-sliders"></i> Audio Settings</h2>
+                <button type="button" class="icon-btn" id="audioSettingsCloseBtn" aria-label="Close audio settings">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </header>
+            <label>
+                Microphone
+                <select id="audioInputSelect"></select>
+            </label>
+            <label>
+                Speaker
+                <select id="audioOutputSelect"></select>
+            </label>
+            <div class="audio-toggle-list" aria-label="Audio cleanup">
+                <label><input type="checkbox" id="echoCancellationToggle" /> Echo cancellation</label>
+                <label><input type="checkbox" id="noiseSuppressionToggle" /> Noise suppression</label>
+                <label><input type="checkbox" id="autoGainToggle" /> Auto gain</label>
+            </div>
+            <p class="audio-settings-note" id="audioSettingsNote"></p>
+            <menu>
+                <button type="button" class="btn btn-ghost" id="refreshAudioDevicesBtn">
+                    <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+                <button type="button" class="btn btn-ghost" id="testAudioOutputBtn">
+                    <i class="fa-solid fa-volume-high"></i> Test
+                </button>
+                <button type="button" class="btn btn-primary" id="saveAudioSettingsBtn">Save</button>
+            </menu>
+        </form>
+    </dialog>
+
     <!-- Toast container -->
     <div id="toastHost" aria-live="polite"></div>
 
     <!-- Lottie loader (optional) — call window.loadLottieCharacter('https://...json') in the console -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" defer></script>
     <script src="/avatars-svg.js?v=20260824-academic-male-avatar2" defer></script>
-    <script src="/advisor.js?v=20260826-tablet-landscape-ui3" defer></script>
+    <script src="/advisor.js?v=20260827-audio-devices" defer></script>
     <script src="/footer.js?v=20260817-advisor-accuracy" defer></script>
 </body>
 </html>

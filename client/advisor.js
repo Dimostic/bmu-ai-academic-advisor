@@ -108,6 +108,19 @@
     const clearAnswerBtn = $('clearAnswerBtn');
     const voiceCommandBar = $('voiceCommandBar');
     const wakeCommandBtn = $('wakeCommandBtn');
+    const audioSettingsBtn = $('audioSettingsBtn');
+    const avatarAudioSettingsBtn = $('avatarAudioSettingsBtn');
+    const audioSettingsDlg = $('audioSettingsDialog');
+    const audioSettingsCloseBtn = $('audioSettingsCloseBtn');
+    const audioInputSelect = $('audioInputSelect');
+    const audioOutputSelect = $('audioOutputSelect');
+    const echoCancellationToggle = $('echoCancellationToggle');
+    const noiseSuppressionToggle = $('noiseSuppressionToggle');
+    const autoGainToggle = $('autoGainToggle');
+    const refreshAudioDevicesBtn = $('refreshAudioDevicesBtn');
+    const testAudioOutputBtn = $('testAudioOutputBtn');
+    const saveAudioSettingsBtn = $('saveAudioSettingsBtn');
+    const audioSettingsNote = $('audioSettingsNote');
 
     // Handbook (FAQ) browser
     const handbookBtn       = $('handbookBtn');
@@ -169,6 +182,28 @@
         browserVoiceReady: false,
         browserVoiceWarmupPromise: null,
         selectedBrowserVoiceSignature: '',
+        selectedAudioInputId: (() => {
+            try { return localStorage.getItem('bmu_advisor_audio_input_id') || ''; } catch (_) { return ''; }
+        })(),
+        selectedAudioOutputId: (() => {
+            try { return localStorage.getItem('bmu_advisor_audio_output_id') || ''; } catch (_) { return ''; }
+        })(),
+        audioCleanup: {
+            echoCancellation: (() => {
+                try { return localStorage.getItem('bmu_advisor_echo_cancellation') !== '0'; } catch (_) { return true; }
+            })(),
+            noiseSuppression: (() => {
+                try { return localStorage.getItem('bmu_advisor_noise_suppression') !== '0'; } catch (_) { return true; }
+            })(),
+            autoGainControl: (() => {
+                try { return localStorage.getItem('bmu_advisor_auto_gain') !== '0'; } catch (_) { return true; }
+            })()
+        },
+        mediaDevices: {
+            inputs: [],
+            outputs: [],
+            labelsUnlocked: false
+        },
         pendingAskInputMode: 'text',
         lastAskInputMode: 'text',
         currentLottie: null,
@@ -2118,6 +2153,7 @@
                 audio.crossOrigin = 'anonymous';
                 audio.volume = isSpeechOutputEnabled() ? 1 : 0;
                 state.currentAudio = audio;
+                applySelectedAudioOutput(audio).catch(() => {});
 
                 if (isMobileSpeechDevice()) {
                     let raf;
@@ -3222,7 +3258,9 @@
         // Android Chrome repeatedly ends/restarts Web Speech mid-utterance
         // and plays OS mic activation sounds that web apps cannot suppress.
         // Use the app-controlled server STT recorder there for stable audio.
-        return hasWebSpeech() && !isAndroidSpeechDevice();
+        // Web Speech also does not expose deviceId selection, so if the
+        // user picks a headset/external mic we use the app recorder path.
+        return hasWebSpeech() && !isAndroidSpeechDevice() && !state.selectedAudioInputId;
     }
 
     function shouldUseWakeWordRecognition() {
@@ -3234,6 +3272,190 @@
     // broken upload path before production tells us STT is configured.
     let serverSttAvailable = false;
 
+    function supportsMediaDeviceSelection() {
+        return Boolean(navigator.mediaDevices?.enumerateDevices && navigator.mediaDevices?.getUserMedia);
+    }
+
+    function supportsAudioOutputSelection() {
+        return Boolean(window.HTMLMediaElement?.prototype?.setSinkId);
+    }
+
+    function selectedAudioInputLabel() {
+        const device = state.mediaDevices.inputs.find(item => item.deviceId === state.selectedAudioInputId);
+        return device?.label || (state.selectedAudioInputId ? 'selected microphone' : 'default microphone');
+    }
+
+    function selectedAudioOutputLabel() {
+        const device = state.mediaDevices.outputs.find(item => item.deviceId === state.selectedAudioOutputId);
+        return device?.label || (state.selectedAudioOutputId ? 'selected speaker' : 'default speaker');
+    }
+
+    function buildAudioInputConstraints() {
+        const audio = {
+            echoCancellation: Boolean(state.audioCleanup.echoCancellation),
+            noiseSuppression: Boolean(state.audioCleanup.noiseSuppression),
+            autoGainControl: Boolean(state.audioCleanup.autoGainControl)
+        };
+        if (state.selectedAudioInputId) audio.deviceId = { exact: state.selectedAudioInputId };
+        return { audio };
+    }
+
+    function renderAudioDeviceOptions() {
+        if (!audioInputSelect || !audioOutputSelect) return;
+
+        audioInputSelect.replaceChildren(new Option('Default microphone', ''));
+        state.mediaDevices.inputs.forEach((device, index) => {
+            audioInputSelect.add(new Option(device.label || `Microphone ${index + 1}`, device.deviceId));
+        });
+        if (state.selectedAudioInputId && !state.mediaDevices.inputs.some(device => device.deviceId === state.selectedAudioInputId)) {
+            audioInputSelect.add(new Option('Previously selected microphone', state.selectedAudioInputId));
+        }
+        const systemAudioOption = new Option('System/computer audio unavailable', '__system_audio__');
+        systemAudioOption.disabled = true;
+        audioInputSelect.add(systemAudioOption);
+        audioInputSelect.value = state.selectedAudioInputId || '';
+
+        audioOutputSelect.replaceChildren(new Option('Default speaker', ''));
+        state.mediaDevices.outputs.forEach((device, index) => {
+            audioOutputSelect.add(new Option(device.label || `Speaker ${index + 1}`, device.deviceId));
+        });
+        if (state.selectedAudioOutputId && !state.mediaDevices.outputs.some(device => device.deviceId === state.selectedAudioOutputId)) {
+            audioOutputSelect.add(new Option('Previously selected speaker', state.selectedAudioOutputId));
+        }
+        audioOutputSelect.value = state.selectedAudioOutputId || '';
+        audioOutputSelect.disabled = !supportsAudioOutputSelection();
+
+        if (echoCancellationToggle) echoCancellationToggle.checked = Boolean(state.audioCleanup.echoCancellation);
+        if (noiseSuppressionToggle) noiseSuppressionToggle.checked = Boolean(state.audioCleanup.noiseSuppression);
+        if (autoGainToggle) autoGainToggle.checked = Boolean(state.audioCleanup.autoGainControl);
+
+        if (audioSettingsNote) {
+            const notes = [];
+            if (!supportsMediaDeviceSelection()) notes.push('This browser does not support microphone device selection.');
+            if (!supportsAudioOutputSelection()) notes.push('Speaker selection is not supported in this browser.');
+            if (state.selectedAudioInputId && !serverSttAvailable) notes.push('Selected microphones require server transcription to be available.');
+            notes.push('System/computer audio cannot be used as a microphone in normal browser mic mode.');
+            audioSettingsNote.textContent = notes.join(' ');
+        }
+    }
+
+    async function refreshAudioDevices({ requestPermission = false } = {}) {
+        if (!supportsMediaDeviceSelection()) {
+            renderAudioDeviceOptions();
+            return;
+        }
+        if (requestPermission) {
+            let probeStream = null;
+            try {
+                probeStream = await navigator.mediaDevices.getUserMedia(buildAudioInputConstraints());
+                state.mediaDevices.labelsUnlocked = true;
+            } catch (err) {
+                console.warn('[advisor] audio device permission probe failed:', err.message || err);
+            } finally {
+                try { probeStream?.getTracks().forEach(track => track.stop()); } catch (_) {}
+            }
+        }
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            state.mediaDevices.inputs = devices.filter(device => device.kind === 'audioinput');
+            state.mediaDevices.outputs = devices.filter(device => device.kind === 'audiooutput');
+            state.mediaDevices.labelsUnlocked = state.mediaDevices.labelsUnlocked || devices.some(device => Boolean(device.label));
+        } catch (err) {
+            console.warn('[advisor] enumerateDevices failed:', err.message || err);
+            state.mediaDevices.inputs = [];
+            state.mediaDevices.outputs = [];
+        }
+        renderAudioDeviceOptions();
+        updateMicAvailability();
+    }
+
+    function persistAudioSettingsFromControls() {
+        state.selectedAudioInputId = audioInputSelect?.value || '';
+        state.selectedAudioOutputId = audioOutputSelect?.value || '';
+        state.audioCleanup.echoCancellation = Boolean(echoCancellationToggle?.checked);
+        state.audioCleanup.noiseSuppression = Boolean(noiseSuppressionToggle?.checked);
+        state.audioCleanup.autoGainControl = Boolean(autoGainToggle?.checked);
+        try {
+            localStorage.setItem('bmu_advisor_audio_input_id', state.selectedAudioInputId);
+            localStorage.setItem('bmu_advisor_audio_output_id', state.selectedAudioOutputId);
+            localStorage.setItem('bmu_advisor_echo_cancellation', state.audioCleanup.echoCancellation ? '1' : '0');
+            localStorage.setItem('bmu_advisor_noise_suppression', state.audioCleanup.noiseSuppression ? '1' : '0');
+            localStorage.setItem('bmu_advisor_auto_gain', state.audioCleanup.autoGainControl ? '1' : '0');
+        } catch (_) {}
+        updateMicAvailability();
+        renderAudioDeviceOptions();
+    }
+
+    async function applySelectedAudioOutput(audio) {
+        if (!audio || !state.selectedAudioOutputId || typeof audio.setSinkId !== 'function') return false;
+        try {
+            await audio.setSinkId(state.selectedAudioOutputId);
+            return true;
+        } catch (err) {
+            console.warn('[advisor] audio output selection failed:', err.message || err);
+            return false;
+        }
+    }
+
+    function makeBeepUrl() {
+        const sampleRate = 16000;
+        const duration = 0.22;
+        const samples = Math.floor(sampleRate * duration);
+        const buffer = new ArrayBuffer(44 + samples * 2);
+        const view = new DataView(buffer);
+        const write = (offset, text) => {
+            for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+        };
+        write(0, 'RIFF');
+        view.setUint32(4, 36 + samples * 2, true);
+        write(8, 'WAVE');
+        write(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        write(36, 'data');
+        view.setUint32(40, samples * 2, true);
+        for (let i = 0; i < samples; i += 1) {
+            const t = i / sampleRate;
+            const fade = Math.min(1, i / 320, (samples - i) / 320);
+            const tone = Math.sin(2 * Math.PI * 660 * t) * 0.22 * fade;
+            view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, tone)) * 32767, true);
+        }
+        return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+    }
+
+    async function testSelectedAudioOutput() {
+        enableSpeechOutput();
+        const url = makeBeepUrl();
+        const audio = new Audio(url);
+        audio.volume = 0.55;
+        try {
+            await applySelectedAudioOutput(audio);
+            await audio.play();
+            toast(`Testing ${selectedAudioOutputLabel()}`);
+        } catch (err) {
+            toast('Could not play the test sound in this browser.', 'error');
+        } finally {
+            setTimeout(() => URL.revokeObjectURL(url), 1200);
+        }
+    }
+
+    async function openAudioSettings() {
+        await refreshAudioDevices({ requestPermission: true });
+        renderAudioDeviceOptions();
+        if (typeof audioSettingsDlg?.showModal === 'function') audioSettingsDlg.showModal();
+        else audioSettingsDlg?.setAttribute('open', '');
+    }
+
+    function closeAudioSettings() {
+        if (typeof audioSettingsDlg?.close === 'function') audioSettingsDlg.close();
+        else audioSettingsDlg?.removeAttribute('open');
+    }
+
     /** Update the mic button to reflect what speech-to-text actually works
      *  in this browser. If neither browser Web Speech API nor server
      *  Whisper is reachable, the button is disabled with a tooltip that
@@ -3242,13 +3464,14 @@
      *  Firefox today. */
     function updateMicAvailability() {
         if (!micBtn) return;
+        const selectedMicNeedsServer = Boolean(state.selectedAudioInputId);
         const browserOk = shouldUseBrowserSpeechRecognition();
-        const canVoice  = browserOk || serverSttAvailable;
+        const canVoice  = selectedMicNeedsServer ? serverSttAvailable : (browserOk || serverSttAvailable);
         if (canVoice) {
             micBtn.disabled = false;
             micBtn.classList.remove('mic-btn--disabled');
-            micBtn.title = browserOk
-                ? 'Speak your question'
+            micBtn.title = state.selectedAudioInputId
+                ? `Speak using ${selectedAudioInputLabel()}`
                 : 'Speak your question';
             if (avatarMicBtn) {
                 avatarMicBtn.disabled = false;
@@ -3259,7 +3482,9 @@
         } else {
             micBtn.disabled = true;
             micBtn.classList.add('mic-btn--disabled');
-            micBtn.title = 'Voice input is not supported in this browser. Please type your question, or switch to Chrome / Edge.';
+            micBtn.title = state.selectedAudioInputId
+                ? 'Selected microphone requires server transcription. Please choose Default microphone or check the server STT setting.'
+                : 'Voice input is not supported in this browser. Please type your question, or switch to Chrome / Edge.';
             micBtn.setAttribute('aria-label', micBtn.title);
             if (avatarMicBtn) {
                 avatarMicBtn.disabled = true;
@@ -3963,7 +4188,7 @@
         }
         try {
             stopWakeWordListener();
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await navigator.mediaDevices.getUserMedia(buildAudioInputConstraints());
             const preferredMime = [
                 'audio/webm;codecs=opus',
                 'audio/webm',
@@ -4165,7 +4390,16 @@
             }
         } catch (err) {
             console.warn('[advisor] getUserMedia failed:', err.message);
-            toast('Microphone access denied.', 'error');
+            const unavailableSelectedMic = state.selectedAudioInputId
+                && /notfound|not found|overconstrained|constraint|device/i.test(`${err?.name || ''} ${err?.message || ''}`);
+            if (unavailableSelectedMic) {
+                state.selectedAudioInputId = '';
+                try { localStorage.removeItem('bmu_advisor_audio_input_id'); } catch (_) {}
+                refreshAudioDevices().catch(() => {});
+                toast('Selected microphone is unavailable. Switched back to the default microphone.', 'error');
+            } else {
+                toast('Microphone access denied.', 'error');
+            }
             setAvatarState('idle', 'Ready');
             syncMicButtonsUi(false);
         }
@@ -4221,6 +4455,22 @@
             startListening();
         }
     });
+
+    [audioSettingsBtn, avatarAudioSettingsBtn].filter(Boolean).forEach((btn) => {
+        btn.addEventListener('click', openAudioSettings);
+    });
+    audioSettingsCloseBtn?.addEventListener('click', closeAudioSettings);
+    refreshAudioDevicesBtn?.addEventListener('click', () => refreshAudioDevices({ requestPermission: true }));
+    testAudioOutputBtn?.addEventListener('click', testSelectedAudioOutput);
+    saveAudioSettingsBtn?.addEventListener('click', () => {
+        persistAudioSettingsFromControls();
+        closeAudioSettings();
+        toast(state.selectedAudioInputId ? `Microphone set to ${selectedAudioInputLabel()}` : 'Audio settings saved');
+    });
+    [audioInputSelect, audioOutputSelect, echoCancellationToggle, noiseSuppressionToggle, autoGainToggle]
+        .filter(Boolean)
+        .forEach((el) => el.addEventListener('change', persistAudioSettingsFromControls));
+
     syncMicButtonsUi(false);
 
     document.addEventListener('visibilitychange', () => {
@@ -4777,6 +5027,7 @@
         bindGuestDemoSuggestions();
         bindBrowserVoiceWarmupGestures();
         updateMicAvailability();
+        refreshAudioDevices().catch(() => {});
 
         // Establish provider availability before wiring the mic, so Firefox
         // users (no Web Speech API) and any deployment without a Whisper
@@ -4795,6 +5046,7 @@
             serverSttAvailable = false;
         }
         updateMicAvailability();
+        renderAudioDeviceOptions();
         updateGuestDemoUi();
         syncWakeCommandUi();
         if (state.wakeWordEnabled) {
