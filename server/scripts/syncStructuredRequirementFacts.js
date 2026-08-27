@@ -17,6 +17,15 @@ function parseJson(value) {
     }
 }
 
+function normalise(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/&/g, 'and')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function categoryFromText(text, fallback = '') {
     const value = `${fallback || ''} ${text || ''}`.toLowerCase();
     if (/\b(admission|entry requirement|eligibility|utme|direct entry|o'?level|waec|neco|jamb)\b/.test(value)) return 'admission';
