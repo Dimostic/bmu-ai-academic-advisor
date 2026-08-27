@@ -470,13 +470,10 @@ async function upsertCalendarEvent({ title, dateLabel, semesterLabel, sessionLab
 
 async function seedAcademicCoursesAndProgrammes() {
     const rows = await courseCatalogService.loadCatalog();
-    let courses = 0;
     let programmes = 0;
     const programmeMap = new Map();
 
     for (const row of rows) {
-        await upsertAcademicCourse(row);
-        courses += 1;
         const programme = row.programmeDisplay || row.programme;
         if (programme && !programmeMap.has(String(programme).toLowerCase())) {
             programmeMap.set(String(programme).toLowerCase(), {
@@ -504,7 +501,7 @@ async function seedAcademicCoursesAndProgrammes() {
         programmes += 1;
     }
 
-    return { courses, programmes };
+    return { courseRowsRead: rows.length, programmes };
 }
 
 async function seedAcademicCalendar() {
@@ -641,7 +638,7 @@ async function seedStructuredAuthorityRecords() {
         officers,
         fees,
         programmes: academic.programmes,
-        courses: academic.courses,
+        courseRowsRead: academic.courseRowsRead,
         calendarEvents: calendar.calendarEvents
     };
 }
@@ -778,7 +775,7 @@ async function deactivateMalformedSeedRows() {
 async function main() {
     if (STRUCTURED_ONLY) {
         const structured = await seedStructuredAuthorityRecords();
-        console.log(`[seedAuthoritativeCache] structured-only: ${structured.factsCreated} facts created, ${structured.factsRefreshed} facts refreshed, ${structured.officers} officers, ${structured.fees} fees, ${structured.programmes} programmes, ${structured.courses} courses, ${structured.calendarEvents} calendar events upserted`);
+        console.log(`[seedAuthoritativeCache] structured-only: ${structured.factsCreated} facts created, ${structured.factsRefreshed} facts refreshed, ${structured.officers} officers, ${structured.fees} fees, ${structured.programmes} programmes, ${structured.courseRowsRead} course catalogue rows read, ${structured.calendarEvents} calendar events upserted`);
         getDb().pool.end();
         process.exit(0);
         return;
@@ -822,7 +819,7 @@ async function main() {
     } catch (_) {}
 
     console.log(`[seedAuthoritativeCache] done: ${created} created, ${refreshed} refreshed, ${skipped} skipped, ${deactivated} malformed deactivated`);
-    console.log(`[seedAuthoritativeCache] structured: ${structured.factsCreated} facts created, ${structured.factsRefreshed} facts refreshed, ${structured.officers} officers, ${structured.fees} fees, ${structured.programmes} programmes, ${structured.courses} courses, ${structured.calendarEvents} calendar events upserted`);
+    console.log(`[seedAuthoritativeCache] structured: ${structured.factsCreated} facts created, ${structured.factsRefreshed} facts refreshed, ${structured.officers} officers, ${structured.fees} fees, ${structured.programmes} programmes, ${structured.courseRowsRead} course catalogue rows read, ${structured.calendarEvents} calendar events upserted`);
     getDb().pool.end();
     process.exit(0);
 }

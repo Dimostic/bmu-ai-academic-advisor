@@ -123,6 +123,17 @@ const Advisor = {
         return rows[0] || null;
     },
 
+    async enableConversationVoice(id) {
+        if (!id) return null;
+        await query(
+            `UPDATE advisor_conversations
+             SET voice_enabled = TRUE
+             WHERE id = ? AND voice_enabled = FALSE`,
+            [id]
+        );
+        return await this.getConversationById(id);
+    },
+
     async listConversationsByStudentId(studentId, limit = 20) {
         if (!studentId) return [];
         const safeLimit = Math.max(1, Math.min(50, parseInt(limit, 10) || 20));

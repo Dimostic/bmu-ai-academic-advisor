@@ -179,6 +179,83 @@ function isCleanCourseCode(value) {
     return /^(?:BMU-)?[A-Z]{2,4}\s*\d{3}[A-Z]?$/i.test(String(value || '').trim());
 }
 
+function normalizedSourceKey(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/&/g, 'and')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function applyUpdatedCourseSourceRepair(row) {
+    const programme = normaliseProgramme(row.programme);
+    const level = String(row.level || '').trim();
+    const semester = normalizeSemesterValue(row.semester);
+    const code = formatCourseCodeDisplay(row.courseCode);
+    const title = normalizedSourceKey(row.courseTitle);
+    const units = row.creditUnits == null ? null : Number(row.creditUnits);
+
+    if (
+        programme === 'CHEMISTRY'
+        && level === '400'
+        && semester === 'FIRST'
+        && code === 'BMU-CSC 411 / 309'
+        && title === 'artificial intelligence in chemistry'
+    ) {
+        return {
+            ...row,
+            courseCode: 'BMU-CSC 309',
+            sourceCorrection: 'Source code "BMU-CSC 411 / 309" normalised to BMU-CSC 309 because the matching catalogue course is Artificial Intelligence.'
+        };
+    }
+
+    if (
+        programme === 'PUBLIC HEALTH'
+        && level === '300'
+        && semester === 'FIRST'
+        && code === 'BMU-309'
+        && title === 'biostatistics ii data analysis'
+    ) {
+        return {
+            ...row,
+            courseCode: 'BMU-PHS 309',
+            sourceCorrection: 'Source code "BMU-309" normalised to BMU-PHS 309 using the Public Health course prefix.'
+        };
+    }
+
+    if (
+        programme === 'HUMAN ANATOMY'
+        && level === '400'
+        && semester === 'SECOND'
+        && code === 'BMU-ANA'
+        && title === 'human morphology and forensic'
+    ) {
+        return {
+            ...row,
+            skip: true,
+            sourceCorrection: 'Excluded from active catalogue because source code is incomplete and a complete first-semester BMU-ANA 417 row already exists.'
+        };
+    }
+
+    if (
+        programme === 'MICROBIOLOGY'
+        && level === '300'
+        && semester === 'SECOND'
+        && code === 'BMU-MCB 302'
+        && title === 'field trip'
+        && units === 1
+    ) {
+        return {
+            ...row,
+            skip: true,
+            sourceCorrection: 'Excluded duplicate conflicting source row; retained the earlier BMU-MCB 302 Field Trip row with 3 units.'
+        };
+    }
+
+    return row;
+}
+
 function courseCodeMatchesLookup(rowCode, lookupCode) {
     const rowNormalized = normalizeCourseCode(rowCode);
     const lookupNormalized = normalizeCourseCode(lookupCode);
@@ -389,6 +466,7 @@ async function loadUpdatedExcelCatalog() {
     const rows = [];
 
     for (const record of records) {
+        const sourceCodeRaw = String(record.Code || '').replace(/\s+/g, ' ').trim();
         const courseCode = formatCourseCodeDisplay(record.Code);
         const courseTitle = String(record.Name || '').replace(/\s+/g, ' ').trim();
         const level = normalizeLevelValue(record.Level);
@@ -406,7 +484,7 @@ async function loadUpdatedExcelCatalog() {
         if (/\b(mbbs|medicine\s+and\s+surgery)\b/i.test(programme)) continue;
 
         const unitMatch = String(record.Units ?? '').match(/\d+(?:\.\d+)?/);
-        rows.push({
+        const repaired = applyUpdatedCourseSourceRepair({
             sn: Number(record['S/N']) || rows.length + 1,
             faculty: String(record.Faculty || '').replace(/\s+/g, ' ').trim(),
             department: programme,
@@ -417,8 +495,11 @@ async function loadUpdatedExcelCatalog() {
             level,
             semester: normalizeSemesterValue(record.Semester),
             category: normaliseProgramme(record['Course Type']),
-            sourceTitle: UPDATED_SOURCE_TITLE
+            sourceTitle: UPDATED_SOURCE_TITLE,
+            sourceCodeRaw
         });
+        if (repaired.skip) continue;
+        rows.push(repaired);
     }
 
     return rows;

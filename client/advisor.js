@@ -2590,6 +2590,15 @@
         return state.audioOutputUnlocked && !state.ttsMuted;
     }
 
+    function hasStoredSpeechMutePreference() {
+        try { return localStorage.getItem('bmu_tts_muted') === '1'; } catch (_) { return false; }
+    }
+
+    function shouldAutoEnableSpeechForAsk(inputMode) {
+        if (inputMode === 'voice') return true;
+        return Boolean(advisorFullView && !hasStoredSpeechMutePreference());
+    }
+
     function enableSpeechOutput() {
         state.audioOutputUnlocked = true;
         state.ttsMuted = false;
@@ -2957,6 +2966,10 @@
         const askInputMode = state.pendingAskInputMode === 'voice' ? 'voice' : 'text';
         state.pendingAskInputMode = 'text';
         state.lastAskInputMode = askInputMode;
+        if (shouldAutoEnableSpeechForAsk(askInputMode)) {
+            enableSpeechOutput();
+        }
+        const answerSpeechEnabled = isSpeechOutputEnabled();
         if (askInputMode === 'voice') {
             state.voiceConversationActive = true;
             state.lastVoiceGestureAt = Date.now();
@@ -2989,6 +3002,25 @@
         const askController = new AbortController();
         state.currentAskController = askController;
         state.askCancelled = false;
+        const startAdvisorSpeech = (url = null, spoken = '') => {
+            if (!answerSpeechEnabled || audioStarted) return false;
+            const spokenFinal = String(spoken || speechText || '').trim();
+            if (!url && !spokenFinal) return false;
+            audioStarted = true;
+            if (url) {
+                speechDone = playWithLipSync(url, spokenFinal, bubble.el)
+                    .then((duration) => {
+                        if (!duration && spokenFinal && answerSpeechEnabled && !state.askCancelled) {
+                            return speakWithBrowser(spokenFinal, bubble.el);
+                        }
+                        return duration;
+                    })
+                    .catch(() => spokenFinal ? speakWithBrowser(spokenFinal, bubble.el) : 0);
+            } else {
+                speechDone = speakWithBrowser(spokenFinal, bubble.el);
+            }
+            return true;
+        };
 
         try {
             const res = await fetch('/api/advisor/ask/stream', {
@@ -2999,7 +3031,7 @@
                     question: q,
                     sessionToken: state.sessionToken,
                     guestDemo: state.guestDemo.enabled,
-                    voiceEnabled: isSpeechOutputEnabled(),
+                    voiceEnabled: answerSpeechEnabled,
                     inputMode: askInputMode,
                     responseStyle: 'concise_conversational',
                     advisorGender: getAdvisorGender()
@@ -3111,18 +3143,15 @@
                         setFullPageAnswer(formatAssistantDisplayText(bubble.body.textContent), 'answer');
                         scrollToBottom();
                     } else if (event === 'audio') {
-                        if (!isSpeechOutputEnabled()) {
+                        if (data.speech_text && !speechText) speechText = data.speech_text;
+                        if (!answerSpeechEnabled) {
                             audioUrl = data.audio_url || audioUrl;
                         } else if (data.audio_url) {
                             audioUrl = data.audio_url;
                             // Start playback immediately — runs in parallel with continued typing.
-                            if (!audioStarted) {
-                                audioStarted = true;
-                                speechDone = playWithLipSync(audioUrl, speechText || '', bubble.el);
-                            }
-                        } else if (data.use_browser_fallback && speechText && !audioStarted) {
-                            audioStarted = true;
-                            speechDone = speakWithBrowser(speechText, bubble.el);
+                            startAdvisorSpeech(audioUrl, data.speech_text || speechText || '');
+                        } else if ((data.use_browser_fallback || askInputMode === 'voice' || advisorFullView) && (data.speech_text || speechText)) {
+                            startAdvisorSpeech(null, data.speech_text || speechText);
                         }
                     } else if (event === 'done') {
                         final = data;
@@ -3162,6 +3191,11 @@
                 syncFullPageFeedback(state.lastAdvisorMessageId);
                 renderFollowups(state.guestDemo.enabled ? [] : final.reply?.follow_up_questions);
                 if (!state.guestDemo.enabled && final.reply?.needs_escalation) addEscalationHint();
+                const finalSpeechText = final.reply?.speech_text || speechText || bubble.body?.textContent || '';
+                const finalAudioUrl = final.audio?.audio_url || audioUrl;
+                if (answerSpeechEnabled && !audioStarted) {
+                    startAdvisorSpeech(finalAudioUrl, finalSpeechText);
+                }
                 if (state.guestDemo.enabled) {
                     if (!guestDemoUsageSynced) {
                         incrementGuestDemoUsage(final.guestDemo?.used);

@@ -60,6 +60,47 @@ const DETAIL_FIELDS = [
     'approval_condition'
 ];
 
+const KNOWN_PROGRAMME_KEYS = [
+    'medicine and surgery',
+    'dentistry',
+    'nursing science',
+    'medical laboratory science',
+    'pharmacy',
+    'doctor of pharmacy',
+    'physiotherapy',
+    'radiography and radiation science',
+    'radiography and radiation sciences',
+    'optometry',
+    'community health',
+    'community health sciences',
+    'public health',
+    'health information management',
+    'health care administration and hospital management',
+    'nutrition and dietetics',
+    'human nutrition and dietetics',
+    'dental technology',
+    'human anatomy',
+    'human physiology',
+    'biochemistry',
+    'biology',
+    'chemistry',
+    'computer science',
+    'mathematics',
+    'microbiology',
+    'physics with electronics',
+    'physics'
+];
+
+function programmeFromFact(row, value, subject) {
+    const explicit = String(value.programme || value.program || '').trim();
+    if (explicit) return explicit;
+    const subjectText = String(subject || row.subject || '').trim();
+    if (!subjectText) return null;
+    const key = normalise(subjectText);
+    if (KNOWN_PROGRAMME_KEYS.some(item => key === item || key.includes(item))) return subjectText;
+    return null;
+}
+
 async function main() {
     await documentLabService.ensureSchema();
     const rows = await query(`
@@ -85,7 +126,7 @@ async function main() {
         if (!requirementText) continue;
 
         const subject = String(row.subject || value.subject || category || 'Programme requirement').trim();
-        const programme = String(value.programme || value.program || '').trim() || null;
+        const programme = programmeFromFact(row, value, subject);
         const rowJson = JSON.stringify({
             ...value,
             rule_type: ruleType,

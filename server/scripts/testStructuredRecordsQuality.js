@@ -19,6 +19,20 @@ const REQUIRED_TABLES = [
     'bmu_recent_facts'
 ];
 
+const STATUS_TABLES = new Set([
+    'structured_facts',
+    'academic_programmes',
+    'academic_courses',
+    'academic_fees',
+    'academic_admission_cutoffs',
+    'academic_registration_requirements',
+    'academic_calendar_events',
+    'academic_officers',
+    'academic_rules',
+    'bmu_recent_sources',
+    'bmu_recent_facts'
+]);
+
 const CRITICAL_ROLES = [
     'Vice-Chancellor',
     'Registrar',
@@ -28,8 +42,8 @@ const CRITICAL_ROLES = [
 ];
 
 const MIN_ACTIVE_COURSES = parseInt(process.env.STRUCTURED_QUALITY_MIN_ACTIVE_COURSES || '1400', 10);
-const MAX_INVALID_CODES = parseInt(process.env.STRUCTURED_QUALITY_MAX_INVALID_CODES || '25', 10);
-const MAX_UNIT_CONFLICTS = parseInt(process.env.STRUCTURED_QUALITY_MAX_UNIT_CONFLICTS || '10', 10);
+const MAX_INVALID_CODES = parseInt(process.env.STRUCTURED_QUALITY_MAX_INVALID_CODES || '0', 10);
+const MAX_UNIT_CONFLICTS = parseInt(process.env.STRUCTURED_QUALITY_MAX_UNIT_CONFLICTS || '0', 10);
 
 function normalise(value) {
     return String(value || '')
@@ -117,7 +131,9 @@ function closePoolAndExit(code) {
 async function tableCounts() {
     const counts = {};
     for (const table of REQUIRED_TABLES) {
-        const rows = await query(`SELECT COUNT(*) AS total FROM ${table}`);
+        const rows = STATUS_TABLES.has(table)
+            ? await query(`SELECT COUNT(*) AS total FROM ${table} WHERE status = 'active'`)
+            : await query(`SELECT COUNT(*) AS total FROM ${table}`);
         counts[table] = Number(rows?.[0]?.total || 0);
     }
     return counts;

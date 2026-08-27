@@ -31,6 +31,8 @@
     "test:recent-sources": "node server/scripts/testRecentSources.js",
     "test": "node server/scripts/smokeTest.js",
     "bench:advisor": "node server/scripts/evaluateAdvisorBenchmarks.js",
+    "sync:requirements": "node server/scripts/syncStructuredRequirementFacts.js",
+    "seed:structured-authority": "node server/scripts/seedAuthoritativeCache.js --structured-only",
     "seed:authoritative-cache": "node server/scripts/seedAuthoritativeCache.js",
     "seed:admission-cycle-facts": "node server/scripts/seedAdmissionCycleFacts.js",
     "archive:common-audio": "node server/scripts/archiveCommonAnswerAudio.js"

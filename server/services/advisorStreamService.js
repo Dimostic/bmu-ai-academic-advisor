@@ -2441,7 +2441,16 @@ async function _resolveConversation({ sessionToken, studentId, voiceEnabled }) {
         const existing = studentId
             ? await Advisor.getConversationByTokenForStudent(sessionToken, studentId)
             : await Advisor.getConversationByToken(sessionToken);
-        if (existing) return existing;
+        if (existing) {
+            const voiceWasDisabled = !Boolean(Number(existing.voice_enabled));
+            if (voiceEnabled !== false && voiceWasDisabled) {
+                return await Advisor.enableConversationVoice(existing.id) || {
+                    ...existing,
+                    voice_enabled: 1
+                };
+            }
+            return existing;
+        }
     }
 
     return await Advisor.createConversation({

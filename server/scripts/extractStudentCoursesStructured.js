@@ -85,7 +85,9 @@ async function upsertCourse(row, sourceDocumentId) {
         courseCode: row.courseCode,
         courseTitle: row.courseTitle,
         creditUnits: row.creditUnits ?? null,
-        category: row.category
+        category: row.category,
+        sourceCodeRaw: row.sourceCodeRaw || row.courseCode,
+        sourceCorrection: row.sourceCorrection || null
     };
     const recordHash = stableHash(JSON.stringify(payload));
     const rawText = sourceText(row);

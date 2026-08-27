@@ -7,13 +7,9 @@ try { ({ pool } = require('../../config/db')); }
 catch (_) { pool = null; }
 
 const MIN_EXPECTED_ROWS = parseInt(process.env.COURSE_DQ_MIN_ROWS || '1400', 10);
-const MAX_KNOWN_INVALID_CODES = parseInt(process.env.COURSE_DQ_MAX_INVALID_CODES || '3', 10);
+const MAX_KNOWN_INVALID_CODES = parseInt(process.env.COURSE_DQ_MAX_INVALID_CODES || '0', 10);
 
-const KNOWN_INVALID_CODE_SIGNATURES = new Set([
-    'CHEMISTRY|400|FIRST|BMU-CSC 411 / 309|Artificial Intelligence in Chemistry',
-    'HUMAN ANATOMY|400|SECOND|BMU-ANA|Human Morphology and Forensic',
-    'PUBLIC HEALTH|300|FIRST|BMU-309|Biostatistics II (Data Analysis)'
-]);
+const KNOWN_INVALID_CODE_SIGNATURES = new Set();
 
 const EXPECTED_LEVEL_COVERAGE = {
     'MEDICINE AND SURGERY': ['100', '200', '300', '400', '500', '600'],
