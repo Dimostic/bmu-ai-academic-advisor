@@ -447,6 +447,158 @@ function _aggregateProgrammeIdentities(rows) {
         .sort((a, b) => a.programme.localeCompare(b.programme));
 }
 
+function _qualityCount(tableCounts, table) {
+    const row = (tableCounts || []).find(item => item.table === table);
+    return Number(row?.active || 0);
+}
+
+function _qualityStatus(score, highWarnings = 0) {
+    if (highWarnings > 0 || score < 70) return 'needs_review';
+    if (score < 88) return 'watch';
+    return 'healthy';
+}
+
+function _qualityHealthCard(key, label, score, message, action) {
+    return {
+        key,
+        label,
+        score: Math.max(0, Math.min(100, Math.round(Number(score || 0)))),
+        status: _qualityStatus(score),
+        message,
+        action: action || null
+    };
+}
+
+function _buildStructuredQualityReadiness({
+    tableCounts,
+    warnings,
+    officers,
+    courses,
+    programmes,
+    rules,
+    recentFacts
+}) {
+    const highWarnings = (warnings || []).filter(item => item.severity === 'high').length;
+    const mediumWarnings = (warnings || []).filter(item => item.severity === 'medium').length;
+    const activeCourses = Number(courses?.activeCount || 0);
+    const activeProgrammes = _qualityCount(tableCounts, 'academic_programmes');
+    const activeFees = _qualityCount(tableCounts, 'academic_fees');
+    const activeRules = _qualityCount(tableCounts, 'academic_rules');
+    const activeCalendar = _qualityCount(tableCounts, 'academic_calendar_events');
+    const activeRecentSources = _qualityCount(tableCounts, 'bmu_recent_sources');
+    const approvedRecentFacts = Number(recentFacts?.approvedCurrent || 0);
+    const pendingRecentFacts = Number(recentFacts?.pending || 0);
+    const programmeGapCount = Number(programmes?.gapCount || 0);
+    const sourceLimitedCount = Number(programmes?.sourceLimitedCount || 0);
+    const incompleteLevelCount = Number((courses?.incompleteLevelSamples || []).length);
+    const invalidCodeCount = Number(courses?.invalidCodeCount || 0);
+    const unitConflictCount = Number(courses?.unitConflictCount || 0);
+    const missingOfficerCount = Number((officers?.missingCriticalRoles || []).length);
+
+    const penalty =
+        (highWarnings * 12) +
+        (mediumWarnings * 4) +
+        Math.min(programmeGapCount * 3, 18) +
+        Math.min(incompleteLevelCount * 2, 12) +
+        Math.min(sourceLimitedCount * 1, 6);
+    const score = Math.max(0, Math.min(100, 100 - penalty));
+    const status = _qualityStatus(score, highWarnings);
+
+    const reviewQueue = (warnings || []).map((item, index) => ({
+        priority: item.severity === 'high' ? 90 - index : 60 - index,
+        severity: item.severity || 'medium',
+        area: item.area || 'Structured data',
+        issue: item.message || 'Review structured data',
+        action: item.action || null
+    }));
+    const hasPendingRecentWarning = (warnings || []).some(item =>
+        String(item.area || '').toLowerCase() === 'recent facts'
+        && /pending/i.test(String(item.message || ''))
+    );
+    if (pendingRecentFacts > 0 && !hasPendingRecentWarning) {
+        reviewQueue.push({
+            priority: 72,
+            severity: 'medium',
+            area: 'Recent facts',
+            issue: `${pendingRecentFacts} recent BMU fact(s) are waiting for approval or rejection.`,
+            action: { section: 'recentSources', label: 'Open recent review' }
+        });
+    }
+
+    const categoryHealth = [
+        _qualityHealthCard(
+            'officers',
+            'Principal officers',
+            missingOfficerCount ? 45 : 100,
+            missingOfficerCount ? `${missingOfficerCount} critical office holder(s) missing.` : 'Critical office holders are covered.',
+            { table: 'academic_officers', q: '', label: 'Open officers' }
+        ),
+        _qualityHealthCard(
+            'programmes',
+            'Programmes',
+            programmeGapCount ? Math.max(55, 100 - (programmeGapCount * 5)) : 100,
+            programmeGapCount ? `${programmeGapCount} programme(s) need linked courses, fees, or rules.` : `${activeProgrammes} active programme identity records.`,
+            { table: 'academic_programmes', q: '', label: 'Open programmes' }
+        ),
+        _qualityHealthCard(
+            'courses',
+            'Courses',
+            Math.max(0, 100 - (invalidCodeCount * 10) - (unitConflictCount * 15) - (incompleteLevelCount * 3)),
+            invalidCodeCount || unitConflictCount
+                ? `${invalidCodeCount} invalid code(s), ${unitConflictCount} unit conflict(s).`
+                : `${activeCourses} active course records.`,
+            { table: 'academic_courses', q: '', label: 'Open courses' }
+        ),
+        _qualityHealthCard(
+            'fees',
+            'Fees',
+            activeFees ? 100 : 50,
+            activeFees ? `${activeFees} active fee records.` : 'No active fee records detected.',
+            { table: 'academic_fees', q: '', label: 'Open fees' }
+        ),
+        _qualityHealthCard(
+            'rules',
+            'Requirements',
+            activeRules >= 100 ? 100 : Math.max(50, Math.round((activeRules / 100) * 100)),
+            activeRules ? `${activeRules} active programme requirement records.` : 'No active requirement records detected.',
+            { table: 'academic_rules', q: '', label: 'Open requirements' }
+        ),
+        _qualityHealthCard(
+            'calendar',
+            'Calendar',
+            activeCalendar ? 96 : 55,
+            activeCalendar ? `${activeCalendar} active calendar events.` : 'No active academic calendar events detected.',
+            { table: 'academic_calendar_events', q: '', label: 'Open calendar' }
+        ),
+        _qualityHealthCard(
+            'recent',
+            'Recent BMU facts',
+            activeRecentSources && approvedRecentFacts ? 94 : (activeRecentSources ? 68 : 55),
+            activeRecentSources
+                ? `${activeRecentSources} source(s), ${approvedRecentFacts} approved current fact(s), ${pendingRecentFacts} pending.`
+                : 'No recent BMU sources configured.',
+            { section: 'recentSources', label: 'Open recent sources' }
+        )
+    ];
+
+    return {
+        score,
+        status,
+        highWarnings,
+        mediumWarnings,
+        pendingReviewCount: reviewQueue.length,
+        summary: status === 'healthy'
+            ? 'Structured facts are ready for high-risk advisor answers.'
+            : status === 'watch'
+                ? 'Structured facts are usable, with a few review items to clear.'
+                : 'Structured facts need admin review before they should be considered fully production-ready.',
+        categoryHealth,
+        reviewQueue: reviewQueue
+            .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))
+            .slice(0, 12)
+    };
+}
+
 function _coerceStructuredValue(config, column, value) {
     if (value === undefined || value === '') {
         return config.defaults && Object.prototype.hasOwnProperty.call(config.defaults, column)
@@ -4064,6 +4216,36 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             ORDER BY count DESC
         `);
 
+        const recentFactRows = await query(`
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+                SUM(CASE WHEN status = 'approved'
+                          AND (expires_at IS NULL OR expires_at >= NOW())
+                          AND superseded_by IS NULL
+                         THEN 1 ELSE 0 END) AS approved_current,
+                SUM(CASE WHEN status = 'approved'
+                          AND expires_at IS NOT NULL
+                          AND expires_at < NOW()
+                         THEN 1 ELSE 0 END) AS expired,
+                SUM(CASE WHEN superseded_by IS NOT NULL
+                          OR currentness_label = 'superseded'
+                         THEN 1 ELSE 0 END) AS superseded
+            FROM bmu_recent_facts
+        `);
+        const recentFactSummary = recentFactRows?.[0] || {};
+        const recentFacts = {
+            total: Number(recentFactSummary.total || 0),
+            pending: Number(recentFactSummary.pending || 0),
+            approved: Number(recentFactSummary.approved || 0),
+            rejected: Number(recentFactSummary.rejected || 0),
+            approvedCurrent: Number(recentFactSummary.approved_current || 0),
+            expired: Number(recentFactSummary.expired || 0),
+            superseded: Number(recentFactSummary.superseded || 0)
+        };
+
         const warnings = [
             ...missingOfficerRoles.map(role => ({ severity: 'high', area: 'Officers', message: `Missing active record for ${role}` })),
             ...programmeGaps.slice(0, 15).map(row => ({ severity: 'medium', area: 'Programmes', message: `${row.programme}: ${row.gaps.join(', ')}` })),
@@ -4104,9 +4286,35 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
             });
         }
 
-        res.json({
-            success: true,
-            generatedAt: new Date().toISOString(),
+        if (recentFacts.pending > 0) {
+            warnings.push({
+                severity: 'medium',
+                area: 'Recent facts',
+                message: `${recentFacts.pending} recent BMU fact(s) are pending approval or rejection.`,
+                action: {
+                    section: 'recentSources',
+                    label: 'Open recent review'
+                }
+            });
+        }
+        if (recentFacts.expired > 0) {
+            warnings.push({
+                severity: 'medium',
+                area: 'Recent facts',
+                message: `${recentFacts.expired} approved recent BMU fact(s) have expired and should be replaced or archived.`,
+                action: {
+                    table: 'bmu_recent_facts',
+                    q: '',
+                    label: 'Review expired facts'
+                }
+            });
+        }
+
+        const ruleCategories = ruleRows.map(row => ({
+            category: row.requirement_category || 'uncategorised',
+            count: Number(row.count || 0)
+        }));
+        const qualityPayload = {
             tableCounts,
             officers: {
                 totalActive: officerRows.length,
@@ -4129,11 +4337,20 @@ router.get('/structured-records/quality', authenticateToken, requireAdmin, async
                 gapSamples: programmeGaps.slice(0, 25)
             },
             rules: {
-                categories: ruleRows.map(row => ({
-                    category: row.requirement_category || 'uncategorised',
-                    count: Number(row.count || 0)
-                }))
+                categories: ruleCategories
             },
+            recentFacts
+        };
+        const readiness = _buildStructuredQualityReadiness({
+            ...qualityPayload,
+            warnings
+        });
+
+        res.json({
+            success: true,
+            generatedAt: new Date().toISOString(),
+            readiness,
+            ...qualityPayload,
             warnings
         });
     } catch (error) {

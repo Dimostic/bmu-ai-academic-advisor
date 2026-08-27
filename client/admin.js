@@ -581,18 +581,111 @@
         await renderStructuredQuality('dataQualityBody', { full: true });
     }
 
+    function qualityStatusClass(status) {
+        const value = String(status || '').toLowerCase();
+        if (value === 'healthy') return 'badge-success';
+        if (value === 'watch') return 'badge-warn';
+        return 'badge-danger';
+    }
+
+    function qualityStatusLabel(status) {
+        const value = String(status || '').toLowerCase();
+        if (value === 'healthy') return 'Healthy';
+        if (value === 'watch') return 'Watch';
+        return 'Needs review';
+    }
+
+    function qualityActionHtml(action, fallbackLabel = 'Review') {
+        if (!action) return '—';
+        const label = action.label || fallbackLabel;
+        if (action.section) {
+            return `<button class="btn btn-ghost btn-sm" data-structured-quality-section="${escapeHtml(action.section)}"><i class="fa-solid fa-arrow-right"></i> ${escapeHtml(label)}</button>`;
+        }
+        if (action.table) {
+            return `<button class="btn btn-ghost btn-sm" data-structured-quality-action="${escapeHtml(action.table)}" data-structured-quality-q="${escapeHtml(action.q || '')}"><i class="fa-solid fa-magnifying-glass"></i> ${escapeHtml(label)}</button>`;
+        }
+        return '—';
+    }
+
+    function renderQualityReadiness(readiness, data, options = {}) {
+        const score = Math.round(Number(readiness?.score ?? 0));
+        const status = String(readiness?.status || 'needs_review');
+        const generatedAt = data?.generatedAt ? formatDate(data.generatedAt) : '—';
+        const queueCount = Number(readiness?.pendingReviewCount || (readiness?.reviewQueue || []).length || 0);
+        const recent = data?.recentFacts || {};
+        const fullClass = options.full ? ' quality-hero--full' : '';
+        return `
+            <section class="quality-hero${fullClass}">
+                <div class="quality-score-ring" style="--quality-score:${Math.max(0, Math.min(100, score))};" aria-label="Data readiness score ${escapeHtml(score)} percent">
+                    <strong>${escapeHtml(score)}%</strong>
+                    <span>ready</span>
+                </div>
+                <div class="quality-hero-copy">
+                    <div class="quality-hero-title">
+                        <h3>Structured fact readiness</h3>
+                        <span class="badge ${qualityStatusClass(status)}">${escapeHtml(qualityStatusLabel(status))}</span>
+                    </div>
+                    <p>${escapeHtml(readiness?.summary || 'Structured data readiness is being calculated.')}</p>
+                    <div class="quality-hero-meta">
+                        <span><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(readiness?.highWarnings || 0)} high</span>
+                        <span><i class="fa-solid fa-circle-info"></i> ${escapeHtml(readiness?.mediumWarnings || 0)} medium</span>
+                        <span><i class="fa-solid fa-list-check"></i> ${escapeHtml(queueCount)} queued</span>
+                        <span><i class="fa-solid fa-satellite-dish"></i> ${escapeHtml(recent.approvedCurrent || 0)} current recent facts</span>
+                        <span><i class="fa-regular fa-clock"></i> ${escapeHtml(generatedAt)}</span>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderQualityHealthGrid(readiness, options = {}) {
+        const cards = readiness?.categoryHealth || [];
+        if (!cards.length) return '';
+        const limit = options.full ? cards.length : Math.min(cards.length, 4);
+        return `<div class="quality-health-grid">${cards.slice(0, limit).map(card => `
+            <article class="quality-health-card quality-health-card--${escapeHtml(card.status || 'watch')}">
+                <div>
+                    <strong>${escapeHtml(card.label || 'Quality area')}</strong>
+                    <span class="badge ${qualityStatusClass(card.status)}">${escapeHtml(card.score ?? 0)}%</span>
+                </div>
+                <p>${escapeHtml(card.message || '')}</p>
+                ${qualityActionHtml(card.action, 'Open')}
+            </article>
+        `).join('')}</div>`;
+    }
+
+    function renderQualityReviewQueue(readiness, options = {}) {
+        const rows = readiness?.reviewQueue || [];
+        if (!rows.length) {
+            return '<p class="empty">No priority data-review tasks are queued.</p>';
+        }
+        const limit = options.full ? rows.length : Math.min(rows.length, 6);
+        return table(
+            ['Priority', 'Severity', 'Area', 'Issue', 'Action'],
+            rows.slice(0, limit).map(row => [
+                escapeHtml(String(row.priority ?? '—')),
+                `<span class="badge ${row.severity === 'high' ? 'badge-danger' : 'badge-warn'}">${escapeHtml(row.severity || 'medium')}</span>`,
+                escapeHtml(row.area || '—'),
+                escapeHtml(row.issue || '—'),
+                qualityActionHtml(row.action, 'Review')
+            ])
+        );
+    }
+
     async function renderStructuredQuality(targetId, options = {}) {
         const el = document.getElementById(targetId);
         if (!el) return;
         try {
             const full = !!options.full;
             const data = await api('/api/admin/structured-records/quality');
+            const readiness = data.readiness || {};
             const warnings = data.warnings || [];
             const tableCounts = data.tableCounts || [];
             const courses = data.courses || {};
             const programmes = data.programmes || {};
             const officers = data.officers || {};
             const rules = data.rules || {};
+            const recentFacts = data.recentFacts || {};
             const highWarnings = warnings.filter(item => item.severity === 'high').length;
             const mediumWarnings = warnings.filter(item => item.severity === 'medium').length;
             const tableSummary = tableCounts.length
@@ -612,9 +705,7 @@
                         `<span class="badge ${row.severity === 'high' ? 'badge-danger' : 'badge-warn'}">${escapeHtml(row.severity)}</span>`,
                         escapeHtml(row.area || '—'),
                         escapeHtml(row.message || '—'),
-                        row.action
-                            ? `<button class="btn btn-ghost btn-sm" data-structured-quality-action="${escapeHtml(row.action.table || '')}" data-structured-quality-q="${escapeHtml(row.action.q || '')}"><i class="fa-solid fa-magnifying-glass"></i> ${escapeHtml(row.action.label || 'Review')}</button>`
-                            : '—'
+                        qualityActionHtml(row.action, row.action?.label || 'Review')
                     ])
                 )
                 : '<p class="empty">No obvious structured-data warnings detected.</p>';
@@ -698,6 +789,10 @@
             ).join('');
 
             el.innerHTML = `
+                ${renderQualityReadiness(readiness, data, { full })}
+                ${renderQualityHealthGrid(readiness, { full })}
+                <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Priority review queue</h4>
+                ${renderQualityReviewQueue(readiness, { full })}
                 <div class="stat-row">
                     ${stat('High warnings', highWarnings)}
                     ${stat('Medium warnings', mediumWarnings)}
@@ -708,6 +803,8 @@
                     ${stat('Invalid code samples', courses.invalidCodeCount ?? 0)}
                     ${stat('Unit conflicts', courses.unitConflictCount ?? 0)}
                     ${stat('Critical officer gaps', (officers.missingCriticalRoles || []).length)}
+                    ${stat('Pending recent facts', recentFacts.pending ?? 0)}
+                    ${stat('Approved recent facts', recentFacts.approvedCurrent ?? recentFacts.approved ?? 0)}
                 </div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 16px;">
                     <button class="btn btn-ghost" id="structuredQualityRefresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh data quality</button>
@@ -732,9 +829,15 @@
                 <h4 style="margin: 16px 0 8px; color: var(--bg-deep);">Structured table coverage</h4>
                 ${tableSummary}
             `;
-            document.getElementById('structuredQualityRefresh')?.addEventListener('click', () => renderStructuredQuality(targetId));
+            document.getElementById('structuredQualityRefresh')?.addEventListener('click', () => renderStructuredQuality(targetId, options));
             el.querySelector('[data-section-jump="structuredRecords"]')?.addEventListener('click', () => {
                 document.querySelector('[data-section="structuredRecords"]')?.click();
+            });
+            el.querySelectorAll('[data-structured-quality-section]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const section = btn.dataset.structuredQualitySection || '';
+                    if (section) document.querySelector(`[data-section="${section}"]`)?.click();
+                });
             });
             el.querySelectorAll('[data-structured-quality-action]').forEach(btn => {
                 btn.addEventListener('click', () => {

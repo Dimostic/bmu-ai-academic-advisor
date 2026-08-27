@@ -761,6 +761,128 @@
 .stat-card .value { font-size: 1.6rem; font-weight: 800; color: var(--bg-deep); margin-top: 6px; }
 .stat-card .delta { font-size: .82rem; color: var(--accent); margin-top: 4px; }
 
+.quality-hero {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 18px;
+    align-items: center;
+    margin: 4px 0 18px;
+    padding: 18px;
+    border: 1px solid rgba(35,182,165,.24);
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(35,182,165,.11), rgba(255,255,255,.74));
+}
+.quality-score-ring {
+    --quality-size: 116px;
+    width: var(--quality-size);
+    height: var(--quality-size);
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    position: relative;
+    background:
+        conic-gradient(var(--accent) calc(var(--quality-score, 0) * 1%), #dcebe7 0);
+    color: var(--bg-deep);
+    box-shadow: inset 0 0 0 1px rgba(15,61,62,.08);
+}
+.quality-score-ring::before {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border-radius: 50%;
+    background: var(--bg-elev);
+    box-shadow: inset 0 0 0 1px rgba(15,61,62,.07);
+}
+.quality-score-ring strong,
+.quality-score-ring span {
+    position: relative;
+    z-index: 1;
+    line-height: 1;
+}
+.quality-score-ring strong {
+    font-size: 1.65rem;
+    font-weight: 900;
+}
+.quality-score-ring span {
+    color: var(--muted);
+    font-size: .76rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.quality-hero-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+.quality-hero h3 {
+    margin: 0;
+    color: var(--bg-deep);
+}
+.quality-hero p {
+    margin: 8px 0 12px;
+    color: var(--text);
+    line-height: 1.45;
+}
+.quality-hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.quality-hero-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgba(15,61,62,.10);
+    border-radius: 999px;
+    background: rgba(255,255,255,.66);
+    color: var(--muted);
+    padding: 5px 9px;
+    font-size: .82rem;
+    font-weight: 700;
+}
+.quality-hero-meta i {
+    color: var(--accent);
+}
+.quality-health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 0 0 18px;
+}
+.quality-health-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-elev);
+    padding: 13px;
+}
+.quality-health-card > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+}
+.quality-health-card strong {
+    color: var(--bg-deep);
+}
+.quality-health-card p {
+    margin: 8px 0 10px;
+    color: var(--muted);
+    line-height: 1.38;
+}
+.quality-health-card--healthy {
+    border-color: rgba(35,182,165,.30);
+}
+.quality-health-card--watch {
+    border-color: rgba(245,158,11,.34);
+}
+.quality-health-card--needs_review {
+    border-color: rgba(198,66,66,.32);
+}
+
 /* Tables */
 .admin-table {
     width: 100%; border-collapse: collapse; margin-top: 12px;
@@ -1198,6 +1320,13 @@
     line-height: 1.4;
 }
 @media (max-width: 720px) {
+    .quality-hero {
+        grid-template-columns: 1fr;
+        justify-items: start;
+    }
+    .quality-score-ring {
+        --quality-size: 96px;
+    }
     .structured-edit-grid {
         grid-template-columns: 1fr;
     }
@@ -1424,6 +1553,33 @@ html[data-theme="dark"] .badge-danger { background: rgba(198,66,66,.18); color: 
 html[data-theme="dark"] .badge-info { background: rgba(96,165,250,.18); color: #c2d8f5; }
 html[data-theme="dark"] .badge.badge-ok { background: rgba(47,191,158,.18); color: #aef0d2; }
 html[data-theme="dark"] .badge { background: rgba(255,255,255,.08); color: var(--muted); }
+html[data-theme="dark"] .quality-hero {
+    background: linear-gradient(135deg, rgba(47,191,158,.16), rgba(11,32,34,.88));
+    border-color: rgba(47,191,158,.30);
+}
+html[data-theme="dark"] .quality-score-ring {
+    background: conic-gradient(var(--accent-soft) calc(var(--quality-score, 0) * 1%), rgba(255,255,255,.10) 0);
+    color: var(--text);
+}
+html[data-theme="dark"] .quality-score-ring::before {
+    background: var(--bg-elev);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+html[data-theme="dark"] .quality-hero h3,
+html[data-theme="dark"] .quality-health-card strong {
+    color: var(--text);
+}
+html[data-theme="dark"] .quality-hero p {
+    color: var(--text);
+}
+html[data-theme="dark"] .quality-hero-meta span {
+    background: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.10);
+}
+html[data-theme="dark"] .quality-health-card {
+    background: #0f1c1f;
+    border-color: var(--line);
+}
 html[data-theme="dark"] .dropzone { background: rgba(255,255,255,.03); border-color: var(--line); color: var(--muted); }
 html[data-theme="dark"] .dropzone:hover { background: rgba(47,191,158,.08); }
 html[data-theme="dark"] .structured-quick-card {
