@@ -125,6 +125,18 @@ module.exports = [
         mustContain: ['public health', '100 level', 'indigene', 'non-indigene']
     },
     {
+        name: 'fees-optometry-200-unspecified-category',
+        question: 'What are the fees for Optometry 200 level?',
+        mustContain: ['optometry', '200 level', '465,000', '545,000', 'indigene', 'non-indigene'],
+        mustContainSpeech: ['465,000', '545,000', 'indigene', 'non-indigene']
+    },
+    {
+        name: 'fees-optometry-table-spoken',
+        question: 'Read out the fee structure for Optometry',
+        mustContain: ['optometry', '385,000', '940,000'],
+        mustContainSpeech: ['100 level', 'indigene', 'non-indigene', '385,000', '940,000']
+    },
+    {
         name: 'fees-health-information-management-200-de',
         question: 'Health Information Management 200 Direct Entry non-indigene fee',
         mustContain: ['health information management', '200 direct entry', 'non-indigene']

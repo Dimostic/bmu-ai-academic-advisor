@@ -851,6 +851,29 @@ async function _buildStructuredProgrammeFeeReply(question) {
             };
         }
 
+        if (level) {
+            const levelRecords = records.filter(row => row.level === level && row.category);
+            if (levelRecords.length) {
+                const spokenAmounts = levelRecords
+                    .map(row => `${row.category === 'indigene' ? 'indigene' : 'non-indigene'}: ${row.amount} naira`)
+                    .join('; ');
+                const table = ['| Student category | Total payable per session |', '| --- | ---: |',
+                    ...levelRecords.map(row => `| ${row.category === 'indigene' ? 'Indigene' : 'Non-indigene'} | N${row.amount} |`)
+                ].join('\n');
+                return {
+                    speech_text: `For ${_formatFeeLevel(level)} ${display}, the official total payable per session is ${spokenAmounts}.`,
+                    display_markdown: `Official **${_formatFeeLevel(level)} ${display}** fees:\n\n${table}\n\n${sourceNote}`,
+                    topic_slug: 'programme_fee',
+                    citations: [{ title: sourcePath, source: 'Academic fees structured table' }],
+                    suggested_actions: [],
+                    follow_up_questions: [],
+                    needs_escalation: false,
+                    confidence: 0.99,
+                    _source: 'structured_facts'
+                };
+            }
+        }
+
         const byLevel = new Map();
         for (const row of records) {
             if (!row.level || !row.category) continue;
@@ -867,8 +890,13 @@ async function _buildStructuredProgrammeFeeReply(question) {
         const scope = level ? ` for **${_formatFeeLevel(level)}**` : '';
         const categoryHint = category ? `\n\nYou asked about **${category === 'indigene' ? 'indigene' : 'non-indigene'}** fees; the table includes both categories for comparison.` : '';
         const table = ['| Level | Indigene total payable | Non-indigene total payable |', '| --- | ---: | ---: |', ...tableRows].join('\n');
+        const spokenRows = tableRows.map((_, index) => {
+            const item = levelOrder.filter(value => (!level || value === level) && byLevel.get(value)?.indigene && byLevel.get(value)?.non_indigene)[index];
+            const values = byLevel.get(item);
+            return `${_formatFeeLevel(item)}: indigene ${values.indigene} naira and non-indigene ${values.non_indigene} naira`;
+        });
         return {
-            speech_text: `Here are the official ${display} fee totals${level ? ` for ${_formatFeeLevel(level)}` : ''}.`,
+            speech_text: `Here are the official ${display} fee totals: ${spokenRows.join('; ')}.`,
             display_markdown: `Official **${display}** fee totals${scope}:\n\n${table}${categoryHint}\n\n${sourceNote}`,
             topic_slug: 'programme_fee_table',
             citations: [{ title: sourcePath, source: 'Academic fees structured table' }],
@@ -1014,8 +1042,11 @@ function _buildProgrammeFeeReply(question) {
     const table = ['| Level | Indigene total payable | Non-indigene total payable |', '| --- | ---: | ---: |', ...rows].join('\n');
     const scope = level ? ` for **${_formatFeeLevel(level)}**` : '';
     const categoryHint = category ? `\n\nYou asked about **${category === 'indigene' ? 'indigene' : 'non-indigene'}** fees; the table includes both categories for comparison.` : '';
+    const spokenRows = levelOrder
+        .filter(item => (!level || item === level) && fees.indigene[item] && fees.non_indigene[item])
+        .map(item => `${_formatFeeLevel(item)}: indigene ${fees.indigene[item]} naira and non-indigene ${fees.non_indigene[item]} naira`);
     return {
-        speech_text: `Here are the official ${fees.display} fee totals${level ? ` for ${_formatFeeLevel(level)}` : ''}. Please use the total payable values from the fee structure and do not recompute them from the displayed columns.`,
+        speech_text: `Here are the official ${fees.display} fee totals: ${spokenRows.join('; ')}. Acceptance fee and optional accommodation are separate where applicable.`,
         display_markdown: `Official **${fees.display}** fee totals${scope}:\n\n${table}${categoryHint}\n\n${sourceNote}`,
         topic_slug: 'programme_fee_table',
         citations: [{ title: 'bmu fee structures new.docx', source: fees.table }],
