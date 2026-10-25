@@ -983,9 +983,16 @@ textarea:focus-visible,
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 9px 12px;
-    background: #fff;
+    background: var(--bg-elev);
     color: var(--text);
+    color-scheme: light;
     outline: none;
+}
+
+.audio-settings-panel select option,
+.audio-settings-panel select optgroup {
+    background: #fff;
+    color: #142028;
 }
 
 .audio-settings-panel select:focus {
@@ -1087,8 +1094,19 @@ textarea:focus-visible,
 html[data-theme="dark"] .audio-settings-panel select,
 html[data-theme="dark"] .audio-toggle-list label,
 html[data-theme="dark"] .handsfree-settings {
-    background: rgba(255,255,255,.06);
+    background: var(--bg-elev);
     border-color: rgba(255,255,255,.15);
+}
+
+html[data-theme="dark"] .audio-settings-panel select {
+    color: var(--text);
+    color-scheme: dark;
+}
+
+html[data-theme="dark"] .audio-settings-panel select option,
+html[data-theme="dark"] .audio-settings-panel select optgroup {
+    background: #19262a;
+    color: #e7eef0;
 }
 
 @media (max-width: 560px) {
