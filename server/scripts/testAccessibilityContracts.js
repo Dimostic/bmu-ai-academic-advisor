@@ -47,8 +47,11 @@ function main() {
         'micBtn',
         'clearInputBtn',
         'sendBtn',
-        'audioSettingsCloseBtn'
+        'audioSettingsCloseBtn',
+        'previewResponseVoiceBtn'
     ].forEach(id => assertButtonAccessible(advisorHtml, id));
+
+    assert(/for="responseVoiceSelect"|>\s*Response voice\s*<select id="responseVoiceSelect"/i.test(advisorHtml), 'Response voice selector must have an accessible label');
 
     assert(/<html\s+lang=["']en["']/i.test(adminHtml), 'Admin page must declare lang=en');
     assert(/aria-label=["']Admin sections["']/i.test(adminHtml), 'Admin navigation must have an accessible label');

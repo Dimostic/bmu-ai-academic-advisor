@@ -959,6 +959,8 @@ textarea:focus-visible,
 
 .modal--audio-settings {
     max-width: min(560px, calc(100vw - 16px));
+    max-height: min(92dvh, 820px);
+    overflow: auto;
 }
 
 .audio-settings-panel {
@@ -988,6 +990,23 @@ textarea:focus-visible,
 
 .audio-settings-panel select:focus {
     border-color: var(--accent);
+}
+
+.audio-settings-panel label > small,
+#responseVoiceHelp {
+    display: block;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: .78rem;
+    line-height: 1.4;
+}
+
+#previewResponseVoiceBtn {
+    justify-self: start;
+}
+
+.response-voice-browser[hidden] {
+    display: none !important;
 }
 
 .audio-toggle-list {

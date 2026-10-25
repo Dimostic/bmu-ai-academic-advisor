@@ -116,6 +116,10 @@
     const audioSettingsCloseBtn = $('audioSettingsCloseBtn');
     const audioInputSelect = $('audioInputSelect');
     const audioOutputSelect = $('audioOutputSelect');
+    const responseVoiceSelect = $('responseVoiceSelect');
+    const browserVoiceSelect = $('browserVoiceSelect');
+    const responseVoiceBrowserWrap = $('responseVoiceBrowserWrap');
+    const previewResponseVoiceBtn = $('previewResponseVoiceBtn');
     const echoCancellationToggle = $('echoCancellationToggle');
     const noiseSuppressionToggle = $('noiseSuppressionToggle');
     const autoGainToggle = $('autoGainToggle');
@@ -189,12 +193,22 @@
         ttsPaused: false,
         browserVoiceReady: false,
         browserVoiceWarmupPromise: null,
-        selectedBrowserVoiceSignature: '',
         selectedAudioInputId: (() => {
             try { return localStorage.getItem('bmu_advisor_audio_input_id') || ''; } catch (_) { return ''; }
         })(),
         selectedAudioOutputId: (() => {
             try { return localStorage.getItem('bmu_advisor_audio_output_id') || ''; } catch (_) { return ''; }
+        })(),
+        responseVoiceProfile: (() => {
+            try {
+                const profile = localStorage.getItem('bmu_advisor_response_voice') || 'avatar';
+                return ['avatar', 'browser', 'nigerian-female', 'nigerian-male', 'international-female', 'international-male'].includes(profile)
+                    ? profile : 'avatar';
+            } catch (_) { return 'avatar'; }
+        })(),
+        selectedBrowserVoiceSignature: '',
+        preferredBrowserVoiceSignature: (() => {
+            try { return localStorage.getItem('bmu_advisor_browser_voice_signature') || ''; } catch (_) { return ''; }
         })(),
         audioCleanup: {
             echoCancellation: (() => {
@@ -380,6 +394,19 @@
 
     function voiceGenderForAvatar(value) {
         return value === 'male' || value === 'academic-male' ? 'male' : 'female';
+    }
+
+    function getResponseVoiceGender() {
+        const profile = state.responseVoiceProfile;
+        if (profile === 'nigerian-male' || profile === 'international-male') return 'male';
+        if (profile === 'nigerian-female' || profile === 'international-female') return 'female';
+        return voiceGenderForAvatar(getAdvisorGender());
+    }
+
+    function getServerVoiceProfile() {
+        return state.responseVoiceProfile === 'browser' && !window.speechSynthesis
+            ? 'avatar'
+            : state.responseVoiceProfile;
     }
 
     function nextAdvisorAvatar(value) {
@@ -1997,7 +2024,8 @@
                 method: 'POST',
                 body: {
                     text: spoken,
-                    advisorGender: getAdvisorGender()
+                    advisorGender: voiceGenderForAvatar(getAdvisorGender()),
+                    voiceProfile: getServerVoiceProfile()
                 }
             });
 
@@ -3042,6 +3070,11 @@
         const voices = speechSynthesis.getVoices() || [];
         if (!voices.length) return null;
 
+        if (state.responseVoiceProfile === 'browser' && state.preferredBrowserVoiceSignature) {
+            const explicitlySelected = voices.find(v => browserVoiceSignature(v) === state.preferredBrowserVoiceSignature);
+            if (explicitlySelected) return explicitlySelected;
+        }
+
         const cached = readCachedBrowserVoice(gender);
         if (cached?.signature) {
             const exact = voices.find(v => browserVoiceSignature(v) === cached.signature);
@@ -3094,7 +3127,7 @@
 
     async function warmBrowserVoice({ force = false } = {}) {
         if (!window.speechSynthesis) return null;
-        const gender = (typeof getAdvisorGender === 'function') ? getAdvisorGender() : 'female';
+        const gender = getResponseVoiceGender();
         if (!force && state.browserVoiceReady) return pickBrowserVoice(gender);
         if (!force && state.browserVoiceWarmupPromise) return state.browserVoiceWarmupPromise;
 
@@ -3118,7 +3151,7 @@
      *  the wrong-gender voice problem from the previous TTSMaker setup.
      */
     async function speakWithBrowser(text, bubbleEl = null) {
-        const gender = (typeof getAdvisorGender === 'function') ? getAdvisorGender() : 'female';
+        const gender = getResponseVoiceGender();
         await warmBrowserVoice();
         return new Promise(resolve => {
             if (!window.speechSynthesis) return resolve(0);
@@ -3139,7 +3172,7 @@
                 if (v) u.voice = v;
                 u.lang = (v && v.lang) || 'en-NG';
                 u.rate = 1.02;
-                u.pitch = gender === 'male' ? 0.85 : 1.10;
+                u.pitch = state.responseVoiceProfile === 'browser' && state.preferredBrowserVoiceSignature ? 1 : (gender === 'male' ? 0.85 : 1.10);
                 u.volume = isSpeechOutputEnabled() ? 1 : 0;
                 console.info('[advisor] browser TTS voice:', v ? `${v.name} (${v.lang})` : 'default', '| gender wanted:', gender);
 
@@ -3227,6 +3260,7 @@
         speechSynthesis.addEventListener?.('voiceschanged', () => {
             try {
                 speechSynthesis.getVoices();
+                renderResponseVoiceOptions();
                 if (isSpeechOutputEnabled()) {
                     warmBrowserVoice({ force: true }).catch(() => {});
                 }
@@ -3243,7 +3277,7 @@
             primed = true;
             warmBrowserVoice().catch(() => {});
             try {
-                const gender = getAdvisorGender();
+                const gender = getResponseVoiceGender();
                 const v = pickBrowserVoice(gender);
                 if (!v) return;
                 const u = new SpeechSynthesisUtterance('.');
@@ -3251,7 +3285,7 @@
                 u.lang = v.lang || 'en-NG';
                 u.volume = 0;
                 u.rate = 1;
-                u.pitch = gender === 'male' ? 0.85 : 1.10;
+                u.pitch = state.responseVoiceProfile === 'browser' && state.preferredBrowserVoiceSignature ? 1 : (gender === 'male' ? 0.85 : 1.10);
                 u.onend = () => { try { window.speechSynthesis.cancel(); } catch (_) {} };
                 window.speechSynthesis.speak(u);
             } catch (_) { /* some browsers block silent priming */ }
@@ -3343,7 +3377,8 @@
                     voiceEnabled: answerSpeechEnabled,
                     inputMode: askInputMode,
                     responseStyle: 'concise_conversational',
-                    advisorGender: getAdvisorGender()
+                    advisorGender: voiceGenderForAvatar(getAdvisorGender()),
+                    voiceProfile: getServerVoiceProfile()
                 })
             });
             if (!res.ok || !res.body) {
@@ -3634,6 +3669,48 @@
         return device?.label || (state.selectedAudioOutputId ? 'selected speaker' : 'default speaker');
     }
 
+    function browserVoiceDescription(voice) {
+        const locale = String(voice.lang || '').toLowerCase();
+        const femaleHint = /\b(ezinne|aria|jenny|samantha|zira|female|susan|sonia|emma|ava|karen|moira|tessa)\b/i.test(voice.name || '');
+        const maleHint = /\b(abeo|guy|daniel|david|male|ryan|james|matthew|brian|oliver|george)\b/i.test(voice.name || '');
+        const gender = femaleHint ? 'female' : maleHint ? 'male' : 'voice';
+        const region = locale.startsWith('en-ng') ? 'Nigerian English'
+            : locale.startsWith('en-gb') ? 'British English'
+                : locale.startsWith('en-us') ? 'US English'
+                    : locale.startsWith('en') ? 'English' : voice.lang;
+        return `${region} · ${gender} · browser · ${voice.name || 'voice'}`;
+    }
+
+    function renderResponseVoiceOptions() {
+        if (responseVoiceSelect) {
+            responseVoiceSelect.value = state.responseVoiceProfile;
+        }
+        if (responseVoiceBrowserWrap) responseVoiceBrowserWrap.hidden = state.responseVoiceProfile !== 'browser';
+        if (!browserVoiceSelect) return;
+        if (!window.speechSynthesis) {
+            browserVoiceSelect.disabled = true;
+            const unavailableOption = [...(responseVoiceSelect?.options || [])].find(option => option.value === 'browser');
+            if (unavailableOption) unavailableOption.disabled = true;
+            return;
+        }
+        browserVoiceSelect.disabled = false;
+
+        const available = (speechSynthesis.getVoices() || [])
+            .filter(voice => /^en(?:[-_]|$)/i.test(voice.lang || ''));
+        browserVoiceSelect.replaceChildren(new Option('Automatic · match selected avatar', ''));
+        available.forEach(voice => {
+            browserVoiceSelect.add(new Option(browserVoiceDescription(voice), browserVoiceSignature(voice)));
+        });
+        if (state.preferredBrowserVoiceSignature && !available.some(voice => browserVoiceSignature(voice) === state.preferredBrowserVoiceSignature)) {
+            browserVoiceSelect.add(new Option('Saved browser voice unavailable on this device', state.preferredBrowserVoiceSignature));
+        }
+        browserVoiceSelect.value = state.preferredBrowserVoiceSignature;
+        if (responseVoiceSelect) {
+            const browserOption = [...responseVoiceSelect.options].find(option => option.value === 'browser');
+            if (browserOption) browserOption.disabled = available.length === 0;
+        }
+    }
+
     function buildAudioInputConstraints() {
         const audio = {
             echoCancellation: Boolean(state.audioCleanup.echoCancellation),
@@ -3645,6 +3722,7 @@
     }
 
     function renderAudioDeviceOptions() {
+        renderResponseVoiceOptions();
         if (!audioInputSelect || !audioOutputSelect) return;
 
         audioInputSelect.replaceChildren(new Option('Default microphone', ''));
@@ -3690,6 +3768,7 @@
             if (!supportsMediaDeviceSelection()) notes.push('This browser does not support microphone device selection.');
             if (!supportsAudioOutputSelection()) notes.push('Speaker selection is not supported in this browser.');
             if (state.selectedAudioInputId && !serverSttAvailable) notes.push('Selected microphones require server transcription to be available.');
+            if (state.responseVoiceProfile === 'browser') notes.push('Browser speech follows the device output route; speaker selection may not redirect it.');
             if (state.handsFreeEnabled && serverSttAvailable) {
                 notes.push('Hands-free standby listens locally for clear speech, then starts transcription.');
             }
@@ -3735,6 +3814,8 @@
         const restartHandsFree = Boolean(state.handsFreeEnabled || handsFreeToggle?.checked);
         state.selectedAudioInputId = audioInputSelect?.value || '';
         state.selectedAudioOutputId = audioOutputSelect?.value || '';
+        state.responseVoiceProfile = responseVoiceSelect?.value || state.responseVoiceProfile || 'avatar';
+        state.preferredBrowserVoiceSignature = browserVoiceSelect?.value || '';
         state.audioCleanup.echoCancellation = Boolean(echoCancellationToggle?.checked);
         state.audioCleanup.noiseSuppression = Boolean(noiseSuppressionToggle?.checked);
         state.audioCleanup.autoGainControl = Boolean(autoGainToggle?.checked);
@@ -3745,6 +3826,8 @@
         try {
             localStorage.setItem('bmu_advisor_audio_input_id', state.selectedAudioInputId);
             localStorage.setItem('bmu_advisor_audio_output_id', state.selectedAudioOutputId);
+            localStorage.setItem('bmu_advisor_response_voice', state.responseVoiceProfile);
+            localStorage.setItem('bmu_advisor_browser_voice_signature', state.preferredBrowserVoiceSignature);
             localStorage.setItem('bmu_advisor_echo_cancellation', state.audioCleanup.echoCancellation ? '1' : '0');
             localStorage.setItem('bmu_advisor_noise_suppression', state.audioCleanup.noiseSuppression ? '1' : '0');
             localStorage.setItem('bmu_advisor_auto_gain', state.audioCleanup.autoGainControl ? '1' : '0');
@@ -3815,6 +3898,45 @@
             toast('Could not play the test sound in this browser.', 'error');
         } finally {
             setTimeout(() => URL.revokeObjectURL(url), 1200);
+        }
+    }
+
+    async function previewResponseVoice() {
+        const sample = 'Hello, I am Dr. Tari, your BMU Academic Advisor. This is a preview of the selected response voice.';
+        enableSpeechOutput();
+        if (previewResponseVoiceBtn) previewResponseVoiceBtn.disabled = true;
+        try {
+            if (state.responseVoiceProfile === 'browser' && window.speechSynthesis) {
+                await speakWithBrowser(sample, null);
+                return;
+            }
+            const result = await api('/api/advisor/tts', {
+                method: 'POST',
+                body: {
+                    text: sample,
+                    advisorGender: voiceGenderForAvatar(getAdvisorGender()),
+                    voiceProfile: getServerVoiceProfile()
+                }
+            });
+            if (result?.audio?.audio_url) {
+                const audio = new Audio(result.audio.audio_url);
+                audio.volume = isSpeechOutputEnabled() ? 1 : 0;
+                await applySelectedAudioOutput(audio);
+                await audio.play();
+                await new Promise(resolve => {
+                    audio.addEventListener('ended', resolve, { once: true });
+                    audio.addEventListener('error', resolve, { once: true });
+                });
+            } else {
+                await speakWithBrowser(sample, null);
+                if (state.responseVoiceProfile !== 'avatar') {
+                    toast('The selected server voice is unavailable; previewed the device browser voice instead.', 'error');
+                }
+            }
+        } catch (err) {
+            toast(err.message || 'Could not preview the selected voice.', 'error');
+        } finally {
+            if (previewResponseVoiceBtn) previewResponseVoiceBtn.disabled = false;
         }
     }
 
@@ -4880,6 +5002,16 @@
     [audioInputSelect, audioOutputSelect, echoCancellationToggle, noiseSuppressionToggle, autoGainToggle, handsFreeToggle, handsFreeSensitivitySelect, handsFreeTimeoutSelect]
         .filter(Boolean)
         .forEach((el) => el.addEventListener('change', persistAudioSettingsFromControls));
+    responseVoiceSelect?.addEventListener('change', () => {
+        persistAudioSettingsFromControls();
+        clearCachedBrowserVoice();
+        if (state.responseVoiceProfile === 'browser') warmBrowserVoice({ force: true }).catch(() => {});
+    });
+    browserVoiceSelect?.addEventListener('change', () => {
+        persistAudioSettingsFromControls();
+        clearCachedBrowserVoice();
+    });
+    previewResponseVoiceBtn?.addEventListener('click', previewResponseVoice);
 
     syncMicButtonsUi(false);
 

@@ -2512,8 +2512,9 @@ async function _buildHistory(conversationId) {
  */
 async function askStream({
     question, inputMode = 'text', sessionToken, student = null,
-    voiceEnabled = true, advisorGender = 'female', send
+    voiceEnabled = true, advisorGender = 'female', voiceProfile = 'avatar', send
 }) {
+    voiceProfile = tts.normaliseVoiceProfile(voiceProfile);
     const startedAt = Date.now();
     if (!question || typeof question !== 'string' || !question.trim()) {
         send('error', { error: 'question is required' });
@@ -2566,6 +2567,7 @@ async function askStream({
             try {
                 audio = await tts.synthesise(fastIntentReply.speech_text, {
                     gender: advisorGender,
+                    voiceProfile,
                     archive: true,
                     sourceType: 'fast_intent',
                     sourceId: fastIntentReply.topic_slug || null
@@ -2675,6 +2677,7 @@ async function askStream({
                     try {
                         audio = await tts.synthesise(cachedSpeech, {
                             gender: advisorGender,
+                            voiceProfile,
                             archive: true,
                             sourceType: 'cached_qa',
                             sourceId: cached.cachedQaId || null
@@ -2780,6 +2783,7 @@ async function askStream({
             try {
                 audio = await tts.synthesise(parsed.speech_text, {
                     gender: advisorGender,
+                    voiceProfile,
                     archive: true,
                     sourceType: 'principal_officers_reference',
                     sourceId: requestedPrincipalOfficerByName || requestedPrincipalOfficerRole || 'all'
@@ -2853,6 +2857,7 @@ async function askStream({
             try {
                 audio = await tts.synthesise(parsed.speech_text, {
                     gender: advisorGender,
+                    voiceProfile,
                     archive: true,
                     sourceType: 'governor_visitor_reference',
                     sourceId: 'visitor'
@@ -2942,6 +2947,7 @@ async function askStream({
             try {
                 audio = await tts.synthesise(parsed.speech_text, {
                     gender: advisorGender,
+                    voiceProfile,
                     archive: true,
                     sourceType: 'principal_officers_reference',
                     sourceId: 'office_holder_identity'
@@ -3037,7 +3043,7 @@ async function askStream({
             ttsPromise = Promise.resolve({ provider: 'none' });
             return;
         }
-        ttsPromise = tts.synthesise(speech, { gender: advisorGender }).then(audio => {
+        ttsPromise = tts.synthesise(speech, { gender: advisorGender, voiceProfile }).then(audio => {
             if (audio.audioUrl) {
                 send('audio', {
                     provider: audio.provider,

@@ -39,6 +39,13 @@ function _normalizeEscalationEmail(raw) {
     return e;
 }
 
+function _advisorVoiceGender(req) {
+    const avatar = String(req.body?.advisorGender || '').toLowerCase();
+    if (['male', 'academic-male'].includes(avatar)) return 'male';
+    if (['female', 'medical'].includes(avatar)) return 'female';
+    return req.user?.advisor_gender === 'male' ? 'male' : 'female';
+}
+
 async function _resolveAdvisorEscalationEmail() {
     const fromEnv = _normalizeEscalationEmail(process.env.ADVISOR_ESCALATION_EMAIL || '');
     if (fromEnv) return fromEnv;
@@ -274,13 +281,14 @@ router.get('/health', (_req, res) => {
 router.post('/tts', authenticateToken, async (req, res) => {
     try {
         const text = String(req.body?.text || '').trim();
-        const advisorGender = req.body?.advisorGender === 'male' ? 'male' : 'female';
+        const advisorGender = _advisorVoiceGender(req);
+        const voiceProfile = ttsService.normaliseVoiceProfile(req.body?.voiceProfile);
 
         if (!text) {
             return res.status(400).json({ success: false, error: 'text is required' });
         }
 
-        const audio = await ttsService.synthesise(text, { gender: advisorGender });
+        const audio = await ttsService.synthesise(text, { gender: advisorGender, voiceProfile });
         return res.json({
             success: true,
             speech_text: text,
@@ -371,7 +379,8 @@ router.post('/ask', optionalAuth, enforceLimits, enforceGuestDemoLimit, async (r
             sessionToken,
             student,
             voiceEnabled: voiceEnabled !== false,
-            advisorGender: (req.body?.advisorGender === 'male' || req.user?.advisor_gender === 'male') ? 'male' : 'female'
+            advisorGender: _advisorVoiceGender(req),
+            voiceProfile: ttsService.normaliseVoiceProfile(req.body?.voiceProfile)
         });
         // Increment quota counters AFTER a successful reply so failed calls
         // don't burn quota.
@@ -447,7 +456,8 @@ router.post('/ask/stream', optionalAuth, enforceLimits, enforceGuestDemoLimit, a
             sessionToken,
             student,
             voiceEnabled: voiceEnabled !== false,
-            advisorGender: (req.body?.advisorGender === 'male' || req.user?.advisor_gender === 'male') ? 'male' : 'female',
+            advisorGender: _advisorVoiceGender(req),
+            voiceProfile: ttsService.normaliseVoiceProfile(req.body?.voiceProfile),
             send
         });
         // Quota credit for streamed conversations as well

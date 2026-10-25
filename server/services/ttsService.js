@@ -71,6 +71,20 @@ function getVoiceId(gender) {
     return parseInt(id, 10);
 }
 
+const VOICE_PROFILES = Object.freeze({
+    'nigerian-female': { gender: 'female', voice: 'en-NG-EzinneNeural' },
+    'nigerian-male': { gender: 'male', voice: 'en-NG-AbeoNeural' },
+    'international-female': { gender: 'female', voice: 'en-US-AriaNeural' },
+    'international-male': { gender: 'male', voice: 'en-US-GuyNeural' }
+});
+
+function normaliseVoiceProfile(value) {
+    const profile = String(value || 'avatar').trim().toLowerCase();
+    return profile === 'browser' || profile === 'avatar' || Object.prototype.hasOwnProperty.call(VOICE_PROFILES, profile)
+        ? profile
+        : 'avatar';
+}
+
 function getSpeed() {
     const v = parseFloat(process.env.TTSMAKER_TTS_AUDIO_SPEED || '1.15');
     if (!Number.isFinite(v)) return 1.0;
@@ -351,16 +365,22 @@ async function synthesise(text, opts = {}) {
 
     const normalizedText = normalizeTextForTts(text);
 
-    const gender = (opts && opts.gender === 'male') ? 'male' : 'female';
+    const requestedProfile = normaliseVoiceProfile(opts.voiceProfile);
+    if (requestedProfile === 'browser') {
+        return { provider: 'browser', useBrowserFallback: true };
+    }
+    const profile = VOICE_PROFILES[requestedProfile];
+    const gender = profile?.gender || ((opts && opts.gender === 'male') ? 'male' : 'female');
+    const requestedVoice = profile?.voice || '';
 
     // Edge TTS path — Microsoft's free neural voices. Preferred over
     // browser TTS when the operator wants a uniform "BMU voice" across
     // every device.
-    if (PROVIDER === 'edge') {
+    if (PROVIDER === 'edge' || requestedVoice) {
         try {
             const edge = require('./edgeTtsService');
             if (edge.isConfigured()) {
-                const r = await edge.synthesiseToFile(normalizedText, { gender });
+                const r = await edge.synthesiseToFile(normalizedText, { gender, voice: requestedVoice || undefined });
                 if (shouldArchive(opts)) {
                     const fileName = path.basename(String(r.audioUrl || ''));
                     const filePath = fileName ? path.join(__dirname, '../../uploads/audio', fileName) : '';
@@ -554,5 +574,7 @@ module.exports = {
     checkQuota,
     ensureAudioArchiveSchema,
     normalizeTextForTts,
+    normaliseVoiceProfile,
+    VOICE_PROFILES,
     isConfigured: isTtsmakerConfigured
 };

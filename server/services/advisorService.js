@@ -1346,7 +1346,7 @@ async function _buildHistory(conversationId) {
  * @param {boolean}[params.voiceEnabled=true] generate TTS?
  * @returns {Promise<object>}
  */
-async function ask({ question, inputMode = 'text', sessionToken, student = null, voiceEnabled = true, advisorGender = 'female' }) {
+async function ask({ question, inputMode = 'text', sessionToken, student = null, voiceEnabled = true, advisorGender = 'female', voiceProfile = 'avatar' }) {
     const startedAt = Date.now();
     if (!question || typeof question !== 'string' || !question.trim()) {
         throw new Error('question is required');
@@ -1383,6 +1383,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
             voiceEnabled,
             startedAt,
             advisorGender,
+            voiceProfile,
             questionText: trimmed,
             ragContext: ''
         });
@@ -1399,6 +1400,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
             voiceEnabled,
             startedAt,
             advisorGender,
+            voiceProfile,
             questionText: trimmed,
             ragContext: ''
         });
@@ -1435,7 +1437,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
                     confidence: cached.cacheConfidence || 0.95
                 };
                 const result = await _persistAndPackage({
-                    conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
+                    conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender, voiceProfile,
                     questionText: trimmed,
                     ragContext: ''
                 });
@@ -1454,7 +1456,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
             ? _buildPrincipalOfficerReply(requestedPrincipalOfficerRole)
             : _buildPrincipalOfficersReply();
         return await _persistAndPackage({
-            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
+            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender, voiceProfile,
             questionText: trimmed,
             ragContext: ''
         });
@@ -1463,7 +1465,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     if (isGovernorVisitorQuestion) {
         const parsed = _buildGovernorVisitorReply();
         return await _persistAndPackage({
-            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
+            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender, voiceProfile,
             questionText: trimmed,
             ragContext: ''
         });
@@ -1478,7 +1480,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
     if (isOfficeHolderIdentity) {
         const parsed = _buildOfficeHolderSafeReply(trimmed, ragContext);
         return await _persistAndPackage({
-            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender,
+            conversation, parsed, llmUsage: null, voiceEnabled, startedAt, advisorGender, voiceProfile,
             questionText: trimmed,
             ragContext
         });
@@ -1505,7 +1507,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         };
         return await _persistAndPackage({
             conversation, parsed: fallback, llmUsage: null, voiceEnabled,
-            startedAt, errorMsg: err.message, advisorGender,
+            startedAt, errorMsg: err.message, advisorGender, voiceProfile,
             questionText: trimmed,
             ragContext
         });
@@ -1519,7 +1521,7 @@ async function ask({ question, inputMode = 'text', sessionToken, student = null,
         ? { ...parsed, ...groundedState.override, confidence: groundedState.override.confidence }
         : parsed;
     return await _persistAndPackage({
-        conversation, parsed: safeParsed, llmUsage: llmResult.usage, voiceEnabled, startedAt, advisorGender,
+        conversation, parsed: safeParsed, llmUsage: llmResult.usage, voiceEnabled, startedAt, advisorGender, voiceProfile,
         questionText: trimmed,
         ragContext,
         groundedState
@@ -1534,6 +1536,7 @@ async function _persistAndPackage({
     startedAt,
     errorMsg = null,
     advisorGender = 'female',
+    voiceProfile = 'avatar',
     questionText = '',
     ragContext = '',
     groundedState = { grounded_mode: false, fallback_reason: null, retrieval_confidence: 0 }
@@ -1548,7 +1551,7 @@ async function _persistAndPackage({
     // TTS
     let audio = { provider: 'none', useBrowserFallback: true };
     if (voiceEnabled !== false && conversation.voice_enabled) {
-        audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender });
+        audio = await tts.synthesise(parsed.speech_text, { gender: advisorGender, voiceProfile });
     }
 
     // Persist advisor turn
