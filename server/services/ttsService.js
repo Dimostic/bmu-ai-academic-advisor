@@ -359,11 +359,12 @@ async function synthesise(text, opts = {}) {
     const profile = VOICE_PROFILES[requestedProfile];
     const gender = profile?.gender || ((opts && opts.gender === 'male') ? 'male' : 'female');
     const requestedVoice = profile?.voice || '';
+    const forceTtsmaker = profile?.provider === 'ttsmaker';
 
     // Edge TTS path — Microsoft's free neural voices. Preferred over
     // browser TTS when the operator wants a uniform "BMU voice" across
     // every device.
-    if (PROVIDER === 'edge' || requestedVoice) {
+    if (!forceTtsmaker && (PROVIDER === 'edge' || requestedVoice)) {
         try {
             const edge = require('./edgeTtsService');
             if (edge.isConfigured()) {
@@ -399,11 +400,11 @@ async function synthesise(text, opts = {}) {
         return { provider: 'browser', useBrowserFallback: true };
     }
 
-    if (PROVIDER === 'browser' || !isTtsmakerConfigured()) {
+    if (!isTtsmakerConfigured() || (!forceTtsmaker && PROVIDER === 'browser')) {
         return { provider: 'browser', useBrowserFallback: true };
     }
 
-    const voiceId = getVoiceId(gender);
+    const voiceId = profile?.voiceId || getVoiceId(gender);
     const speed = getSpeed();
     const archiveWanted = shouldArchive(opts);
 

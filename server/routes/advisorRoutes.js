@@ -46,6 +46,11 @@ function _advisorVoiceGender(req) {
     return req.user?.advisor_gender === 'male' ? 'male' : 'female';
 }
 
+function _requestVoiceProfile(req) {
+    const isAdmin = ['admin', 'superadmin'].includes(String(req.user?.role || '').toLowerCase());
+    return ttsService.normaliseVoiceProfile(req.body?.voiceProfile, { allowTtsmaker: isAdmin });
+}
+
 async function _resolveAdvisorEscalationEmail() {
     const fromEnv = _normalizeEscalationEmail(process.env.ADVISOR_ESCALATION_EMAIL || '');
     if (fromEnv) return fromEnv;
@@ -282,7 +287,7 @@ router.post('/tts', authenticateToken, async (req, res) => {
     try {
         const text = String(req.body?.text || '').trim();
         const advisorGender = _advisorVoiceGender(req);
-        const voiceProfile = ttsService.normaliseVoiceProfile(req.body?.voiceProfile);
+        const voiceProfile = _requestVoiceProfile(req);
 
         if (!text) {
             return res.status(400).json({ success: false, error: 'text is required' });
@@ -380,7 +385,7 @@ router.post('/ask', optionalAuth, enforceLimits, enforceGuestDemoLimit, async (r
             student,
             voiceEnabled: voiceEnabled !== false,
             advisorGender: _advisorVoiceGender(req),
-            voiceProfile: ttsService.normaliseVoiceProfile(req.body?.voiceProfile)
+            voiceProfile: _requestVoiceProfile(req)
         });
         // Increment quota counters AFTER a successful reply so failed calls
         // don't burn quota.
@@ -457,7 +462,7 @@ router.post('/ask/stream', optionalAuth, enforceLimits, enforceGuestDemoLimit, a
             student,
             voiceEnabled: voiceEnabled !== false,
             advisorGender: _advisorVoiceGender(req),
-            voiceProfile: ttsService.normaliseVoiceProfile(req.body?.voiceProfile),
+            voiceProfile: _requestVoiceProfile(req),
             send
         });
         // Quota credit for streamed conversations as well

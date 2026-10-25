@@ -202,10 +202,12 @@
         responseVoiceProfile: (() => {
             try {
                 const profile = localStorage.getItem('bmu_advisor_response_voice') || 'avatar';
-                return ['avatar', 'browser', 'nigerian-female', 'nigerian-male', 'international-female', 'international-male'].includes(profile)
+                return ['avatar', 'browser', 'nigerian-female', 'nigerian-male', 'international-female', 'international-male', 'ttsmaker-nigerian-female', 'ttsmaker-nigerian-male'].includes(profile)
                     ? profile : 'avatar';
             } catch (_) { return 'avatar'; }
         })(),
+        isAdminUser: false,
+        adminRoleChecked: false,
         selectedBrowserVoiceSignature: '',
         preferredBrowserVoiceSignature: (() => {
             try { return localStorage.getItem('bmu_advisor_browser_voice_signature') || ''; } catch (_) { return ''; }
@@ -3683,6 +3685,23 @@
 
     function renderResponseVoiceOptions() {
         if (responseVoiceSelect) {
+            let adminGroup = responseVoiceSelect.querySelector('optgroup[data-admin-voices]');
+            if (state.isAdminUser && !adminGroup) {
+                adminGroup = document.createElement('optgroup');
+                adminGroup.label = 'TTSMaker · admin only';
+                adminGroup.dataset.adminVoices = 'true';
+                adminGroup.append(
+                    new Option('Nigerian English · female · TTSMaker', 'ttsmaker-nigerian-female'),
+                    new Option('Nigerian English · male · TTSMaker', 'ttsmaker-nigerian-male')
+                );
+                responseVoiceSelect.append(adminGroup);
+            } else if (!state.isAdminUser && adminGroup) {
+                adminGroup.remove();
+            }
+            if (state.adminRoleChecked && !state.isAdminUser && state.responseVoiceProfile.startsWith('ttsmaker-')) {
+                state.responseVoiceProfile = 'avatar';
+                try { localStorage.setItem('bmu_advisor_response_voice', 'avatar'); } catch (_) { /* storage is optional */ }
+            }
             responseVoiceSelect.value = state.responseVoiceProfile;
         }
         if (responseVoiceBrowserWrap) responseVoiceBrowserWrap.hidden = state.responseVoiceProfile !== 'browser';
@@ -5354,7 +5373,11 @@
     // We don't have a /api/advisor/me endpoint yet, so probe an admin-only
     // endpoint cheaply and reveal the link only if it returns 200.
     (async () => {
-        if (!hasAuthSession()) return;
+        if (!hasAuthSession()) {
+            state.adminRoleChecked = true;
+            renderResponseVoiceOptions();
+            return;
+        }
         try {
             state.lastApiEndpoint = '/api/admin/stats';
             const res = await fetch('/api/admin/stats', {
@@ -5367,8 +5390,13 @@
                 endpoint: '/api/admin/stats',
                 success: res.ok
             });
-            if (res.ok) adminLink?.classList.remove('hidden');
+            if (res.ok) {
+                state.isAdminUser = true;
+                adminLink?.classList.remove('hidden');
+            }
         } catch (_) { /* not an admin; leave hidden */ }
+        state.adminRoleChecked = true;
+        renderResponseVoiceOptions();
     })();
 
     // ---------- Helpers ----------
