@@ -18,6 +18,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { query } = require('../../config/db');
+const { VOICE_PROFILES, normaliseVoiceProfile } = require('./ttsVoiceProfiles');
 
 const TTSMAKER_BASE = 'https://api.ttsmaker.com/v2';
 const PROVIDER      = (process.env.TTS_PROVIDER || 'ttsmaker').toLowerCase();
@@ -69,20 +70,6 @@ function getVoiceId(gender) {
     const male   = process.env.TTSMAKER_TTS_VOICE_ID_MALE   || '2528';
     const id = gender === 'male' ? male : female;
     return parseInt(id, 10);
-}
-
-const VOICE_PROFILES = Object.freeze({
-    'nigerian-female': { gender: 'female', voice: 'en-NG-EzinneNeural' },
-    'nigerian-male': { gender: 'male', voice: 'en-NG-AbeoNeural' },
-    'international-female': { gender: 'female', voice: 'en-US-AriaNeural' },
-    'international-male': { gender: 'male', voice: 'en-US-GuyNeural' }
-});
-
-function normaliseVoiceProfile(value) {
-    const profile = String(value || 'avatar').trim().toLowerCase();
-    return profile === 'browser' || profile === 'avatar' || Object.prototype.hasOwnProperty.call(VOICE_PROFILES, profile)
-        ? profile
-        : 'avatar';
 }
 
 function getSpeed() {
