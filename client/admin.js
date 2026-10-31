@@ -1978,7 +1978,7 @@
                 lastName:  (fd.get('lastName')  || '').trim(),
                 email:     (fd.get('email')     || '').trim(),
                 password:  fd.get('password')   || '',
-                role:      fd.get('role')       || 'staff',
+                role:      fd.get('role')       || 'student',
                 department:(fd.get('department')|| '').trim() || undefined
             };
             if (payload.password.length < 8) {
@@ -2053,6 +2053,26 @@
         let filter = 'all';
         let searchText = '';
         const canManagePromptLimits = user?.role === 'superadmin';
+        const userList = document.getElementById('userList');
+        const pendingActions = new Set();
+        let loadVersion = 0;
+
+        function setUserBusy(id, busy) {
+            userList.querySelectorAll(`[data-id="${id}"]`).forEach(control => {
+                const row = control.closest('tr');
+                if (!row) return;
+                row.setAttribute('aria-busy', String(busy));
+                row.querySelectorAll('button, select, input').forEach(el => {
+                    if (busy && el.dataset.userBusy === undefined) {
+                        el.dataset.userBusy = String(el.disabled);
+                        el.disabled = true;
+                    } else if (!busy && el.dataset.userBusy !== undefined) {
+                        el.disabled = el.dataset.userBusy === 'true';
+                        delete el.dataset.userBusy;
+                    }
+                });
+            });
+        }
 
         function renderPromptLimitControls(u) {
             if (!canManagePromptLimits) return '';
@@ -2068,12 +2088,14 @@
         }
 
         async function load() {
+            const version = ++loadVersion;
             try {
                 const params = new URLSearchParams({ limit: '200' });
-                if (filter === 'pending') params.set('status', 'pending_approval');
+                if (filter === 'pending') params.set('status', 'pending');
                 if (filter === 'admins') params.set('role', 'admin');
                 if (searchText) params.set('search', searchText);
                 const r = await api('/api/admin/users?' + params.toString());
+                if (version !== loadVersion || !userList.isConnected) return;
                 const users = r.users || r.data || [];
                 if (!users.length) {
                     document.getElementById('userList').innerHTML = '<p class="empty">No users match this filter.</p>';
@@ -2115,9 +2137,11 @@
                 document.getElementById('userList').innerHTML = table(
                     headers, rows
                 );
-                attachUserActions();
+                pendingActions.forEach(id => setUserBusy(id, true));
             } catch (err) {
-                document.getElementById('userList').innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+                if (version === loadVersion && userList.isConnected) {
+                    userList.innerHTML = `<p class="auth-error">${escapeHtml(err.message)}</p>`;
+                }
             }
         }
         function userActions(u, status) {
@@ -2126,31 +2150,38 @@
             if (status === 'Unverified') {
                 buttons.push(`<button class="btn btn-primary" data-act="verify-activate" data-id="${id}"><i class="fa-solid fa-user-check"></i> Verify & Activate</button>`);
                 buttons.push(`<button class="btn btn-ghost" data-act="resend-verification" data-id="${id}"><i class="fa-solid fa-envelope"></i> Resend Link</button>`);
-                buttons.push(`<button class="btn btn-ghost" data-act="reject"  data-id="${id}"><i class="fa-solid fa-xmark"></i> Reject</button>`);
+                if (user?.role === 'superadmin') buttons.push(`<button class="btn btn-ghost" data-act="reject" data-id="${id}"><i class="fa-solid fa-xmark"></i> Reject</button>`);
             } else if (status === 'Pending approval') {
-                buttons.push(`<button class="btn btn-primary" data-act="approve" data-id="${id}"><i class="fa-solid fa-check"></i> Approve</button>`);
-                buttons.push(`<button class="btn btn-ghost" data-act="reject"  data-id="${id}"><i class="fa-solid fa-xmark"></i> Reject</button>`);
+                const action = user?.role === 'superadmin' ? 'approve' : 'verify-activate';
+                buttons.push(`<button class="btn btn-primary" data-act="${action}" data-id="${id}"><i class="fa-solid fa-check"></i> Approve</button>`);
+                if (user?.role === 'superadmin') buttons.push(`<button class="btn btn-ghost" data-act="reject" data-id="${id}"><i class="fa-solid fa-xmark"></i> Reject</button>`);
             } else if (status === 'Deactivated') {
                 buttons.push(`<button class="btn btn-ghost" data-act="reactivate" data-id="${id}"><i class="fa-solid fa-rotate"></i> Reactivate</button>`);
             } else {
                 buttons.push(`<button class="btn btn-ghost" data-act="deactivate" data-id="${id}"><i class="fa-solid fa-pause"></i> Deactivate</button>`);
             }
-            const roleSel = `<select data-act="role" data-id="${id}" class="btn btn-ghost" style="padding:6px 10px;">
+            const roleLocked = Number(id) === Number(user?.id) || (user?.role !== 'superadmin' && ['admin', 'superadmin'].includes(u.role));
+            const roleSel = `<select data-act="role" data-id="${id}" aria-label="Role for ${escapeHtml(u.email)}" ${roleLocked ? 'disabled' : ''} class="btn btn-ghost" style="padding:6px 10px;">
                 <option value="student" ${u.role==='student'?'selected':''}>student</option>
                 <option value="staff" ${u.role==='staff'?'selected':''}>staff</option>
                 <option value="admin" ${u.role==='admin'?'selected':''}>admin</option>
-                <option value="superadmin" ${u.role==='superadmin'?'selected':''}>superadmin</option>
+                ${(user?.role === 'superadmin' || u.role === 'superadmin') ? `<option value="superadmin" ${u.role==='superadmin'?'selected':''}>superadmin</option>` : ''}
             </select>`;
             return buttons.join(' ') + ' ' + roleSel;
         }
         function attachUserActions() {
             document.getElementById('userList').addEventListener('click', async (e) => {
-                const btn = e.target.closest('button[data-act]'); if (!btn) return;
+                const btn = e.target.closest('button[data-act]'); if (!btn || btn.disabled) return;
                 const id = btn.dataset.id;
                 const act = btn.dataset.act;
+                if (pendingActions.has(id)) return;
+                pendingActions.add(id);
+                const originalLabel = btn.innerHTML;
+                setUserBusy(id, true);
                 try {
                     if (act === 'verify-activate') {
                         if (!confirm('Verify this email and activate the account now?')) return;
+                        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Activating...';
                         await api('/api/users/admin/users/' + id + '/verify-activate', { method: 'POST' });
                     }
                     if (act === 'resend-verification') {
@@ -2173,13 +2204,26 @@
                             body: { dailyPromptLimit: daily, monthlyPromptLimit: monthly }
                         });
                     }
-                    toast('Done'); load();
+                    toast('Done'); await load();
                 } catch (err) { toast(err.message, 'error'); }
+                finally {
+                    pendingActions.delete(id);
+                    if (btn.isConnected) btn.innerHTML = originalLabel;
+                    setUserBusy(id, false);
+                }
             });
             document.getElementById('userList').addEventListener('change', async (e) => {
-                const sel = e.target.closest('select[data-act=role]'); if (!sel) return;
-                try { await api('/api/admin/users/' + sel.dataset.id + '/role', { method: 'PUT', body: { role: sel.value } }); toast('Role updated'); }
-                catch (err) { toast(err.message, 'error'); load(); }
+                const sel = e.target.closest('select[data-act=role]'); if (!sel || sel.disabled) return;
+                const id = sel.dataset.id;
+                if (pendingActions.has(id)) return;
+                pendingActions.add(id);
+                setUserBusy(id, true);
+                try {
+                    await api('/api/admin/users/' + id + '/role', { method: 'PUT', body: { role: sel.value } });
+                    toast('Role updated');
+                    await load();
+                } catch (err) { toast(err.message, 'error'); await load(); }
+                finally { pendingActions.delete(id); setUserBusy(id, false); }
             });
         }
         document.getElementById('filterAll').addEventListener('click', () => { filter = 'all'; load(); });
@@ -2204,6 +2248,7 @@
             searchText = usersSearch.value.trim();
             load();
         });
+        attachUserActions();
         load();
     }
 

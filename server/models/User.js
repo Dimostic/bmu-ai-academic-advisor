@@ -465,7 +465,7 @@ class User {
     }
 
     // Approve user with role assignment
-    static async approveUserWithRole(userId, approvedById, role = 'staff') {
+    static async approveUserWithRole(userId, approvedById, role = 'student') {
         const validRoles = ['student', 'staff', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
             throw new Error('Invalid role');
@@ -477,6 +477,7 @@ class User {
         const sql = `
             UPDATE users 
             SET is_approved = TRUE, 
+                is_active = TRUE,
                 approved_by = ?, 
                 approved_at = NOW(), 
                 role = ?,
@@ -490,7 +491,7 @@ class User {
 
     // Admin alternate path: verify and activate a user in one action.
     // This is used when the user cannot complete self-verification.
-    static async adminVerifyAndActivate(userId, approvedById, role = 'staff') {
+    static async adminVerifyAndActivate(userId, approvedById, role = 'student') {
         const validRoles = ['student', 'staff', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
             throw new Error('Invalid role');

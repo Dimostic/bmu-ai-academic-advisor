@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_name VARCHAR(100),
     phone VARCHAR(20),
     department VARCHAR(100),
-    role ENUM('staff', 'admin', 'superadmin') DEFAULT 'staff',
+    role ENUM('student', 'staff', 'admin', 'superadmin') DEFAULT 'student',
     is_verified BOOLEAN DEFAULT FALSE,
     is_approved BOOLEAN DEFAULT FALSE,
     verification_token VARCHAR(255),

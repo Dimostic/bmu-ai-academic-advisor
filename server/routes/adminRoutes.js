@@ -1568,7 +1568,7 @@ router.post('/users', authenticateToken, requireSuperAdmin, async (req, res) => 
     try {
         const {
             email, password, firstName, lastName,
-            role = 'staff', department = null, phone = null, matricNo = null
+            role = 'student', department = null, phone = null, matricNo = null
         } = req.body || {};
 
         // Basic validation (re-uses the same constraints as self-registration).
@@ -1649,7 +1649,7 @@ router.put('/users/:id/role', authenticateToken, requireAdmin, async (req, res) 
         const { role } = req.body;
         const requestingUser = req.user;
         
-        if (!['staff', 'admin', 'superadmin'].includes(role)) {
+        if (!['student', 'staff', 'admin', 'superadmin'].includes(role)) {
             return res.status(400).json({
                 success: false,
                 error: 'Invalid role'

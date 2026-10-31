@@ -23,6 +23,16 @@ const emailService = require('../services/emailService');
 
 const router = express.Router();
 
+function notifyAccountApproved(user, req) {
+    const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    // Account activation must not wait for an external mail provider.
+    Promise.resolve().then(() => emailService.sendApprovalEmail({
+        to: user.email,
+        userName: user.first_name || user.email,
+        loginUrl: `${baseUrl}/login?next=/advisor`
+    })).catch(error => console.error('Account approval notification failed:', error.message));
+}
+
 async function resendVerificationForUser({ user, req }) {
     if (!user || user.is_verified) {
         return { sent: false, reason: 'already_verified' };
@@ -59,9 +69,7 @@ router.post('/register', registerValidation, async (req, res) => {
             });
         }
 
-        // Create user with verification token. User.create auto-approves
-        // accounts with a @<UNIVERSITY_DOMAIN> email so legitimate BMU
-        // students can log in immediately without admin intervention.
+        // Public advisor registrations are students; only admins assign staff or privileged roles.
         const { userId, verificationToken, isUniversityEmail } = await User.create({
             email,
             password,
@@ -70,7 +78,7 @@ router.post('/register', registerValidation, async (req, res) => {
             phone,
             department,
             matricNo,
-            role: 'staff'
+            role: 'student'
         });
 
         // Always send a verification email so we can prove the registrant
@@ -699,7 +707,7 @@ router.put('/admin/users/:id/role', authenticateToken, requireAdmin, async (req,
         }
 
         // Validate role
-        const validRoles = ['staff', 'admin', 'superadmin'];
+        const validRoles = ['student', 'staff', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
             return res.status(400).json({
                 success: false,
@@ -908,7 +916,10 @@ router.get('/admin/pending-count', authenticateToken, requireAdmin, async (req, 
 router.post('/admin/users/:id/approve', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = Number(id);
+        if (!Number.isSafeInteger(userId) || userId <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid user id' });
+        }
 
         // Get user details first (use findByIdAny to get unapproved users)
         const user = await User.findByIdAny(userId);
@@ -920,9 +931,10 @@ router.post('/admin/users/:id/approve', authenticateToken, requireSuperAdmin, as
         }
 
         if (user.is_approved) {
-            return res.status(400).json({
-                success: false,
-                error: 'User is already approved'
+            return res.json({
+                success: true,
+                message: 'User is already approved',
+                role: user.role
             });
         }
 
@@ -933,12 +945,11 @@ router.post('/admin/users/:id/approve', authenticateToken, requireSuperAdmin, as
             });
         }
 
-        // Get role from request body (default to 'staff')
-        const { role = 'staff' } = req.body;
+        const role = req.body?.role ?? user.role ?? 'student';
 
         // Validate role assignment permissions
         // Superadmins can assign any role, admins can only assign staff or admin
-        const validRoles = ['staff', 'admin', 'superadmin'];
+        const validRoles = ['student', 'staff', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
             return res.status(400).json({
                 success: false,
@@ -974,24 +985,12 @@ router.post('/admin/users/:id/approve', authenticateToken, requireSuperAdmin, as
                 ipAddress: req.ip
             });
 
-            // Send approval notification email
-            try {
-                const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-                const loginUrl = `${baseUrl}/#/login`;
-                
-                await emailService.sendApprovalEmail({
-                    to: user.email,
-                    userName: user.first_name || user.email,
-                    loginUrl
-                });
-            } catch (emailError) {
-                console.error('Failed to send approval email:', emailError);
-            }
-
             res.json({
                 success: true,
-                message: `User approved successfully as ${role}`
+                message: `User approved successfully as ${role}`,
+                role
             });
+            notifyAccountApproved(user, req);
         } else {
             res.status(500).json({
                 success: false,
@@ -1011,7 +1010,10 @@ router.post('/admin/users/:id/approve', authenticateToken, requireSuperAdmin, as
 router.post('/admin/users/:id/verify-activate', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = Number(id);
+        if (!Number.isSafeInteger(userId) || userId <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid user id' });
+        }
 
         const targetUser = await User.findByIdAny(userId);
         if (!targetUser) {
@@ -1028,7 +1030,7 @@ router.post('/admin/users/:id/verify-activate', authenticateToken, requireAdmin,
             });
         }
 
-        const desiredRole = req.body?.role || targetUser.role || 'student';
+        const desiredRole = req.body?.role ?? targetUser.role ?? 'student';
         const validRoles = ['student', 'staff', 'admin', 'superadmin'];
         if (!validRoles.includes(desiredRole)) {
             return res.status(400).json({
@@ -1042,6 +1044,10 @@ router.post('/admin/users/:id/verify-activate', authenticateToken, requireAdmin,
                 success: false,
                 error: 'Only superadmins can assign the superadmin role'
             });
+        }
+
+        if (targetUser.is_verified && targetUser.is_approved && targetUser.is_active && desiredRole === targetUser.role) {
+            return res.json({ success: true, message: 'User is already verified and active', role: desiredRole });
         }
 
         const success = await User.adminVerifyAndActivate(userId, req.user.id, desiredRole);
@@ -1062,22 +1068,12 @@ router.post('/admin/users/:id/verify-activate', authenticateToken, requireAdmin,
             userAgent: req.headers['user-agent']
         });
 
-        try {
-            const baseUrl = process.env.APP_BASE_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-            const loginUrl = `${baseUrl}/#/login`;
-            await emailService.sendApprovalEmail({
-                to: targetUser.email,
-                userName: targetUser.first_name || targetUser.email,
-                loginUrl
-            });
-        } catch (emailError) {
-            console.error('Failed to send verify+activate notification email:', emailError);
-        }
-
         res.json({
             success: true,
-            message: 'User verified and activated successfully'
+            message: 'User verified and activated successfully',
+            role: desiredRole
         });
+        notifyAccountApproved(targetUser, req);
     } catch (error) {
         console.error('Verify+activate user error:', error);
         res.status(500).json({
